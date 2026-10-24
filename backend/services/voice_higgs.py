@@ -27,6 +27,7 @@ import httpx
 
 from spec.contracts import SessionConfig, SessionEvent
 
+from .avatar_live import LiveAvatarRoom, livekit_configured
 from .voice_base import OnEvent, OnTranscript
 
 BASE_URL = "https://api.boson.ai/v1"
@@ -72,6 +73,10 @@ CHARACTER_VOICES: dict[str, tuple[str, str]] = {
     "dev": ("marcus", "<|prosody:speed_fast|>"),
     "mr_tan": ("marcus", "<|prosody:speed_slow|>"),
     # the first cast (demo/faces_source/grid.png), kept so its faces still work
+    # Higgs's built-in live avatars (realtime mode)
+    "claire": ("eleanor", ""),
+    "emma": ("chloe", ""),
+    "james": ("marcus", ""),
     "grace": ("eleanor", ""),
     "margaret": ("eleanor", "<|prosody:pitch_low|><|prosody:speed_slow|>"),
     "emily": ("chloe", ""),
@@ -202,6 +207,9 @@ class HiggsVoice:
         self._last_frame: dict[str, Path] = {}   # speaker → where their face is right now
         self._voice_ids: dict[str, str] = {}     # speaker → cloned voice id
         self._voice_jobs: list[str] = []
+        self._live: LiveAvatarRoom | None = None   # realtime avatars, when LiveKit is set up
+        self._live_pending = False
+        self._live_chars: dict[str, str] = {}
         # Cloned voices are on for real use; injected test clients keep the preset path.
         self.custom_voices = (client is None
                               and os.environ.get("BOSON_CUSTOM_VOICES", "true") == "true")
@@ -226,6 +234,9 @@ class HiggsVoice:
     async def _render(self, speaker: str, text: str, style: str | None) -> None:
         """Render one line to an mp3 clip and announce it. A failure is an audio_status with
         status "tts_failed": the caption already showed the line, so the room carries on."""
+        if self._live is not None and speaker in self._live.seats:
+            await self._render_live(speaker, text, style)
+            return
         cloned = self._voice_ids.get(speaker)
         voice = cloned or self._voices.get(speaker) or PRESET_VOICES[0]
         tags = (MOOD_EMOTION.get(style or "neutral", "") if cloned
@@ -319,7 +330,18 @@ class HiggsVoice:
         self._session_id = session_id
         self._faces = assign_faces([p.id for p in config.personas], self.faces_dir)
         self._voices = assign_voices(config, self._faces)
+        live = self.avatar_enabled and self.background and livekit_configured()
+        if live:
+            # Live avatars: Higgs's built-in faces, one continuous stream each.
+            self._live = LiveAvatarRoom(session_id, [p.id for p in config.personas])
+            self._live_pending = True
+            for pid in self._live.seats:
+                character = self._live.character(pid) or pid
+                self._live_chars[pid] = character
+                self._voices[pid] = CHARACTER_VOICES[character][0]
+            self._faces = {}  # the live stream is the face
         await self._status("ready", voices=self._voices, avatars=self.avatar_enabled,
+                           live=live,
                            faces={pid: f"/demo/faces/{p.name}" for pid, p in self._faces.items()})
         if self.custom_voices:
             registry = _load_registry()
@@ -336,13 +358,15 @@ class HiggsVoice:
                     await self._status("idle", speaker=pid, url=self._idle_url(face))
                 elif self.background:
                     self._idle_jobs.append((pid, face))
-        if (self._idle_jobs or self._voice_jobs) and (self._worker is None or self._worker.done()):
+        if (self._idle_jobs or self._voice_jobs or self._live_pending) and (
+                self._worker is None or self._worker.done()):
             self._worker = asyncio.create_task(self._work())
 
     # ---- one fixed voice per character ----------------------------------------------------
 
     def _voice_key(self, speaker: str) -> str:
-        character = character_of(self._faces.get(speaker)) or speaker
+        character = (self._live_chars.get(speaker) or character_of(self._faces.get(speaker))
+                     or speaker)
         base, signature = CHARACTER_VOICES.get(character, (self._voices.get(speaker, ""), ""))
         return f"{character}|{base}|{signature}"
 
@@ -420,8 +444,11 @@ class HiggsVoice:
 
     async def _work(self) -> None:
         """Spoken lines always go first; idle loops fill the gaps between them."""
-        while not self._queue.empty() or self._idle_jobs or self._voice_jobs:
-            if self._voice_jobs:
+        while not self._queue.empty() or self._idle_jobs or self._voice_jobs or self._live_pending:
+            if self._live_pending:
+                self._live_pending = False
+                await self._start_live()
+            elif self._voice_jobs:
                 speaker = self._voice_jobs.pop(0)
                 try:
                     if speaker not in self._voice_ids:
@@ -445,13 +472,61 @@ class HiggsVoice:
         return None  # phone/door are local clips the browser plays from sfx_url
 
     async def cancel_speech(self) -> None:
-        """Skip/Pause: drop lines not yet rendered (the browser stops what is playing)."""
+        """Skip/Pause: drop lines not yet rendered (the browser stops what is playing) and cut
+        off a live avatar mid-sentence."""
         while not self._queue.empty():
             self._queue.get_nowait()
+        if self._live is not None:
+            self._live.interrupt()
 
     async def stop_voice_session(self) -> None:
-        # Let the last line (the closing ack) finish rendering; the worker exits on its own.
+        # Let the last line (the closing ack) finish, then release the live avatars (billing).
+        if self._live is not None:
+            live, self._live = self._live, None
+            asyncio.create_task(_close_after(live, self._worker))
         await self._status("stopped")
+
+    # ---- live avatars ----------------------------------------------------------------------
+
+    async def _start_live(self) -> None:
+        assert self._live is not None
+        try:
+            await self._live.start()
+        except Exception as exc:
+            # No LiveKit / no capacity / Higgs refused: fall back to clips with our own faces.
+            self._live = None
+            self._live_chars = {}
+            await self._status("live_failed", detail=str(exc)[:300])
+            return
+        await self._status("live_ready", **self._live.viewer())
+
+    async def _render_live(self, speaker: str, text: str, style: str | None) -> None:
+        """Stream the line's speech (cloned voice, emotion tag) straight into the avatar."""
+        assert self._live is not None
+        cloned = self._voice_ids.get(speaker)
+        voice = cloned or self._voices.get(speaker) or PRESET_VOICES[0]
+        tags = (MOOD_EMOTION.get(style or "neutral", "") if cloned
+                else delivery_tags(self._live_chars.get(speaker), style))
+        SpendCounter.tts_chars += len(tags + text)
+
+        async def pcm():
+            async with self._client.stream("POST", "/audio/speech", json={
+                "model": self.tts_model, "input": tags + text, "voice": voice,
+                "stream": True, "response_format": "pcm",
+            }) as resp:
+                resp.raise_for_status()
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+
+        await self._status("live_line", speaker=speaker, text=text)
+        try:
+            seconds = await self._live.speak(speaker, pcm())
+        except Exception as exc:
+            await self._status("tts_failed", speaker=speaker, detail=str(exc)[:200])
+            return
+        finally:
+            pass
+        await self._status("live_done", speaker=speaker, seconds=round(seconds, 2))
 
     async def _status(self, status: str, **extra: object) -> None:
         if self._on_event:
@@ -551,3 +626,12 @@ async def _ffmpeg(*args: str) -> bool:
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
     await proc.communicate()
     return proc.returncode == 0
+
+
+async def _close_after(live: LiveAvatarRoom, worker: asyncio.Task | None) -> None:
+    if worker is not None:
+        try:
+            await asyncio.wait_for(asyncio.shield(worker), timeout=20)
+        except Exception:
+            pass
+    await live.close()

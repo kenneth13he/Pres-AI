@@ -171,6 +171,17 @@ function onEvent(ev) {
     }
     case 'ai_speech_ended': seat(p.speaker)?.classList.remove('thinking'); break;
     case 'audio_status':
+      if (p.status === 'live_ready') { joinLive(p); break; }
+      if (p.status === 'live_failed') { console.warn('[room] live avatars unavailable, using clips:', p.detail); break; }
+      if (p.status === 'live_line') {
+        state.mic?.setMuted(true);
+        $('tiles').querySelectorAll('.speaking').forEach((x) => x.classList.remove('speaking'));
+        seat(p.speaker)?.classList.remove('thinking');
+        seat(p.speaker)?.classList.add('speaking');
+        say(p.speaker, p.text, state.lineTag[p.text]);
+        break;
+      }
+      if (p.status === 'live_done') { quiet(p.speaker, 900); setTimeout(() => state.mic?.setMuted(false), 900); break; }
       // After a reload the server replays history: don't re-speak lines from before we joined.
       if (p.status === 'clip' && state.joinedAtMs != null && ev.timestamp_ms < state.joinedAtMs - 3000) break;
       if (p.status === 'clip' && state.voices) {
@@ -246,6 +257,44 @@ $('btn-start').onclick = async () => {
     $('mic-label').textContent = state.mic.hasSTT ? 'mic · listening' : 'mic (no STT in this browser)';
   } catch (e) { $('mic-label').textContent = `mic blocked: ${e.message}`; }
 };
+// ---- live avatars: each panelist is one continuous Higgs Avatar stream (LiveKit) --------
+function loadScript(src) {
+  return new Promise((ok, fail) => {
+    if (document.querySelector(`script[src="${src}"]`)) return ok();
+    const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = fail;
+    document.head.append(s);
+  });
+}
+async function joinLive(p) {
+  if (state.live) return;
+  await loadScript('https://unpkg.com/livekit-client@2.15.0/dist/livekit-client.umd.js');
+  const { Room, RoomEvent, Track } = window.LivekitClient;
+  const room = new Room({ adaptiveStream: true });
+  const who = Object.fromEntries(Object.entries(p.identities).map(([pid, id]) => [id, pid]));
+  room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+    const tile = seat(who[participant.identity]);
+    if (!tile) return;
+    const el = track.attach();
+    if (track.kind === Track.Kind.Video) {
+      el.className = 'live-feed'; el.muted = true; el.playsInline = true;
+      tile.querySelector('.live-feed')?.remove();
+      tile.prepend(el);
+      tile.classList.add('live-on');
+    } else {
+      el.style.display = 'none'; document.body.append(el);
+    }
+  });
+  room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+    if (!room.canPlaybackAudio) $('conn').textContent = 'click anywhere to hear the panel';
+  });
+  addEventListener('click', () => room.startAudio().catch(() => {}));
+  await room.connect(p.url, p.token);
+  room.startAudio().catch(() => {});
+  state.live = room;
+  $('conn').textContent = 'live · Higgs avatars';
+  addEventListener('beforeunload', () => room.disconnect());
+}
+
 // ---- your webcam: on by default once you join; only ever shown to you, never sent anywhere
 async function camOn() {
   try {
