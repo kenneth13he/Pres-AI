@@ -13,7 +13,7 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
   const elapsed = () => elapsedBase + (elapsedAt == null ? 0 : now() - elapsedAt);
   const remaining = () => countdown == null ? null : Math.max(0, countdown.ms - (countdown.at == null ? 0 : now() - countdown.at));
   const send = (message) => link?.send(message);
-  const canStartTurn = () => state.started && state.audioReady && state.busConnected && !state.pending
+  const canStartTurn = () => !state.disposed && state.started && state.audioReady && state.busConnected && !state.pending
     && !state.transcribing && ['presenting', 'answering', 'qna', 'recovering'].includes(state.phase) && !state.busy;
   function discardTurn(turn_id) {
     if (!turn_id || cancelledTurns.has(turn_id)) return;
@@ -35,6 +35,7 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
   }
   function tick() { view.timer({ elapsed_ms: elapsed(), remaining_ms: remaining(), paused: state.phase === 'paused' }); }
   function setPhase(phase) {
+    if (state.disposed || state.phase === 'report') return;
     if (phase !== state.phase) {
       elapsedBase = elapsed(); elapsedAt = ['setup', 'paused', 'report'].includes(phase) ? null : now();
       if (countdown) { countdown.ms = remaining(); countdown.at = phase === 'paused' ? null : now(); }
@@ -43,7 +44,10 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
     if (phase !== 'setup') { state.started = true; state.startSent = false; }
     if (phase === 'qna') { state.inQna = true; countdown = null; }
     view.phase(phase); syncCapture(); tick();
-    if (phase === 'report') { view.notice?.(''); endAudio(); }
+    if (phase === 'report') {
+      view.notice?.(''); endAudio();
+      view.ended(mock ? '/report.html?mock=1' : `/report.html?session=${encodeURIComponent(sessionId)}`);
+    }
   }
   function endAudio() {
     state.audioReady = false; state.busy = false;
@@ -53,6 +57,9 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
     controls();
   }
   function onEvent(event, historic = false) {
+    if (state.disposed || !event || typeof event !== 'object') return;
+    if (!mock && sessionId && event.session_id && event.session_id !== sessionId) return;
+    if (!historic && state.phase === 'report' && event.type !== 'session_ended') return;
     const key = JSON.stringify(event); if (seen.has(key)) return; seen.add(key);
     const p = event.payload || {};
     switch (event.type) {
@@ -88,7 +95,7 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
         break;
       case 'error': view.error(p.message || 'Something went wrong. You can pause or skip and continue.'); break;
       case 'session_ended':
-        if (!historic) { setPhase('report'); view.ended(mock ? '/report.html?mock=1' : `/report.html?session=${encodeURIComponent(sessionId)}`); } break;
+        if (!historic) { setPhase('report'); link?.close(); } break;
     }
   }
   async function start() {
@@ -200,6 +207,7 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
     }
   }
   function changeSlide(delta) {
+    if (state.disposed || state.phase === 'report') return;
     const next = Math.max(1, Math.min(state.deck?.page_count || Math.max(1, state.slide + delta), state.slide + delta));
     state.slide = next; view.slide(next); send({ type: 'slide_changed', slide_number: next });
   }
@@ -223,7 +231,10 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
     view.configure({ config: link.config, preset: link.preset }); view.connection('Mock replay — no live microphone or audience calls.');
     view.slide(1);
   } else {
-    const snapshot = await getSession(sessionId);
+    let snapshot;
+    try { snapshot = await getSession(sessionId); }
+    catch (error) { await stop(); throw error; }
+    if (state.disposed) return { state, onEvent, start, stop, tick };
     state.inputMode = snapshot.config.input_mode || 'push_to_talk'; state.deck = snapshot.deck;
     state.started = snapshot.phase !== 'setup';
     state.inQna = Boolean(snapshot.in_qna ?? (snapshot.phase === 'qna'
@@ -234,21 +245,33 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
     for (const event of snapshot.events || []) onEvent(event, true);
     if (snapshot.timer_remaining_ms != null) countdown = { ms: snapshot.timer_remaining_ms, at: null };
     setPhase(snapshot.phase); view.slide(state.slide);
-    const health = await (await fetch('/health')).json();
-    view.audio(health.adapters.voice === 'higgs' ? 'Microphone is off. Start when ready.' : 'Live voice is unavailable. Check the local voice configuration.');
-    const audience = snapshot.reasoning?.adapter || health.adapters.orchestrator || health.adapters.llm;
-    const connectionLabel = audience === 'mock' ? 'Connected · audience test mode'
+    if (snapshot.phase === 'report') {
+      view.connection('Session finished. Your report is ready.');
+      return { state, onEvent, start, stop, tick };
+    }
+    view.audio('Microphone is off. Start when ready.');
+    let audience = snapshot.reasoning?.adapter;
+    const connectionLabel = () => audience === 'mock' ? 'Connected · audience test mode'
       : audience === 'boson' ? 'Connected · live Boson audience'
         : audience === 'claude' ? 'Connected · live Claude audience' : 'Connected';
-    if (audience === 'mock') view.connection('Audience test mode · live voices');
     link = connect(sessionId, onEvent, (status) => {
+      if (state.disposed || state.phase === 'report') return;
       state.busConnected = status === 'live';
-      view.connection(state.busConnected ? connectionLabel : 'Room disconnected. Reload to reconnect.');
+      view.connection(state.busConnected ? connectionLabel() : 'Room disconnected. Reload to reconnect.');
       if (!state.busConnected) { voice?.cancelTurn(); voice?.setPaused(true); }
       else if (state.started) syncCapture();
       controls();
     });
-    if (snapshot.phase === 'report') view.ended(`/report.html?session=${encodeURIComponent(sessionId)}`);
+    // Provider metadata is optional: it must never delay an already valid session/socket.
+    Promise.resolve().then(() => fetch('/health')).then((response) => response.json()).then((health) => {
+      if (state.disposed || state.phase === 'report') return;
+      const adapters = health?.adapters || {};
+      audience ||= adapters.orchestrator || adapters.llm;
+      if (state.busConnected) view.connection(connectionLabel());
+      if (!voice && !state.connecting && adapters.voice && adapters.voice !== 'higgs') {
+        view.audio('Live voice is unavailable. Check the local voice configuration.');
+      }
+    }).catch(() => {});
   }
   if (state.phase !== 'report') interval = setInterval(tick, 250);
   tick(); controls();

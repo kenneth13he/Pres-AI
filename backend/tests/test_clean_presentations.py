@@ -241,6 +241,41 @@ def test_wrong_runtime_model_or_mock_adapter_fails_even_if_manifest_claims_live(
     assert "run_settings:orchestrator:mismatch" in result["failures"]
 
 
+def test_report_assessment_counters_are_counted_without_invalidating_historical_runs():
+    historical = evidence()
+    assert assess_run(*historical)["status"] == "complete"
+    snapshot, report, manifest = deepcopy(historical)
+    counts: dict[str, int] = dict.fromkeys(COUNTS, 0)
+    counts.update(attempts=1, successes=1)
+    snapshot["reasoning"]["operations"]["assess_report"] = counts
+    for key, value in counts.items():
+        snapshot["reasoning"]["totals"][key] += value
+    assert assess_run(snapshot, report, manifest)["status"] == "complete"
+    del counts["successes"]
+    result = assess_run(snapshot, report, manifest)
+    assert result["status"] == "incomplete"
+    assert "reasoning:operations:successes" in result["incomplete_reasons"]
+
+
+def test_failed_report_assessment_cannot_hide_behind_successful_audience_calls():
+    snapshot, report, manifest = evidence()
+    counts: dict[str, int] = dict.fromkeys(COUNTS, 0)
+    counts.update(attempts=1, failures=1, fallbacks=1)
+    snapshot["reasoning"]["operations"]["assess_report"] = counts
+    for key, value in counts.items():
+        snapshot["reasoning"]["totals"][key] += value
+    result = assess_run(snapshot, report, manifest)
+    assert result["status"] == "failed"
+    assert "reasoning:nonzero_failures" in result["failures"]
+    assert "reasoning:nonzero_fallbacks" in result["failures"]
+
+
+def test_unknown_reasoning_operation_needs_review_instead_of_silently_disappearing():
+    snapshot, report, manifest = evidence()
+    snapshot["reasoning"]["operations"]["unrecognized"] = dict.fromkeys(COUNTS, 0)
+    assert "reasoning:unknown_operation" in assess_run(snapshot, report, manifest)["failures"]
+
+
 def test_error_event_fails_and_output_never_leaks_vendor_error_or_transcript():
     snapshot, report, manifest = evidence()
     snapshot["events"].append({"type": "error", "payload": {"message": "SECRET vendor body"}})

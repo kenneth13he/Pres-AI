@@ -60,6 +60,26 @@ the final answer and acknowledgement. **Finish session early** is a separate int
 exit that skips an unfinished question without penalty. See
 [ROOM_VOICE_INTEGRATION.md](ROOM_VOICE_INTEGRATION.md) for details and acceptance limits.
 
+## Report feedback
+
+The microphone and audio stop as soon as the session ends. The report page waits while
+the bounded content-coaching pass finishes, then displays the result automatically.
+It retries only the explicit preparing response and offers Retry if the result remains
+unavailable after 45 seconds. A genuinely unfinished session still directs you to Q&A.
+
+Content coaching references captured source IDs; the server supplies the exact quotes.
+Unsupported judgments stay unassessed. Overall averages only assessed content dimensions
+and explains its coverage; measured recovery and event metrics remain separate. Saved
+historical reports are not regenerated. Current checks are 281 backend and 151 frontend
+tests, plus a separate live Boson preflight using fictional text and silent mock audio.
+New microphone acceptance is deferred until the user is ready.
+
+The optional report-only preflight consumes one bounded Boson reasoning request:
+
+```sh
+.venv/bin/python scripts/try_report_assessment.py --live
+```
+
 ## Voice check and offline verification
 
 For an isolated microphone test, open [voice check](http://127.0.0.1:8000/voice-check.html),

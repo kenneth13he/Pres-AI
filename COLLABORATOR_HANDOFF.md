@@ -1,6 +1,9 @@
 # Voice-room handoff — 24 October 2026
 
-This is the verified local voice integration being shared on **`yang`**. Start here
+This is the verified integration prepared for **`yang`**. GitHub publication is still
+blocked by missing local sign-in and the connected app's HTTP 403 write refusal.
+The complete source and commits are saved locally; do not assume `yang` already has them.
+Start here
 before continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
 `DECISIONS.md` entries for the user-approved local choices.
 
@@ -28,17 +31,25 @@ before continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
   button is an intentional exit; Skip is explicitly no-penalty.
 - Finished reports persist locally in private, ignored `data/sessions/`, and survive
   a server restart. No raw microphone audio is recorded by the room.
+- Reports include bounded, evidence-grounded content coaching for clarity, evidence,
+  structure and question handling. Source IDs resolve to exact stored text on the server.
+  Unsupported judgments remain unassessed. Recovery, metrics, event history and skips
+  retain their deterministic values.
+- Microphone/audio stop immediately when the session ends. Feedback is prepared afterward;
+  the report page waits automatically, with bounded retries and a visible Retry option.
+  Finished timers stay frozen, and late events or slide clicks cannot reopen the room.
 
 ## What was actually verified
 
 | Evidence | Result and limit |
 | --- | --- |
-| Offline backend gate | 246 tests; Ruff, Pyright, generated schema and mock fixtures passed on the publication candidate, including six fresh-setup checks. Re-run commands below on your checkout. |
-| Offline frontend/audio gate | 133 tests passed, including worklet, PCM playback, PTT, cancellation, controller/view, setup, portraits and report behavior. |
+| Offline backend gate | 281 tests; Ruff, Pyright, generated schema and mock fixtures passed, including setup, grading, terminal clock, preparing responses and final-only persistence. Re-run commands below on your checkout. |
+| Offline frontend/audio gate | 151 tests passed, including PTT, cancellation, setup, portraits, terminal guards, safe API errors and bounded report-preparation polling. |
 | Voice hardware | User confirmed microphone transcription, distinct clear voices, complete PTT turns through pauses, and automatic closing/report handoff. Earlier voice-lab latency sign-off is not a full-room acoustic latency guarantee. |
 | Two real-audience human flows | Natural blackout and natural countdown → Q&A runs both reached reports automatically with clear audio. Together: 12 real Boson reasoning successes; zero recorded model failures/fallbacks/rejections, room errors, skips or unanswered questions. |
 | Boson structured-output preflight | Decisions, follow-ups, recovery grading and custom-persona expansion all passed a bounded live check. Responses use grounding/validation and explicit diagnostics. |
 | Delayed-closing fix | Exact-timing regression tests and a separate real Boson grading replay passed. The replay used saved text with synthetic delivery/clock and mock audio; it is not a new human presentation. |
+| New content-coaching pass | One live Boson report call passed using fictional text, injected Q&A and silent mock audio. An initial formatting failure was fixed and retained in private diagnostic evidence; this is not a new human run. |
 
 Private keys, transcripts, session reports, uploaded decks, diagnostic audio and raw
 acceptance artifacts are **not included** in this branch. The table is an aggregate
@@ -65,9 +76,11 @@ make the original runs clean final-build demonstrations.
   still need acceptance. The blackout run had no presenter speech before automatic
   restoration, so its recovery gap/evidence/score correctly stayed unassessed.
 - **P0-14 is not done:** no backup screen recording has been shared.
-- Recovery has a real model rubric when evidence exists; several content-score fields
-  in the report remain `null`/“Not assessed”. Do not substitute invented scores or
-  describe the entire report as AI-scored.
+- Content coaching is implemented, but scores can remain `null`/“Not assessed” when
+  captured evidence is insufficient. Scores are subjective text estimates, not verified
+  factual accuracy, acoustic measurements or psychological judgments. Overall averages
+  assessed content dimensions only; the report explains its coverage and scores recovery
+  separately. Original historical reports are not regenerated with new scores.
 - The warning and delayed-closing fixes have automated/live-model proof, but need the
   focused human checks below on the final build.
 
@@ -110,6 +123,7 @@ Optional paid reasoning preflight:
 
 ```sh
 .venv/bin/python scripts/try_boson_audience.py --live
+.venv/bin/python scripts/try_report_assessment.py --live
 ```
 
 Keep debug curveball forcing disabled for acceptance runs. Separate diagnostic probes
@@ -127,9 +141,9 @@ may require it; those are not evidence of a naturally scheduled clean demo.
 3. **All:** freeze the build, do two consecutive complete unaided recorded presentations
    without debug controls, then save the backup recording. Update P0-13/P0-14 only when
    the evidence meets their criteria.
-4. **C + A:** review remaining report scoring fields and provider-neutral wording. Keep
-   missing measurements explicit and scores grounded. Use real session JSON, not the
-   illustrative `?mock=1` report, for final acceptance.
+4. **C + A:** verify the new report coaching in a real microphone session, including
+   preparing → ready, evidence quotes, unsupported nulls and unchanged recovery/metrics.
+   Use real session JSON, not the illustrative `?mock=1` report, for final acceptance.
 
 ## Integration map
 
@@ -138,6 +152,8 @@ may require it; those are not evidence of a naturally scheduled clean demo.
 - **C / reasoning and state:** `backend/services/audience.py` (shared validation plus
   Claude/mock), `audience_boson.py`, `reasoning_budget.py`, `backend/engine.py`,
   `backend/main.py`, `backend/session_records.py`, and their tests.
+  `report_assessment.py` owns the bounded content rubric; finish announces the terminal
+  state before grading and exposes `report_preparing` only while the result is pending.
 - **A / UI:** setup model/controller/view, room controller/view, portraits and CSS,
   report controller/view and static JPEG assets.
 - **Shared contract:** `input_mode` defaults to `push_to_talk` in both
@@ -150,3 +166,11 @@ The tested backend base is `302c44b`. The room UI was selectively adapted from
 `feat/voice-room` at `4b508ee`; this is not a merge of that branch's later avatar/call
 experiments. When bringing in further UI changes, retain the tested PTT floor,
 playback acknowledgements, cancellation/reconnect guards and videos-off setting.
+
+## Publication status
+
+The local Git checkpoint is ready, but remote `yang` has not been updated. Native Git
+has no authenticated credential, and the connected GitHub app refused writes with
+`403 Resource not accessible by integration`. No force update or partial publication
+was used. After GitHub write authentication is available, fetch the branch again,
+confirm its changes are included, and push the verified checkpoint to `yang` normally.

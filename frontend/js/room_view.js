@@ -36,6 +36,7 @@ export function createRoomView(doc = document, win = doc.defaultView) {
     $('btn-start').disabled = !c.canPresent || c.connecting || (c.listening && c.started) || ended;
     text('btn-start', c.connecting ? 'Connecting audio…' : c.started ? 'Reconnect microphone' : 'Start presenting');
     for (const id of ['btn-pause', 'btn-skip']) $(id).disabled = !c.started || ended || c.pending;
+    $('prev').disabled = $('next').disabled = ended;
     const canEnd = c.started && !ended && (!c.pending || c.canEndWhileConnecting);
     $('btn-end').disabled = !canEnd || inQna;
     text('btn-end', ended ? 'Session finished' : inQna ? 'Q&A in progress' : 'End → Q&A');
@@ -187,7 +188,10 @@ export function createRoomView(doc = document, win = doc.defaultView) {
       text('audio-status', 'Session finished. Microphone and audio stopped.');
       $('report-ready').hidden = false; $('report-link').href = url;
     },
-    dispose() { finishHeld(false); win?.removeEventListener('blur', cancelHeld); },
+    dispose() {
+      finishHeld(false); $('prev').disabled = $('next').disabled = true;
+      win?.removeEventListener('blur', cancelHeld);
+    },
   };
   return view;
 }

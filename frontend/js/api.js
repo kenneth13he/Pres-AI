@@ -3,9 +3,24 @@
 
 const MOCK = new URLSearchParams(location.search).has('mock');
 
+export class ApiError extends Error {
+  constructor(status, detail, request) {
+    const message = typeof detail === 'string' ? detail
+      : typeof detail?.message === 'string' ? detail.message : '';
+    super(`${request} → ${status}${message ? ` ${message}` : ''}`);
+    this.status = status;
+    this.code = typeof detail?.code === 'string' && /^[a-z0-9_]{1,80}$/.test(detail.code)
+      ? detail.code : null;
+  }
+}
+
 async function json(url, init) {
   const r = await fetch(url, init);
-  if (!r.ok) throw new Error(`${init?.method ?? 'GET'} ${url} → ${r.status} ${await r.text()}`);
+  if (!r.ok) {
+    let body;
+    try { body = await r.json(); } catch { /* Non-JSON response bodies are not user messages. */ }
+    throw new ApiError(r.status, body?.detail, `${init?.method ?? 'GET'} ${url}`);
+  }
   return r.json();
 }
 

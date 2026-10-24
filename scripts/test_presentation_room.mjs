@@ -29,7 +29,8 @@ function session(overrides = {}) {
     ...overrides,
   };
 }
-function environment({ saved = session(), mock = false, liveVoice = true } = {}) {
+function environment({ saved = session(), mock = false, liveVoice = true,
+  healthFailure = false, healthReply = null } = {}) {
   const calls = [], sent = [], requests = [], views = {}, listeners = new Map(), intervals = new Map();
   const voiceInstances = [], voiceOptions = [];
   let handlers, onEvent, onBusStatus, now = 10000, nextTimer = 0, nextTurn = 0;
@@ -67,6 +68,7 @@ function environment({ saved = session(), mock = false, liveVoice = true } = {})
     createPlayer: () => player,
     getSession: async () => structuredClone(saved),
     connect(_id, eventCallback, statusCallback) {
+      calls.push('bus:connect');
       onEvent = eventCallback; onBusStatus = statusCallback;
       queueMicrotask(() => statusCallback('live'));
       return link;
@@ -78,6 +80,8 @@ function environment({ saved = session(), mock = false, liveVoice = true } = {})
     async fetch(url, init = {}) {
       calls.push(`fetch:${url}`);
       requests.push({ url, ...init, body: init.body ? JSON.parse(init.body) : undefined });
+      if (url === '/health' && healthFailure) throw new Error('Health metadata unavailable.');
+      if (url === '/health' && healthReply) return healthReply.promise;
       if (url.endsWith('/control')) {
         const action = JSON.parse(init.body).action;
         serverPhase = ({ pause: 'paused', resume: resumePhase, end: 'qna' })[action] ?? serverPhase;
@@ -156,6 +160,106 @@ test('room loads its real session/deck and defaults to held speech without start
     assert.equal(env.views.currentControls.listening, false);
     assert.equal(typeof env.handlers.beginTurn, 'function');
   } finally { await app.stop(); }
+});
+
+test('a failed room lookup releases the player and its page listener', async () => {
+  const env = environment();
+  env.deps.getSession = async () => { throw new Error('Session not found.'); };
+  await assert.rejects(bootRoom(env.deps), /Session not found/);
+  assert.equal(env.player.closed, 1); assert.equal(env.listeners.has('pagehide'), false);
+  assert.equal(env.calls.includes('bus:connect'), false); assert.equal(env.intervals.size, 0);
+});
+
+test('a room snapshot arriving after navigation cannot configure or connect the disposed room', async () => {
+  const env = environment(), snapshot = deferred();
+  env.deps.getSession = () => snapshot.promise;
+  const opening = bootRoom(env.deps);
+  await env.listeners.get('pagehide')();
+  snapshot.resolve(session()); const app = await opening;
+  assert.equal(app.state.disposed, true); assert.equal(env.player.closed, 1);
+  assert.equal(env.calls.includes('bus:connect'), false); assert.equal(env.views.configure, undefined);
+  assert.equal(env.intervals.size, 0);
+});
+
+test('optional health failure cannot stop a valid room from connecting and starting', async () => {
+  const env = environment({ healthFailure: true,
+    saved: session({ reasoning: { adapter: 'boson' } }) });
+  const app = await bootRoom(env.deps);
+  try {
+    await tick();
+    assert.equal(env.calls.filter((call) => call === 'bus:connect').length, 1);
+    assert.match(env.latest('connection')[0], /live Boson audience/);
+    await env.handlers.start();
+    assert.equal(env.messages('presentation_started').length, 1);
+  } finally { await app.stop(); }
+});
+
+test('a hung health lookup cannot block room readiness or overwrite a later audio status', async () => {
+  const health = deferred(), env = environment({ healthReply: health });
+  let ready = false;
+  const opening = bootRoom(env.deps).then((value) => { ready = true; return value; });
+  await tick(); const wasReady = ready;
+  const response = { json: async () => ({ adapters: { voice: 'mock', orchestrator: 'mock' } }) };
+  if (!wasReady) health.resolve(response); // Release a regressed loader before asserting.
+  const app = await opening;
+  try {
+    assert.equal(wasReady, true, 'A valid room must not await optional provider metadata.');
+    await env.handlers.start();
+    const status = env.latest('audio')[0]; health.resolve(response); await tick();
+    assert.equal(env.latest('audio')[0], status);
+    assert.match(status, /Microphone ready/);
+  } finally { await app.stop(); }
+});
+
+test('a saved finished room exposes its report without live event or voice connections', async () => {
+  const env = environment({ saved: session({ phase: 'report' }) });
+  env.deps.connect = () => { throw new Error('A saved report must not open a live socket.'); };
+  const app = await bootRoom(env.deps);
+  try {
+    assert.equal(app.state.phase, 'report');
+    assert.equal(env.voiceInstances.length, 0);
+    assert.deepEqual(env.latest('ended'), ['/report.html?session=room-test']);
+    assert.match(env.latest('connection')[0], /Session finished/);
+    assert.equal(env.intervals.size, 0);
+  } finally { await app.stop(); }
+});
+
+test('late events cannot reopen a finished room or mutate a disposed view', async () => {
+  const env = environment(), app = await bootRoom(env.deps);
+  await env.handlers.start(); env.event('phase_changed', { to: 'presenting' });
+  env.event('phase_changed', { to: 'report' });
+  env.event('phase_changed', { to: 'answering' }, 4);
+  env.event('ai_speech_started', { speaker: 'vc', line: 'Late question' }, 5);
+  env.event('session_ended', {}, 6);
+  assert.equal(app.state.phase, 'report');
+  assert.equal(app.state.busy, false);
+  assert.deepEqual(env.latest('ended'), ['/report.html?session=room-test']);
+  assert.equal(env.views.currentControls.canTalk, false);
+  await app.stop();
+  const before = JSON.stringify(env.views);
+  env.event('phase_changed', { to: 'presenting' }, 10);
+  env.event('transcript_segment', { text: 'late transcript' }, 11);
+  env.busStatus('live');
+  assert.equal(JSON.stringify(env.views), before);
+  assert.equal(app.state.phase, 'report');
+});
+
+test('slide navigation works before presenting and while paused, then stale handlers stop at report or disposal', async () => {
+  for (const terminal of ['report', 'dispose']) {
+    const env = environment(), app = await bootRoom(env.deps);
+    try {
+      env.handlers.next(); assert.equal(app.state.slide, 2);
+      env.event('phase_changed', { to: 'paused' });
+      env.handlers.previous(); assert.equal(app.state.slide, 1);
+      if (terminal === 'report') env.event('phase_changed', { to: 'report' });
+      else await app.stop();
+      const slides = env.views.slide.length, sent = env.messages('slide_changed').length;
+      env.handlers.next(); env.handlers.previous();
+      assert.equal(app.state.slide, 1);
+      assert.equal(env.views.slide.length, slides, `${terminal}: stale handlers cannot update the slide.`);
+      assert.equal(env.messages('slide_changed').length, sent, `${terminal}: stale handlers cannot send a slide change.`);
+    } finally { await app.stop(); }
+  }
 });
 
 test('Start waits for microphone readiness before starting presentation/session time', async () => {

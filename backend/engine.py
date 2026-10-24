@@ -18,7 +18,9 @@ resume gap all behave as if the pause had not happened (CLAUDE.md §2, §5.4).
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -45,6 +47,7 @@ from .services.curveballs import (
     paused_between,
 )
 from .services.report import build_report
+from .services.report_assessment import assess_report
 from .services.scheduler import Scheduler, SchedulerSnapshot
 from .services.voice_base import VoiceAdapter
 
@@ -56,6 +59,8 @@ RECOVERY_WINDOW_MS = 60_000
 DECISION_INTERVAL_MS = 5_000
 TRANSCRIPTION_WAIT_MS = 30_000
 PRESENTER_HOLD_LIMIT_MS = 65_000  # browser discards at 60 s; allow in-flight cleanup
+REPORT_NOTIFICATION_TIMEOUT_S = 2.0
+REPORT_PREPARATION_TIMEOUT_S = 25.0
 # Curveballs that are a question in disguise: the presenter answers, then we resolve "answered".
 ANSWERABLE: set[CurveballKind] = {
     "heckler", "latecomer", "bait", "fact_check", "plain_language", "vip_arrives", "crosstalk",
@@ -103,6 +108,7 @@ class Session:
             preset.curveballs_allowed, curveballs_enabled,
         )
         self.start_ms: int | None = None
+        self.finished_at_ms: int | None = None
         self.slide_number = 1
         self.slide_changed_at_ms: int | None = None
         self.last_event_end_ms: int | None = None
@@ -116,6 +122,7 @@ class Session:
         self.in_qna = False
         self.qna_asked = 0
         self.report: Report | None = None
+        self.on_report_pending: Callable[[], Awaitable[None]] | None = None
         self._question_counter = 0
         self.presenter_turn_id: str | None = None
         self.presenter_turn_pending_until_ms: int | None = None
@@ -132,7 +139,8 @@ class Session:
         return self.phase == "report"
 
     def elapsed_ms(self, now_ms: int) -> int:
-        return 0 if self.start_ms is None else now_ms - self.start_ms
+        end_ms = self.finished_at_ms if self.finished_at_ms is not None else now_ms
+        return 0 if self.start_ms is None else max(0, end_ms - self.start_ms)
 
     def persona(self, persona_id: str | None) -> Persona | None:
         return next((p for p in self.config.personas if p.id == persona_id), None)
@@ -259,6 +267,8 @@ class Session:
 
     async def slide_changed(self, now_ms: int, number: int) -> None:
         """Track slide, emit slide_changed, voice.send_context(slide text)."""
+        if self.ended:
+            return
         self.slide_number = number
         self.slide_changed_at_ms = now_ms
         self._emit("slide_changed", now_ms, {"slide_number": number})
@@ -810,21 +820,58 @@ class Session:
             await self.finish(now_ms)
 
     async def finish(self, now_ms: int) -> None:
-        """Resolve leftovers timed_out, stop the voice, REPORT, build the report."""
+        """Stop input, announce REPORT, then prepare bounded optional feedback."""
         if self.ended:
             return
+        self._unpause(now_ms)  # a final paused Q&A interval is never presenter time
+        self.paused_phase = None
         self.presenter_turn_cancelled()
         self._control_pending = False
         self._cut_off_pending(now_ms, "session ended")
-        for rec in self.curveballs.records:
-            if rec.resolution is None:
-                await self._resolve(rec, now_ms, "timed_out")
         self.time_crunch_deadline_ms = None
         try:
             await self.voice.stop_voice_session()
         except Exception as exc:
             self._error(now_ms, "voice.stop_voice_session", exc)
+        self.finished_at_ms = now_ms
         self._set_phase("report", now_ms)
-        self.report = build_report(self)
         self._emit("session_ended", now_ms,
                    {"report_url": f"/api/sessions/{self.session_id}/report"})
+
+        def measured_fallback(caveat: str) -> Report:
+            # Cancellation may happen before the asynchronous leftover assessments start.
+            for record in self.curveballs.records:
+                if record.resolution is None:
+                    self.events.append(self.curveballs.resolve(
+                        record, now_ms, "timed_out", self.transcript, self.pauses))
+            measured = build_report(self)
+            measured.metric_caveats.append(caveat)
+            return measured
+
+        notification_failed = False
+        try:
+            if self.on_report_pending is not None:
+                try:
+                    await asyncio.wait_for(self.on_report_pending(), REPORT_NOTIFICATION_TIMEOUT_S)
+                except Exception:
+                    notification_failed = True
+            async with asyncio.timeout(REPORT_PREPARATION_TIMEOUT_S):
+                for rec in self.curveballs.records:
+                    if rec.resolution is None:
+                        await self._resolve(rec, now_ms, "timed_out")
+                baseline = build_report(self)
+                report = await assess_report(self, baseline)
+                if not isinstance(report, Report) or report.session_id != self.session_id:
+                    raise ValueError("Invalid report assessment")
+                self.report = report
+        except asyncio.CancelledError:
+            self.report = measured_fallback(
+                "Optional feedback preparation was interrupted; measured results remain available.")
+            raise
+        except Exception:
+            self.report = measured_fallback(
+                "Optional feedback could not finish; measured results remain available.")
+        finally:
+            if notification_failed and self.report is not None:
+                self.report.metric_caveats.append(
+                    "The session ended, but its completion notification was delayed.")

@@ -18,6 +18,7 @@ from typing import Any, TypeGuard
 
 COUNTS = ("attempts", "successes", "failures", "fallbacks", "rejections", "skipped")
 OPERATIONS = ("decide", "follow_up", "assess_recovery", "expand_persona")
+OPTIONAL_OPERATIONS = ("assess_report",)
 KINDS = {"slides_down", "time_crunch"}
 
 
@@ -139,6 +140,9 @@ def assess_run(snapshot: Any, report: Any, manifest: Any) -> dict[str, Any]:
     if brain.get("last_error") is not None:
         failures.add("reasoning:recorded_error")
     totals, operations = _mapping(brain.get("totals")), _mapping(brain.get("operations"))
+    operation_names = OPERATIONS + tuple(op for op in OPTIONAL_OPERATIONS if op in operations)
+    if set(operations) - set(OPERATIONS + OPTIONAL_OPERATIONS):
+        failures.add("reasoning:unknown_operation")
     for name in COUNTS:
         value = totals.get(name)
         if not _integer(value):
@@ -150,7 +154,7 @@ def assess_run(snapshot: Any, report: Any, manifest: Any) -> dict[str, Any]:
     covered("live_reasoning_success", _integer(totals.get("successes"))
             and totals["successes"] > 0)
     for name in COUNTS:
-        values = [_mapping(operations.get(op)).get(name) for op in OPERATIONS]
+        values = [_mapping(operations.get(op)).get(name) for op in operation_names]
         if not all(_integer(value) for value in values):
             missing.add("reasoning:operations:" + name)
         elif (_integer(totals.get(name))

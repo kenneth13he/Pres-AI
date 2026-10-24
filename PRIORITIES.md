@@ -20,7 +20,7 @@ Format: `priority · id · owner · done · blocked by · what`
 | P0 | P0-9 | C | yes (engine; e2e wiring lands with P0-5/6) | — | Curveball engine: slides_down / time_crunch / heckler + recovery tracking (`test_curveballs.py`, e2e) |
 | P0 | P0-10 | A | guided manually triggered blackout/recovery/restore, heckler/Skip and frozen red countdown passed | — | Curveball UI effects for the three MVP kinds, from mocks |
 | P0 | P0-11 | B | yes (24 Oct: user confirmed moderator, VC and student clear and distinct) | — | Persona voices (or one voice + labels) and a neutral moderator voice |
-| P0 | P0-12 | A + C | local human report check passed: actual quotes, 5.3 s recovery, skipped no-penalty states and timeline | — | Report page: dimensions, Recovery card, key moments, evidence quotes |
+| P0 | P0-12 | A + C | report UI/event evidence human check passed; source-grounded content rubric and preparing flow implemented, offline/live synthetic checks pass; final microphone retest pending | — | Report page: dimensions, Recovery card, key moments, evidence quotes |
 | P0 | P0-13 | all | two human Boson flows completed; post-run fixes verified by tests/live replay; two clean final-build recorded demos pending | all P0 | End-to-end live run, twice in a row, nobody touching it |
 | P0 | P0-14 | all | no | P0-13 | Backup screen recording in `demo/` |
 

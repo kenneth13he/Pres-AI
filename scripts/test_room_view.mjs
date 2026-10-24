@@ -231,6 +231,19 @@ test('curveball states and ending preserve the live-room view contract', () => {
   env.view.dispose();
 });
 
+test('slide arrows stay available before presenting and while paused, then disable at report or disposal', () => {
+  const env = setup();
+  env.view.phase('setup');
+  assert.equal(env.node('prev').disabled, false); assert.equal(env.node('next').disabled, false);
+  env.view.phase('paused');
+  assert.equal(env.node('prev').disabled, false); assert.equal(env.node('next').disabled, false);
+  env.view.phase('report');
+  assert.equal(env.node('prev').disabled, true); assert.equal(env.node('next').disabled, true);
+  env.view.dispose();
+  const leaving = setup(); leaving.view.dispose();
+  assert.equal(leaving.node('prev').disabled, true); assert.equal(leaving.node('next').disabled, true);
+});
+
 test('new room markup retains hold, consent, errors and report controls without avatar or mute transports', async () => {
   const html = await readFile(new URL('../frontend/room.html', import.meta.url), 'utf8');
   const css = await readFile(new URL('../frontend/css/app.css', import.meta.url), 'utf8');

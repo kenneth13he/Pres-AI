@@ -29,6 +29,13 @@ publication scope and remaining checks.
   retains the session clock. Pause freezes the timer, including paused reconnect snapshots.
 - End enters the backend Q&A phase and keeps the microphone available. The report phase
   stops the microphone/audio and exposes a report link. Page exit closes both transports.
+- Completion is announced before report grading. While feedback is being prepared,
+  the report endpoint returns HTTP 409 with code `report_preparing`; the report page
+  retries that state automatically for up to 45 seconds. A finished report is saved once.
+- Content coaching resolves source IDs to exact captured text. Unsupported dimensions
+  remain unassessed; metrics, recovery and history are not rewritten by the model.
+- Finished elapsed time is frozen. Late events, capture results and slide controls do
+  not reopen or mutate the finished room.
 - Recovery transcript start times use detected speech onset rather than the time the
   hold button was pressed. Silent holds are discarded rather than generating a reply.
 
@@ -106,7 +113,7 @@ Use Node from your normal PATH for the browser checks. The macOS setup launcher 
 also use an existing bundled runtime on Codex installations. No Node runtime is
 required by the running app.
 
-Current checks: **246 backend tests and 133 frontend/audio tests pass**, plus lint, types,
+Current checks: **281 backend tests and 151 frontend/audio tests pass**, plus lint, types,
 schema consistency and mock fixtures. Coverage includes real ASGI event/binary socket flows
 with simulated vendor HTTP, standalone deterministic frontend controllers, audience
 configuration/upload races, report rendering and portrait/speaker lifecycle. These are

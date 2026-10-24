@@ -4,13 +4,19 @@ Current local mode uses **live Boson/Higgs speech and audience reasoning** with 
 Boson key and balance. Hold-to-talk is the default; static portraits are used and avatar
 video is off. The Claude adapter remains available but was not used for these local runs.
 
-Last updated: 2026-10-24. Publication gate: **246 backend + 133 frontend/audio tests**,
+Last updated: 2026-10-24. Prepared checkpoint gate: **281 backend + 151 frontend/audio tests**,
 plus lint, type, schema and mock checks. Two full human flows completed with clear audio
 and automatic Q&A/report finish: 12 real reasoning successes, zero recorded errors or
 fallbacks. **Formal two-clean-demo acceptance (P0-13) and backup recording (P0-14) remain open.**
 
 The table distinguishes live local behavior from remaining demo evidence. Historical
 checkpoints below retain the provider and test state that applied at the time.
+
+Content coaching now uses a bounded real-model pass with verified source references;
+unsupported dimensions remain unassessed. Audio stops before feedback preparation, and
+the report automatically waits for the result. Its live synthetic preflight passed;
+new microphone acceptance is deferred at the user's request. GitHub publication remains
+blocked on write authentication; the full source and collaborator handoff are saved locally.
 
 | # | Demo step (CLAUDE.md §13 script) | State | Notes |
 |---|---|---|---|
@@ -21,7 +27,7 @@ checkpoints below retain the provider and test state that applied at the time.
 | 5 | Presenter answers, persona follows up once | live Boson; human flow confirmed | Spoken answers, one follow-up per question and acknowledgement/hand-back completed in both full flows |
 | 6 | `slides_down` fires, viewer goes black | live locally; natural trigger and auto-restore verified | Natural blackout and countdown each fired once in the human runs. Guided tests separately covered blackout/Restore, heckler/Skip and frozen Pause timer |
 | 7 | Presenter resumes; recovery seconds measured | partial demo coverage | Earlier guided mock-audience test measured 5.331 s. Natural blackout run had no speech during the effect, so timing/evidence/score correctly remain null. Measured natural blackout recovery is still undemonstrated |
-| 8 | Q&A, then report with evidence quotes | live Boson; human automatic finish confirmed | Both flows reached reports with zero skips/unanswered questions. Original countdown report missed a late final; source now grades it once and uses a canonical sixty-second warning. Tests and a separate real-model replay passed; final-build human timing retest remains open |
+| 8 | Q&A, then report with evidence quotes | human automatic finish confirmed; new coaching pass awaits microphone retest | Original flows had zero skips/unanswered questions. Countdown fixes passed tests/replay. New source-ID coaching, preparing/retry handling and final-only persistence passed offline checks plus a separate live Boson preflight; final-build human acceptance remains open |
 | — | Two clean final-build demos | open | Two human flows completed, but missing recovery coverage and findings fixed afterward prevent P0-13 sign-off. Supplemental replay is separate from human demo evidence |
 | — | Backup recording exists in `demo/` | no | P0-14 remains open |
 

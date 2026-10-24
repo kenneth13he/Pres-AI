@@ -51,4 +51,11 @@ checks pass. Two human presentation flows completed; final clean-demo and record
 sign-off remain open. The handoff separates original test evidence from subsequent
 fixes and the focused checks still needed.
 
+Reports now include a bounded text-coaching pass with evidence resolved from captured
+source IDs. Unsupported dimensions remain unassessed; recovery timing and event metrics
+stay deterministic. Audio stops before grading, and the report page automatically waits
+for feedback. Current checks: **281 backend + 151 frontend tests**. The additional opt-in
+`scripts/try_report_assessment.py --live` probe uses fictional text and one real Boson
+grading call; it is separate from human presentation acceptance.
+
 Owners: **A** frontend/demo UX · **B** voice (Higgs) · **C** backend/brain/curveballs/report.

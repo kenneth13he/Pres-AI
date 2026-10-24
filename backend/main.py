@@ -86,6 +86,7 @@ class Room:
                 os.environ.get("DEBUG_CURVEBALL_ENDPOINT", "true") == "true"),
         }
         session.voice.on_event(self.voice_event)
+        session.on_report_pending = self.flush
 
     async def voice_event(self, event: SessionEvent) -> None:
         event.timestamp_ms = self.now_ms()
@@ -131,6 +132,13 @@ class Room:
                 self.active_task = asyncio.current_task()
                 try:
                     await coro
+                except asyncio.CancelledError:
+                    if self.session.ended and self.session.report is not None:
+                        try:
+                            await asyncio.wait_for(self.flush(), 2)
+                        except Exception:
+                            pass  # retain the original cancellation if backup/notification fails
+                    raise
                 except Exception as exc:  # a failed LLM/TTS call never breaks the session
                     self.session.events.append(SessionEvent(
                         type="error", session_id=self.session.session_id,
@@ -376,6 +384,9 @@ def get_report(session_id: str) -> dict[str, Any]:
         raise HTTPException(404, "no such session")
     s = _room(session_id).session
     if s.report is None:
+        if s.phase == "report":
+            raise HTTPException(409, {"code": "report_preparing",
+                                      "message": "Your session has ended. Preparing feedback."})
         raise HTTPException(409, "session not finished")
     return s.report.model_dump()
 
