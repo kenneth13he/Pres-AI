@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <link rel="stylesheet" href="/css/app.css?v=optimized-room-1" />
+  <link rel="stylesheet" href="/css/app.css?v=adaptive-room-1" />
   <style>
-    .room-page { min-height:100vh; display:flex; flex-direction:column; }
+    .room-page { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column; }
     .room-head { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:14px 24px; border-bottom:1px solid var(--raised-2); }
     .room-brand, .room-actions, .slide-controls, .mic-readout { display:flex; align-items:center; gap:12px; }
     .room-brand { flex-wrap:wrap; gap:10px; }
@@ -30,7 +30,8 @@
     #room-notice { margin:10px 0 0; padding:12px 16px; border:1px solid var(--mint-line); border-radius:12px; color:var(--text); background:var(--mint-tint); font-size:14px; }
     .room-layout { flex:1; display:grid; grid-template-columns:minmax(0,1fr) 340px; min-height:0; }
     .meeting-room { padding:20px 24px; min-width:0; }
-    .room-page .meeting-stage { border:1px solid var(--border); border-radius:16px; background:#101214; overflow:visible; }
+    /* Fit the 16:9 room by both window dimensions, leaving space for room controls. */
+    .room-page .meeting-stage { width:min(100%, max(240px, calc((100vh - 250px) * 16 / 9))); width:min(100%, max(240px, calc((100dvh - 250px) * 16 / 9))); margin:0 auto; border:1px solid var(--border); border-radius:16px; background:#101214; overflow:visible; }
     .room-page .meeting-stage > * { position:absolute; }
     #stage-decor, #tiles { inset:0; pointer-events:none; }
     #stage-decor > div { position:absolute; }
@@ -56,6 +57,7 @@
     .seat-role { margin:2px 0 0; color:#d3d9d6; font-size:clamp(9px,.95cqw,12px); line-height:1.2; }
     .fiction-label { margin-top:2px; font-size:clamp(8px,.75cqw,10px); color:#acb8b2; line-height:1.2; }
     .speech-slot { position:absolute; left:50%; bottom:calc(100% + 10px); z-index:4; transform:translateX(-50%); width:max-content; max-width:min(310px,44vw); }
+    .room-page .gallery .seat:not(.host-seat) .speech-slot { left:12px; top:12px; bottom:auto; transform:none; max-width:min(310px,calc(100% - 24px)); }
     .speech-bubble { border:1px solid var(--mint-line); border-radius:12px; background:#17231d; padding:10px 12px; box-shadow:0 8px 24px #0006; max-height:150px; overflow:auto; }
     .bubble-tag { display:block; margin-bottom:4px; color:var(--mint); font:500 10px var(--mono); text-transform:uppercase; }
     .bubble-text { margin:0; font-size:13px; line-height:1.4; }
@@ -66,6 +68,8 @@
     .speaking .speaking-waves i:nth-child(2) { animation-delay:.2s; } .speaking .speaking-waves i:nth-child(3) { animation-delay:.4s; }
     @keyframes voice-wave { to { height:14px; } }
     #host { left:2%; bottom:3%; width:220px; max-width:42%; height:52px; z-index:2; }
+    .room-page .gallery #host { left:0; top:calc(100% + 12px); bottom:auto; }
+    .room-page .gallery + .slide-toolbar { min-height:64px; justify-content:flex-end; }
     .room-page .host-seat { position:relative; width:100%; height:100%; background:var(--surface); border:1px solid var(--border-input); border-radius:10px; }
     .room-page .host-seat .portrait { width:48px; right:auto; border-radius:9px 0 0 9px; }
     .room-page .host-seat .seat-label { left:55px; top:0; padding:7px 7px 5px 0; background:none; text-shadow:none; }
@@ -94,7 +98,7 @@
     .caption.presenter { border-color:var(--text); } .caption.moderator { border-color:var(--coral); }
     .room-paused .speaking-waves i { animation-play-state:paused; }
     @media(max-width:1050px) { .room-layout { grid-template-columns:minmax(0,1fr) 310px; } .room-head { padding:14px 18px; } .meeting-room { padding:20px 18px; } }
-    @media(max-width:850px) { .room-layout { grid-template-columns:1fr; } .transcript-panel { border-left:0; border-top:1px solid var(--raised-2); max-height:none; } .transcript-log { max-height:45vh; } .room-actions { width:100%; } #timer { margin-right:auto; text-align:left; } .speech-slot { max-width:48vw; } }
+    @media(max-width:850px) { .room-layout { grid-template-columns:1fr; } .room-page .meeting-stage { width:100%; } .transcript-panel { border-left:0; border-top:1px solid var(--raised-2); max-height:none; } .transcript-log { max-height:45vh; } .room-actions { width:100%; } #timer { margin-right:auto; text-align:left; } .speech-slot { max-width:48vw; } }
     @media(prefers-reduced-motion:reduce) { .room-page *, .room-page *::before { animation:none!important; transition:none!important; } }
   </style>
 </head>
@@ -132,7 +136,7 @@
         <div id="host" class="host" aria-label="Moderator"></div>
       </div>
       <div class="slide-toolbar">
-        <div class="slide-controls">
+        <div id="slide-nav" class="slide-controls">
           <button id="prev" class="btn-sq" aria-label="Previous slide">←</button>
           <span id="slide-no">Slide 1</span>
           <button id="next" class="btn-sq" aria-label="Next slide">→</button>
@@ -166,6 +170,6 @@
     </aside>
   </main>
   <audio id="sfx" preload="auto"></audio>
-  <script type="module" src="/js/room.js?v=optimized-room-1"></script>
+  <script type="module" src="/js/room.js?v=adaptive-room-1"></script>
 </body>
 </html>

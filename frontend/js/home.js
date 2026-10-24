@@ -2,7 +2,7 @@
 // Design: docs/design/Home A - Premium Dark.dc.html. The demo is a scripted illustration, not a
 // live session; sound uses the browser's speechSynthesis as a stand-in for Higgs TTS voices.
 
-import { CORAL, KINDS, MAX_GUESTS, MIN_GUESTS, MINT, SETTINGS, fmtS, shapesHtml, thumbShapes } from '/js/rooms.js';
+import { CORAL, KINDS, MAX_GUESTS, MIN_GUESTS, MINT, SETTINGS, fmtS, shapesHtml, thumbShapes } from '/js/rooms.js?v=adaptive-room-1';
 
 const $ = (id) => document.getElementById(id);
 const PEOPLE = [

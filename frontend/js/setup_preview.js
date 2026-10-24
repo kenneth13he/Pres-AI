@@ -1,4 +1,4 @@
-import { layout, rect, settingById, thumbShapes } from './rooms.js';
+import { cq, layout, rect, settingById, thumbShapes } from './rooms.js?v=adaptive-room-1';
 
 // Layout geometry is trusted design data; names and descriptions always use text nodes.
 export function createSetupPreview({ document, assignPortraits }) {
@@ -29,10 +29,10 @@ export function createSetupPreview({ document, assignPortraits }) {
     },
     render(state, setting) {
       const people = state.audience.slice(0, 3), images = assignPortraits(people);
-      const plan = layout(setting, people.length), stage = $('preview-stage');
+      const plan = layout(setting, people.length, Boolean(state.deckId)), stage = $('preview-stage');
       const parts = plan.decor.map((d) => shape(d));
-      parts.push(shape({ ...plan.slide, c: 'var(--mint-tint)', b: '1px solid var(--mint-line)',
-        label: state.deckId ? 'Your slides' : 'Slides optional', lc: 'var(--mint)' }));
+      if (plan.slide) parts.push(shape({ ...plan.slide, c: 'var(--mint-tint)', b: '1px solid var(--mint-line)',
+        label: 'Your slides', lc: 'var(--mint)' }));
       people.forEach((person, i) => {
         const tile = node('div', 'tile'), image = images.get(person.id);
         tile.setAttribute('style', `position:absolute;${rect(plan.seats[i])};border-radius:6px;background:var(--raised);overflow:hidden;isolation:isolate`);
@@ -53,12 +53,12 @@ export function createSetupPreview({ document, assignPortraits }) {
           fill.src = img.src = image.src; tile.append(fill, img);
         }
         const name = node('span', '', person.name);
-        name.setAttribute('style', 'position:absolute;bottom:0;left:0;right:0;z-index:2;padding:3px;background:#0c0d0fcc;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
+        name.setAttribute('style', `position:absolute;bottom:0;left:0;right:0;z-index:2;padding:3px;background:#0c0d0fcc;font-size:${cq(plan.seats[i].w, .075, 9, 14)};overflow:hidden;text-overflow:ellipsis;white-space:nowrap`);
         tile.append(name); parts.push(tile);
       });
       stage.setAttribute('style', `background:${plan.bg}`); stage.replaceChildren(...parts);
       $('preview-room-name').textContent = settingById(setting).name;
-      $('preview-count').textContent = `${state.audience.length} guests`;
+      $('preview-count').textContent = `${state.audience.length} ${state.audience.length === 1 ? 'guest' : 'guests'}`;
       $('preview-pacing').textContent = `${state.options.duration_minutes} min · ${state.options.difficulty}`;
       $('preview-input').textContent = state.options.input_mode === 'live' ? 'Hands-free mic' : 'Hold to talk';
     },

@@ -4,7 +4,7 @@ Current local mode uses **live Boson/Higgs speech and audience reasoning** with 
 Boson key and balance. Hold-to-talk is the default; static portraits are used and avatar
 video is off. The Claude adapter remains available but was not used for these local runs.
 
-Last updated: 2026-10-24. Current checkpoint gate: **299 backend + 178 frontend/audio tests**,
+Last updated: 2026-10-24. Current checkpoint gate: **309 backend + 188 frontend/audio tests**,
 plus lint, type, schema and mock checks. Two earlier human flows had clear audio and
 automatic Q&A/report finish, with 12 reasoning successes and zero recorded errors or
 fallbacks, but incomplete final-build coverage. A subsequent recorded blackout run measured
@@ -181,3 +181,14 @@ voice cloning and talking-head controls are omitted.299 backend and178 frontend/
 checks plus lint/type/schema/mocks pass; served local assets match the new sources.
 This UI integration is included in `feat/optimized-presentation-room`. P0-13 remains open; no new human run
 or same-build backup is claimed.
+
+
+### Adaptive collaborator layout applied · 24 October 2026
+
+Latest design b783dce is adapted: growing guest tiles, full-stage gallery without a PDF,
+viewport-aware stage and1–3 guest setup/API/schema. No-deck slide controls hide and keyboard
+navigation sends no phantom slides. Whole static portraits, our visible Continue bar,
+Boson voice/reasoning, PTT floor/cancellation and videos-off remain.309 backend and188
+frontend/audio tests pass, plus lint/types/schema/mocks. Real local HTTP checks pass for
+one/three guests, invalid zero/four rejection, PDF upload and all28 page/module/style URLs.
+No new human presentation or recording sign-off is claimed.

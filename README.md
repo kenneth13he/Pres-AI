@@ -49,9 +49,9 @@ docs/archive/           the original plan this grew from
 ## Current state
 
 The optimized branch combines the premium dark redesign, five-step setup and reusable local
-profiles, persistent Continue actions, five room layouts, and whole static portraits with
-blurred backdrops. It retains the verified voice/backend lifecycle; camera and avatar
-videos remain off. The UI is selectively adapted from `9df73d3` and `5274a12`.
+profiles, persistent Continue actions, adaptive layouts for 1–3 guests, and whole static portraits with
+blurred backdrops. Without slides, the audience fills the stage. It retains the verified voice/backend lifecycle; camera and avatar
+videos remain off. The UI is selectively adapted from `9df73d3`, `5274a12` and `b783dce`.
 
 The presentation room includes live Boson transcription, streamed persona speech,
 hold-to-talk controls, real audience reasoning, static portraits, an audience builder,
@@ -63,7 +63,7 @@ fixes and the focused checks still needed.
 Reports now include a bounded text-coaching pass with evidence resolved from captured
 source IDs. Unsupported dimensions remain unassessed; recovery timing and event metrics
 stay deterministic. Audio stops before grading, and the report page automatically waits
-for feedback. Current checks: **299 backend + 178 frontend tests**. Unexpected audio loss
+for feedback. Current checks: **309 backend + 188 frontend tests**. Unexpected audio loss
 automatically pauses the room; Resume reconnects before either timer continues. The additional opt-in
 `scripts/try_report_assessment.py --live` probe uses fictional text and one real Boson
 grading call; it is separate from human presentation acceptance.

@@ -1,12 +1,17 @@
 import { assignPortraits } from './portraits.js';
-import { layout, loadSessionMeta, PRESET_SETTING, settingById } from './rooms.js';
+import { layout, loadSessionMeta, PRESET_SETTING, settingById } from './rooms.js?v=adaptive-room-1';
 
 // Room rendering and accessible controls. All audience/transcript text is plain text.
 export function createRoomView(doc = document, win = doc.defaultView) {
   const $ = (id) => doc.getElementById(id);
   const tiles = new Map(), bubbles = new Map();
   let session, phase = 'setup', heldPointer = null, handlers, lastControls = {}, activeSpeaker = null;
+  let hasDeck = false;
   const text = (id, value) => { if ($(id)) $(id).textContent = value; };
+  const hide = (id, hidden) => {
+    $(id).hidden = hidden;
+    $(id).classList.toggle('hidden', hidden);
+  };
   function notice(value) { text('room-notice', value || ''); $('room-notice').hidden = !value; }
   function renderRoomState() {
     let message;
@@ -37,7 +42,7 @@ export function createRoomView(doc = document, win = doc.defaultView) {
     $('btn-start').disabled = !c.canPresent || c.connecting || (c.listening && c.started) || ended;
     text('btn-start', c.connecting ? 'Connecting audio…' : c.started ? 'Reconnect microphone' : 'Start presenting');
     for (const id of ['btn-pause', 'btn-skip']) $(id).disabled = !c.started || ended || c.pending;
-    $('prev').disabled = $('next').disabled = ended;
+    $('prev').disabled = $('next').disabled = ended || !hasDeck;
     const canEnd = c.started && !ended && (!c.pending || c.canEndWhileConnecting);
     $('btn-end').disabled = !canEnd || inQna;
     text('btn-end', ended ? 'Session finished' : inQna ? 'Q&A in progress' : 'End → Q&A');
@@ -82,14 +87,20 @@ export function createRoomView(doc = document, win = doc.defaultView) {
       const peopleCount = value.config?.personas?.length || 0;
       const setting = settingById(loadSessionMeta(value.session_id)?.setting
         || PRESET_SETTING[value.config?.preset_id] || 'video');
-      const arrangement = layout(setting.id, Math.max(1, peopleCount));
+      hasDeck = Boolean(value.deck);
+      const arrangement = layout(setting.id, peopleCount, hasDeck);
+      $('stage').classList.toggle('gallery', !hasDeck);
+      for (const id of ['slide-viewer', 'slide-nav', 'prev', 'next', 'slide-no']) hide(id, !hasDeck);
+      hide('btn-restore', true);
+      $('slide-viewer').classList.remove('black', 'dim');
       text('guest-count', `${peopleCount} ${peopleCount === 1 ? 'guest' : 'guests'}`);
       text('room-setting', setting.name); $('stage').style.background = arrangement.bg;
       const position = (node, box) => {
         Object.assign(node.style, { left: `${box.x}%`, top: `${box.y}%`,
           width: `${box.w}%`, height: `${box.h}%` });
       };
-      position($('slide-viewer'), arrangement.slide); $('stage-decor').replaceChildren();
+      if (arrangement.slide) position($('slide-viewer'), arrangement.slide);
+      $('stage-decor').replaceChildren();
       for (const decoration of arrangement.decor) {
         const node = doc.createElement('div'); position(node, decoration);
         node.style.borderRadius = decoration.r; node.style.background = decoration.c;
@@ -179,20 +190,27 @@ export function createRoomView(doc = document, win = doc.defaultView) {
       }
     },
     slide(number) {
+      // Replayed slide events and late image failures cannot reopen a no-deck gallery.
+      if (!hasDeck) {
+        hide('slide-viewer', true); hide('slide-text', true);
+        $('slide-img').hidden = true; $('slide-img').removeAttribute('src');
+        text('slide-no', ''); text('slide-text', '');
+        return;
+      }
       const slide = session?.deck?.slides?.find((s) => s.number === number);
       text('slide-no', `Slide ${number}${session?.deck ? ` / ${session.deck.page_count}` : ''}`);
       const image = $('slide-img'), fallback = $('slide-text');
       image.hidden = !slide?.image_url; image.alt = slide ? `Slide ${number}` : '';
-      image.onerror = () => { image.hidden = true; fallback.classList.remove('hidden'); };
+      image.onerror = () => { image.hidden = true; hide('slide-text', !hasDeck); };
       if (slide?.image_url) image.src = slide.image_url; else image.removeAttribute('src');
-      fallback.textContent = slide?.text || 'Your audience is listening. Present with or without slides.';
-      fallback.classList.toggle('hidden', Boolean(slide?.image_url));
+      fallback.textContent = slide?.text || 'Slide preview unavailable.';
+      hide('slide-text', Boolean(slide?.image_url));
     },
     curveball(value) {
       const effect = value?.ui_effect;
-      $('slide-viewer').classList.toggle('black', effect === 'slides_black');
-      $('slide-viewer').classList.toggle('dim', effect === 'slides_dim');
-      $('btn-restore').classList.toggle('hidden', !['slides_black', 'slides_dim'].includes(effect));
+      $('slide-viewer').classList.toggle('black', hasDeck && effect === 'slides_black');
+      $('slide-viewer').classList.toggle('dim', hasDeck && effect === 'slides_dim');
+      hide('btn-restore', !hasDeck || !['slides_black', 'slides_dim'].includes(effect));
       text('overlay-title', effect === 'slides_dim' ? 'Keep it short' : 'Projector disconnected');
       text('overlay-sub', value?.line || 'Keep going. You can restore the slides at any time.');
       for (const [id, tile] of tiles) {

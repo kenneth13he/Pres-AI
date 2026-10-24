@@ -112,12 +112,12 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
       }));
       $('seat-count').textContent = people.length > 3 ? `${people.length} requested · maximum 3`
         : `${people.length} of 3 audience seats`;
-      $('seat-count').classList.toggle('text-[var(--coral)]', people.length > 3 || people.length < 2);
       $('selection-help').textContent = state.customDescription.trim()
-        ? 'Your custom person takes one seat. Keep exactly two roster people checked.'
-        : 'Choose two or three fictional audience members. The moderator hosts separately.';
-      const seatError = state.customDescription.trim() ? state.chosen.size !== 2
-        : state.chosen.size < 2 || state.chosen.size > 3;
+        ? 'Your custom person takes one seat. Choose one or two people from the roster.'
+        : 'Choose one to three fictional audience members. The moderator hosts separately.';
+      const seatError = state.customDescription.trim() ? state.chosen.size < 1 || state.chosen.size > 2
+        : state.chosen.size < 1 || state.chosen.size > 3;
+      $('seat-count').classList.toggle('text-[var(--coral)]', seatError);
       $('selection-error').textContent = seatError ? state.errors[0] : '';
       $('selection-error').classList.toggle('hidden', !seatError);
       const limit = state.customDescription.trim() ? 2 : 3;

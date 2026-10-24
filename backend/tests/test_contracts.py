@@ -12,10 +12,14 @@ def test_schema_covers_every_exported_model():
         assert model.__name__ in defs
 
 
-def test_session_config_needs_two_personas():
+def test_session_config_takes_one_to_three_personas():
     roster = list(presets.personas().values())
-    with pytest.raises(ValidationError):
-        SessionConfig(preset_id="startup_pitch", personas=roster[:1])
+    for count in (0, 4):
+        with pytest.raises(ValidationError):
+            SessionConfig(preset_id="startup_pitch", personas=roster[:count])
+    for count in (1, 2, 3):
+        config = SessionConfig(preset_id="startup_pitch", personas=roster[:count])
+        assert len(config.personas) == count
     cfg = SessionConfig(preset_id="startup_pitch", personas=roster[:2])
     assert cfg.curveballs == CurveballMode(mode="surprise")
     assert cfg.difficulty == "normal"

@@ -30,10 +30,10 @@ export function captureSetupProfile(state, { id, name, setting }) {
 export function restoreSetupProfile(state, profile) {
   const chosen = [...new Set((Array.isArray(profile.chosen) ? profile.chosen : [])
     .filter((id) => state.roster.has(id)))];
-  const custom = clean(profile.customDescription, 600), limit = custom ? 2 : 3;
-  state.chosen = new Set(chosen.slice(0, limit));
+  const custom = clean(profile.customDescription, 600);
+  state.chosen = new Set(chosen.slice(0, 3));
   for (const id of state.roster.keys()) {
-    if (state.chosen.size >= 2) break;
+    if (state.chosen.size >= 1) break;
     state.chosen.add(id);
   }
   state.customDescription = custom;

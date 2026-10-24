@@ -1,7 +1,7 @@
 // Audience choices and the shared snake_case request, independent of the DOM/network.
 export function createSetupState(data, presetId = 'startup_pitch') {
   const roster = new Map(data.personas.map((person) => [person.id, person]));
-  if (roster.size < 2) throw new Error('At least two audience choices are needed.');
+  if (roster.size < 1) throw new Error('At least one audience choice is needed.');
   const preset = data.presets.find((item) => item.id === presetId) ?? null;
   const defaults = preset?.personas ?? ['vc', 'student'];
   const chosen = defaults.filter((id) => roster.has(id)).slice(0, 3);
@@ -42,10 +42,10 @@ export function audienceSummary(state) {
 export function validateSetup(state) {
   const errors = [];
   const custom = state.customDescription.trim();
-  if (custom && state.chosen.size !== 2) {
-    errors.push('Choose exactly two people from the roster to leave the third seat for your custom person.');
-  } else if (!custom && (state.chosen.size < 2 || state.chosen.size > 3)) {
-    errors.push('Choose two or three people for your audience.');
+  if (custom && (state.chosen.size < 1 || state.chosen.size > 2)) {
+    errors.push('Choose one or two people from the roster alongside your custom person (three audience seats maximum).');
+  } else if (!custom && (state.chosen.size < 1 || state.chosen.size > 3)) {
+    errors.push('Choose one to three people for your audience.');
   }
   if (custom.length > 600) errors.push('Keep the custom description to 600 characters.');
   const o = state.options;

@@ -205,7 +205,8 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
       state.audioReady = true;
       if (!state.started) {
         state.startedAt = now(); state.startSent = true; elapsedBase = 0; elapsedAt = now();
-        send({ type: 'presentation_started' }); send({ type: 'slide_changed', slide_number: state.slide });
+        send({ type: 'presentation_started' });
+        if (state.deck) send({ type: 'slide_changed', slide_number: state.slide });
       }
       syncCapture();
       view.audio(state.inputMode === 'push_to_talk'
@@ -298,7 +299,7 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
     }
   }
   function changeSlide(delta) {
-    if (state.disposed || state.phase === 'report') return;
+    if (!state.deck || state.disposed || state.phase === 'report') return;
     const next = Math.max(1, Math.min(state.deck?.page_count || Math.max(1, state.slide + delta), state.slide + delta));
     state.slide = next; view.slide(next); send({ type: 'slide_changed', slide_number: next });
   }

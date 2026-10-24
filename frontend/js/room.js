@@ -3,8 +3,8 @@ import { connect, getSession, isMock } from '/js/api.js';
 import { createPlayer } from '/js/audio.js';
 import { playMock } from '/js/mock_player.js';
 import { connectVoice } from '/js/voice.js';
-import { createRoomView } from '/js/room_view.js?v=optimized-room-1';
-import { bootRoom } from '/js/room_controller.js';
+import { createRoomView } from '/js/room_view.js?v=adaptive-room-1';
+import { bootRoom } from '/js/room_controller.js?v=adaptive-room-1';
 
 const view = createRoomView(document);
 await bootRoom({ view, connect, getSession, isMock, createPlayer, playMock, connectVoice,

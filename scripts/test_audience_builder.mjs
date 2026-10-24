@@ -44,12 +44,12 @@ test('presets serialize complete snake_case session requests with hold-to-talk b
   }
 });
 
-test('custom third seat never silently replaces a selected person or submits four seats', async () => {
+test('custom guest never silently replaces a selected person or submits four seats', async () => {
   const run = harness(), { controller } = run;
   const original = [...controller.state.chosen];
   controller.custom('  a fictional thesis chair who asks for evidence  ');
   assert.deepEqual([...controller.state.chosen], original);
-  assert.equal(run.latest.audience.length, 4); assert.match(run.latest.errors[0], /exactly two/);
+  assert.equal(run.latest.audience.length, 4); assert.match(run.latest.errors[0], /one or two/);
   await controller.submit(); assert.equal(run.calls.length, 0);
   controller.choosePersona(original[2], false);
   assert.equal(run.latest.audience.length, 3); assert.deepEqual(run.latest.errors, []);
@@ -59,12 +59,17 @@ test('custom third seat never silently replaces a selected person or submits fou
   assert.equal(run.routes[0], '/room.html?session=new-room');
 });
 
-test('a custom person still requires two roster people; selection and skepticism stay faithful', () => {
+test('one roster guest can rehearse alone or with a custom guest; selection and skepticism stay faithful', () => {
   const run = harness({ presetId: 'custom' }), { controller } = run;
-  controller.custom('A curious customer');
   const first = [...controller.state.chosen][0], other = [...controller.state.chosen][1];
   controller.choosePersona(other, false);
-  assert.throws(() => buildSessionRequest(controller.state), /exactly two/);
+  assert.equal(buildSessionRequest(controller.state).config.personas.length, 1);
+  controller.custom('A curious customer');
+  assert.equal(audienceSummary(controller.state).length, 2);
+  assert.equal(buildSessionRequest(controller.state).config.personas.length, 1);
+  controller.choosePersona(first, false);
+  assert.throws(() => buildSessionRequest(controller.state), /one or two/);
+  controller.choosePersona(first, true);
   controller.choosePersona(other, true); controller.skepticism(first, '0.15');
   assert.equal(buildSessionRequest(controller.state).config.personas[0].skepticism, 0.15);
   assert.notEqual(data.personas.find((person) => person.id === first).skepticism, 0.15);
@@ -72,6 +77,32 @@ test('a custom person still requires two roster people; selection and skepticism
   assert.match(validateSetup(controller.state).join(' '), /Skepticism/);
   controller.skepticism(first, 0.5); controller.choosePersona('unknown-id', true);
   assert.equal(controller.state.chosen.size, 2);
+});
+
+test('roster-only sessions accept one through three guests and reject zero or four without dropping anyone', async () => {
+  const run = harness(), { controller } = run;
+  const chosen = [...controller.state.chosen];
+  for (const count of [3, 2, 1]) {
+    assert.equal(buildSessionRequest(controller.state).config.personas.length, count);
+    controller.choosePersona(chosen[count - 1], false);
+  }
+  assert.equal(controller.state.chosen.size, 0);
+  assert.throws(() => buildSessionRequest(controller.state), /one to three/);
+  await controller.submit(); assert.equal(run.calls.length, 0);
+  controller.state.chosen = new Set([...controller.state.roster.keys()].slice(0, 4));
+  const four = [...controller.state.chosen];
+  assert.throws(() => buildSessionRequest(controller.state), /one to three/);
+  assert.deepEqual([...controller.state.chosen], four);
+  await controller.submit(); assert.equal(run.calls.length, 0);
+});
+
+test('a roster with one available choice initializes a valid session while an empty roster fails clearly', () => {
+  const choices = fresh(); choices.personas = choices.personas.slice(0, 1);
+  const state = createSetupState(choices);
+  assert.equal(state.chosen.size, 1);
+  assert.equal(buildSessionRequest(state).config.personas.length, 1);
+  choices.personas = [];
+  assert.throws(() => createSetupState(choices), /At least one/);
 });
 
 test('curveball choose is limited to the preset, while Off/Surprise clear wire selections', () => {
@@ -209,6 +240,19 @@ test('real setup view uses text nodes for hostile names/descriptions and display
   assert.equal(elements.get('seat-count').textContent, '3 of 3 audience seats');
   assert.equal(elements.get('start').disabled, false);
   assert.ok(elements.get('audience-summary').textContent.includes('Custom · fictional'));
+  run.controller.custom('');
+  run.controller.choosePersona('student', false);
+  assert.equal(elements.get('seat-count').textContent, '1 of 3 audience seats');
+  assert.equal(elements.get('start').disabled, false);
+  assert.equal(elements.get('selection-error').classList.contains('hidden'), true);
+  assert.equal(elements.get('seat-count').classList.contains('text-[var(--coral)]'), false);
+  run.controller.choosePersona('vc', false);
+  assert.equal(elements.get('start').disabled, true);
+  assert.match(elements.get('selection-error').textContent, /one to three/);
+  run.controller.custom('A curious customer');
+  assert.equal(elements.get('seat-count').textContent, '1 of 3 audience seats');
+  assert.equal(elements.get('seat-count').classList.contains('text-[var(--coral)]'), true);
+  assert.match(elements.get('selection-error').textContent, /one or two/);
   elements.get('customise').click();
   assert.equal(elements.get('customise').attributes.get('aria-expanded'), 'true');
   assert.match(html, /value="push_to_talk" selected/);
@@ -311,18 +355,41 @@ test('malformed or unavailable profile storage cannot prevent a real rehearsal',
   await env.controller.submit(); assert.equal(env.calls.length, 1);
 });
 
-test('restoring old or hostile profiles clamps seats, modes and curveballs to the current contract', () => {
+test('restoring old or hostile profiles keeps seat conflicts visible and sanitizes preferences', () => {
   const env = harness();
   env.controller.profile({ chosen: ['unknown', 'vc', 'vc', 'student', 'professor'],
     customDescription: 'A fictional skeptical methods chair',
     skepticism: { vc: 3, student: 0.25 }, options: { input_mode: 'live', difficulty: 'evil',
       duration_minutes: 90, qna_questions: 20, curveball_mode: 'choose' },
     chosenCurveballs: ['not-supported'] });
+  assert.equal(env.controller.state.chosen.size, 3);
+  assert.throws(() => buildSessionRequest(env.controller.state), /one or two/);
+  env.controller.choosePersona('professor', false);
   const { config, custom_personas } = buildSessionRequest(env.controller.state);
   assert.equal(config.input_mode, 'push_to_talk'); assert.equal(config.personas.length, 2);
   assert.equal(config.personas[1].skepticism, 0.25); assert.equal(config.difficulty, 'normal');
   assert.equal(config.duration_target_s, 180); assert.equal(config.qna_questions, 2);
   assert.equal(config.curveballs.mode, 'surprise'); assert.equal(custom_personas.length, 1);
+});
+
+test('single-guest profiles restore without filling a second seat and have accurate guest counts', async () => {
+  const env = await wizardHarness(), el = (id) => env.elements.get(id);
+  for (const id of [...env.controller.state.chosen].slice(1)) env.controller.choosePersona(id, false);
+  el('profile-name').value = 'One guest'; el('save-profile').click();
+  const [profile] = loadSetupProfiles(env.storage);
+  assert.equal(profile.chosen.length, 1);
+  assert.equal(el('profiles').children[0].children[1].textContent, '1 guest · video');
+  const restored = await wizardHarness({ storage: env.storage, initialProfile: profile.id });
+  assert.deepEqual([...restored.controller.state.chosen], profile.chosen);
+  assert.equal(restored.elements.get('wizard-next-3').disabled, false);
+  assert.match(restored.elements.get('wizard-hint-3').textContent, /^1 audience member is ready/);
+  await restored.controller.submit();
+  assert.equal(restored.calls[0][0].personas.length, 1);
+  env.controller.custom('A curious customer'); el('save-profile').click();
+  assert.equal(el('profiles').children[0].children[1].textContent, '2 guests · video');
+  env.controller.profile({ chosen: ['unknown'], options: { input_mode: 'live' } });
+  assert.equal(env.controller.state.chosen.size, 1);
+  assert.equal(env.controller.state.options.input_mode, 'push_to_talk');
 });
 
 test('all current presets remain reachable and unknown saved presets never redirect in a loop', async () => {
@@ -381,7 +448,7 @@ test('Continue announces why it is blocked and focuses new headings only on step
   env.controller.option('duration_minutes', 5);
   assert.deepEqual(focus, ['slides-heading', 'room-heading']); assert.deepEqual(scroll, [0, 0]);
   env.controller.custom('A fictional committee chair');
-  assert.match(el('wizard-hint-3').textContent, /exactly two/);
+  assert.match(el('wizard-hint-3').textContent, /one or two/);
   env.view.failed(); assert.equal(el('profile-continue').disabled, true);
   assert.match(el('wizard-hint-0').textContent, /could not load/);
 });

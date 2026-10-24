@@ -1,9 +1,9 @@
 // Preset → audience builder → the real presentation room, using the shared API contract.
 import { createSession, getPresets, uploadSlides } from '/js/api.js';
 import { assignPortraits } from './portraits.js';
-import { createSetupController } from './setup_controller.js?v=optimized-room-1';
-import { createSetupView } from './setup_view.js?v=optimized-room-1';
-import { createSetupWizard } from './setup_wizard.js?v=optimized-room-1';
+import { createSetupController } from './setup_controller.js?v=adaptive-room-1';
+import { createSetupView } from './setup_view.js?v=adaptive-room-1';
+import { createSetupWizard } from './setup_wizard.js?v=adaptive-room-1';
 
 let storage;
 try { storage = window.localStorage; } catch { /* The rehearsal still works in private mode. */ }

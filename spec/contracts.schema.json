@@ -1104,7 +1104,7 @@
             "$ref": "#/$defs/Persona"
           },
           "maxItems": 3,
-          "minItems": 2,
+          "minItems": 1,
           "title": "Personas",
           "type": "array"
         },

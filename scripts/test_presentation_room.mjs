@@ -263,6 +263,24 @@ test('slide navigation works before presenting and while paused, then stale hand
   }
 });
 
+test('a gallery session never advances or sends phantom slides while microphone controls still start', async () => {
+  const env = environment({ saved: session({ deck: null }) }), app = await bootRoom(env.deps);
+  try {
+    const slides = env.views.slide.length;
+    env.handlers.next(); env.handlers.previous();
+    assert.equal(app.state.slide, 1); assert.equal(env.views.slide.length, slides);
+    assert.equal(env.messages('slide_changed').length, 0);
+    await app.start();
+    assert.equal(env.messages('presentation_started').length, 1);
+    assert.equal(env.messages('slide_changed').length, 0);
+    env.event('phase_changed', { to: 'presenting' });
+    env.handlers.next(); env.handlers.previous();
+    assert.equal(app.state.slide, 1); assert.equal(env.messages('slide_changed').length, 0);
+    assert.equal(app.state.audioReady, true);
+    assert.equal(env.views.currentControls.ptt, true);
+  } finally { await app.stop(); }
+});
+
 test('Start waits for microphone readiness before starting presentation/session time', async () => {
   const env = environment(), ready = deferred(); env.holdMicrophone(ready);
   const app = await bootRoom(env.deps);

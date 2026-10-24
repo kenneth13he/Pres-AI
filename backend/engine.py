@@ -61,6 +61,7 @@ TRANSCRIPTION_WAIT_MS = 30_000
 PRESENTER_HOLD_LIMIT_MS = 65_000  # browser discards at 60 s; allow in-flight cleanup
 REPORT_NOTIFICATION_TIMEOUT_S = 2.0
 REPORT_PREPARATION_TIMEOUT_S = 25.0
+MULTI_PERSONA_CURVEBALLS: set[CurveballKind] = {"crosstalk"}
 # Curveballs that are a question in disguise: the presenter answers, then we resolve "answered".
 ANSWERABLE: set[CurveballKind] = {
     "heckler", "latecomer", "bait", "fact_check", "plain_language", "vip_arrives", "crosstalk",
@@ -103,9 +104,12 @@ class Session:
         # slide_number, follow_up_of, curveball_id, answer, skipped, asked_at_ms
         self.questions: list[dict[str, Any]] = []
         self.curveballs = CurveballEngine(session_id)
+        allowed: list[CurveballKind] = [
+            kind for kind in preset.curveballs_allowed
+            if len(config.personas) > 1 or kind not in MULTI_PERSONA_CURVEBALLS]
         self.scheduler = Scheduler(
             config.difficulty, config.interruption_frequency, config.curveballs,
-            preset.curveballs_allowed, curveballs_enabled,
+            allowed, curveballs_enabled,
         )
         self.start_ms: int | None = None
         self.finished_at_ms: int | None = None
@@ -373,6 +377,8 @@ class Session:
         no-op unless presenting with nothing active."""
         if (self.phase != "presenting" or self.curveballs.active or self.pending_question
                 or not self._audience_action_allowed(now_ms)):
+            return
+        if len(self.config.personas) < 2 and kind in MULTI_PERSONA_CURVEBALLS:
             return
         persona_id = self._player_for(kind) if CATALOG[kind].speaker == "persona" else None
         await self._fire_curveball(kind, now_ms, None, persona_id, trigger_source="debug")

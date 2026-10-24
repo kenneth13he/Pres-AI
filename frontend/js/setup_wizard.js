@@ -1,6 +1,6 @@
-import { PRESET_SETTING, saveSessionMeta } from './rooms.js';
-import { createSetupPreview } from './setup_preview.js?v=optimized-room-1';
-import { captureSetupProfile, loadSetupProfiles, saveSetupProfiles } from './setup_profiles.js';
+import { PRESET_SETTING, saveSessionMeta } from './rooms.js?v=adaptive-room-1';
+import { createSetupPreview } from './setup_preview.js?v=adaptive-room-1';
+import { captureSetupProfile, loadSetupProfiles, saveSetupProfiles } from './setup_profiles.js?v=adaptive-room-1';
 
 // Decorates the tested setup controller/view: uploads, validation and Start still have one owner.
 export function createSetupWizard({ document, view, assignPortraits, storage,
@@ -51,8 +51,10 @@ export function createSetupWizard({ document, view, assignPortraits, storage,
     const cards = profiles.map((profile) => {
       const button = node('button', `pick ${activeId === profile.id ? 'on' : ''}`);
       button.type = 'button'; button.setAttribute('style', 'padding:16px;border-radius:14px;display:flex;flex-direction:column;gap:8px');
+      const count = profile.chosen.length
+        + (typeof profile.customDescription === 'string' && profile.customDescription.trim() ? 1 : 0);
       button.append(node('span', 'panel-title', profile.name),
-        node('span', 'hint', `${profile.chosen.length} guests · ${profile.setting}`));
+        node('span', 'hint', `${count} guest${count === 1 ? '' : 's'} · ${profile.setting}`));
       button.onclick = () => chooseProfile(profile); return button;
     });
     const add = node('button', 'pick', '+ New profile'); add.type = 'button';
@@ -126,7 +128,7 @@ export function createSetupWizard({ document, view, assignPortraits, storage,
           : state.deckId ? 'Your slides are ready. Continue to choose your room.'
             : 'Slides are optional. You can continue without a PDF.';
       $('wizard-hint-3').textContent = state.errors.find((e) => /people|person|roster|description/.test(e))
-        || `${state.audience.length} audience members are ready. Continue to set the pacing.`;
+        || `${state.audience.length} audience member${state.audience.length === 1 ? ' is' : 's are'} ready. Continue to set the pacing.`;
       for (const i of [1, 2, 3]) {
         $(`wizard-next-${i}`).disabled = state.submitting
           || (i === 1 && ['uploading', 'error'].includes(state.upload.status))

@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <link rel="stylesheet" href="/css/app.css?v=optimized-room-1" />
+  <link rel="stylesheet" href="/css/app.css?v=adaptive-room-1" />
   <style>
     .wiz-head { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 28px; border-bottom: 1px solid var(--raised-2); background: rgba(12,13,15,.85); backdrop-filter: blur(12px); }
     .steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
@@ -90,7 +90,7 @@
           <div class="wizard-foot" aria-label="Slides actions"><div class="wizard-progress"><span class="wizard-step-label">Step 2 of 5</span><p id="wizard-hint-1" class="wizard-hint" role="status">Slides are optional. You can continue without a PDF.</p></div><button id="wizard-back-1" type="button" class="btn-ghost">← Back</button><button id="wizard-next-1" type="button" class="btn-mint" aria-describedby="wizard-hint-1">Continue to room →</button></div>
         </section>
         <section id="wizard-panel-2" aria-labelledby="room-heading" hidden>
-          <h1 id="room-heading" class="title">Set the room</h1><p class="lede">Choose the setting for your two or three audience members.</p>
+          <h1 id="room-heading" class="title">Set the room</h1><p class="lede">Choose the setting for your one to three audience members.</p>
           <div id="room-settings" class="grid-cards" style="margin-top:28px"></div>
           <div class="panel" style="margin-top:22px">
             <label class="field"><span>Microphone</span><select id="input-mode" class="input"><option value="push_to_talk" selected>Hold to talk · button or Space</option><option value="live">Hands-free microphone</option></select></label>
@@ -109,11 +109,11 @@
             <div id="roster" class="grid-cards"></div>
             <div class="panel" style="margin-top:16px;border-style:dashed">
               <div class="row"><span class="panel-title">+ Custom guest</span><button id="remove-custom" class="btn-text hidden" type="button">Remove</button></div>
-              <label id="custom-help" for="custom-persona" class="hint">Describe a fictional audience member and what they should question. This uses the third seat.</label>
+              <label id="custom-help" for="custom-persona" class="hint">Describe a fictional audience member and what they should question. They take one seat alongside one or two roster guests.</label>
               <textarea id="custom-persona" class="input" rows="3" maxlength="600" aria-describedby="custom-help custom-count" placeholder="A thesis committee chair who challenges vague evidence"></textarea><span id="custom-count" class="hint">0 / 600</span>
             </div>
           </div>
-          <div class="wizard-foot" aria-label="Audience actions"><div class="wizard-progress"><span class="wizard-step-label">Step 4 of 5</span><p id="wizard-hint-3" class="wizard-hint" role="status">Choose two or three audience members.</p></div><button id="wizard-back-3" type="button" class="btn-ghost">← Back</button><button id="wizard-next-3" type="button" class="btn-mint" aria-describedby="wizard-hint-3">Continue to pacing →</button></div>
+          <div class="wizard-foot" aria-label="Audience actions"><div class="wizard-progress"><span class="wizard-step-label">Step 4 of 5</span><p id="wizard-hint-3" class="wizard-hint" role="status">Choose one to three audience members.</p></div><button id="wizard-back-3" type="button" class="btn-ghost">← Back</button><button id="wizard-next-3" type="button" class="btn-mint" aria-describedby="wizard-hint-3">Continue to pacing →</button></div>
         </section>
         <section id="wizard-panel-4" aria-labelledby="pacing-heading" hidden>
           <h1 id="pacing-heading" class="title">Curveballs &amp; pacing</h1><p class="lede">Set how much pressure the audience brings. Pause and Skip are always available.</p>
@@ -174,6 +174,6 @@ button:focus-visible, a:focus-visible { outline:2px solid var(--mint);outline-of
 .sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
 @media (max-width:650px) { .wiz-head { padding:12px 18px; } .steps { gap:0; } .steps button { font-size:12px;padding:6px; } .wiz-main { padding:28px 18px;gap:24px; } .preview { position:static; } }
 </style>
-<script type="module" src="/js/setup.js?v=optimized-room-1"></script>
+<script type="module" src="/js/setup.js?v=adaptive-room-1"></script>
 </body>
 </html>

@@ -9,11 +9,11 @@ const rooms = await readFile(new URL('../frontend/js/rooms.js', import.meta.url)
 const roomsUrl = `data:text/javascript;base64,${Buffer.from(rooms).toString('base64')}`;
 const source = (await readFile(new URL('../frontend/js/room_view.js', import.meta.url), 'utf8'))
   .replace("'./portraits.js'", `'${portraitUrl}'`)
-  .replace("'./rooms.js'", `'${roomsUrl}'`);
+  .replace(/'\.\/rooms\.js(?:\?[^']*)?'/, `'${roomsUrl}'`);
 const { createRoomView } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 const { assignPortraits } = await import(portraitUrl);
 const previewSource = (await readFile(new URL('../frontend/js/setup_preview.js', import.meta.url), 'utf8'))
-  .replace("'./rooms.js'", `'${roomsUrl}'`);
+  .replace(/'\.\/rooms\.js(?:\?[^']*)?'/, `'${roomsUrl}'`);
 const { createSetupPreview } = await import(`data:text/javascript;base64,${Buffer.from(previewSource).toString('base64')}`);
 const controller = await readFile(new URL('../frontend/js/room_controller.js', import.meta.url), 'utf8');
 const { bootRoom } = await import(`data:text/javascript;base64,${Buffer.from(controller).toString('base64')}`);
@@ -79,11 +79,11 @@ function setup(snapshot = { config: { personas: [] }, preset: { name: 'Practice'
     },
     createElement: (name) => new Element(name),
   };
-  const calls = { begin: 0, end: 0, discard: 0 };
+  const calls = { begin: 0, end: 0, discard: 0, previous: 0, next: 0 };
   const noop = () => {};
   const view = createRoomView(document);
   view.bind({ start: noop, pause: noop, skip: noop, end: noop, restore: noop,
-    previous: noop, next: noop, stopReply: noop,
+    previous() { calls.previous++; }, next() { calls.next++; }, stopReply: noop,
     beginTurn() { calls.begin++; return true; },
     endTurn() { calls.end++; }, cancelTurn() { calls.discard++; },
   });
@@ -162,11 +162,115 @@ test('deck slide selection uses its actual PNG and image failure reveals slide t
   env.view.slide(99);
   assert.equal(env.node('slide-img').src, undefined);
   assert.equal(env.node('slide-img').hidden, true);
-  assert.match(env.node('slide-text').textContent, /without slides/);
+  assert.equal(env.node('slide-text').textContent, 'Slide preview unavailable.');
   env.view.dispose();
 });
 
-test('audience shares the table while the moderator has a separate host seat and labels stay explicit', () => {
+test('a single guest fills the no-deck gallery and slide events cannot reveal empty slide controls', async () => {
+  const env = setup({ config: { preset_id: 'class_presentation', personas: [
+    { id: 'professor', name: 'Professor', role: 'Reviewer' },
+  ] } });
+  try {
+    const guest = env.node('tiles').children[0];
+    assert.equal(env.node('room-setting').textContent, 'Classroom');
+    assert.equal(env.node('guest-count').textContent, '1 guest');
+    assert.equal(guest.style.left, '1.5%'); assert.equal(guest.style.top, '2.5%');
+    assert.equal(guest.style.width, '97%'); assert.equal(guest.style.height, '95%');
+    assert.equal(env.node('stage').classList.contains('gallery'), true);
+    assert.equal(env.node('stage-decor').children.length, 0);
+    for (const phase of ['setup', 'presenting', 'paused', 'answering']) {
+      env.view.phase(phase); env.view.slide(9);
+      env.view.curveball({ ui_effect: 'slides_black', line: 'Keep going.' });
+      for (const id of ['slide-viewer', 'slide-nav', 'prev', 'next', 'slide-no', 'slide-text', 'btn-restore']) {
+        assert.equal(env.node(id).hidden, true, `${id} stays hidden in ${phase}.`);
+        assert.equal(env.node(id).classList.contains('hidden'), true);
+      }
+      assert.equal(env.node('prev').disabled, true); assert.equal(env.node('next').disabled, true);
+      assert.equal(env.node('slide-text').textContent, '');
+      assert.equal(env.node('slide-viewer').classList.contains('black'), false);
+      await env.node('prev').onclick(); await env.node('next').onclick();
+    }
+    assert.equal(env.calls.previous, 0); assert.equal(env.calls.next, 0);
+    assert.equal(env.node('host').children.length, 1);
+    assert.equal(env.node('host').hidden, false); assert.equal(env.node('btn-talk').hidden, false);
+    assert.equal(env.node('btn-pause').hidden, false); assert.equal(env.node('btn-skip').hidden, false);
+    assert.equal(env.node('btn-end').hidden, false);
+    env.down(12); env.up(12);
+    assert.equal(env.calls.begin, 1); assert.equal(env.calls.end, 1);
+    env.down(13); env.window.emit('blur'); env.up(13);
+    assert.equal(env.calls.discard, 1); assert.equal(env.calls.end, 1);
+  } finally { env.view.dispose(); }
+});
+
+test('late image failures after switching to no deck stay hidden and a later deck can display again', () => {
+  const config = { personas: [{ id: 'vc', name: 'Dana', role: 'Reviewer' }] };
+  const deck = { page_count: 1, slides: [{ number: 1, text: 'Evidence', image_url: '/decks/evidence/1.png' }] };
+  const env = setup({ config, deck });
+  try {
+    env.view.slide(1);
+    const lateFailure = env.node('slide-img').onerror;
+    env.view.configure({ config, deck: null }); env.view.controls(); env.view.slide(1);
+    lateFailure(); env.view.curveball({ ui_effect: 'slides_dim' });
+    assert.equal(env.node('slide-viewer').hidden, true);
+    assert.equal(env.node('slide-text').hidden, true);
+    assert.equal(env.node('slide-text').classList.contains('hidden'), true);
+    assert.equal(env.node('slide-text').textContent, '');
+    assert.equal(env.node('slide-img').src, undefined);
+    assert.equal(env.node('btn-restore').hidden, true);
+    env.view.configure({ config, deck }); env.view.controls(); env.view.slide(1);
+    for (const id of ['slide-viewer', 'slide-nav', 'prev', 'next', 'slide-no']) {
+      assert.equal(env.node(id).hidden, false); assert.equal(env.node(id).classList.contains('hidden'), false);
+    }
+    assert.equal(env.node('prev').disabled, false); assert.equal(env.node('next').disabled, false);
+    assert.equal(env.node('slide-img').src, '/decks/evidence/1.png');
+    assert.equal(env.node('slide-text').hidden, true);
+    env.node('slide-img').onerror();
+    assert.equal(env.node('slide-text').hidden, false);
+    assert.equal(env.node('slide-text').textContent, 'Evidence');
+  } finally { env.view.dispose(); }
+});
+
+test('one to three authoritative guests adapt to every saved setting, with a full gallery when no deck exists', () => {
+  const previous = globalThis.sessionStorage;
+  const personas = [
+    { id: 'vc', name: 'Dana', role: 'Reviewer' },
+    { id: 'student', name: 'Sam', role: 'Student' },
+    { id: 'professor', name: 'Professor', role: 'Professor' },
+  ];
+  try {
+    for (const setting of ['video', 'classroom', 'boardroom', 'lecture', 'interview']) {
+      globalThis.sessionStorage = { getItem: () => JSON.stringify({ setting,
+        config: { personas: [{ id: 'stale', name: 'Old guest' }] }, deck: { page_count: 100 } }) };
+      for (const deck of [null, { page_count: 1, slides: [] }]) {
+        let singleArea;
+        for (const count of [1, 2, 3]) {
+          const env = setup({ session_id: 'adaptive', config: { personas: personas.slice(0, count) }, deck });
+          const people = env.node('tiles').children;
+          assert.equal(people.length, count);
+          assert.equal(env.node('guest-count').textContent, `${count} ${count === 1 ? 'guest' : 'guests'}`);
+          assert.deepEqual(people.map((person) => person.dataset.persona), personas.slice(0, count).map((person) => person.id));
+          const area = Number.parseFloat(people[0].style.width) * Number.parseFloat(people[0].style.height);
+          if (count === 1) singleArea = area;
+          else assert.ok(area < singleArea, `${setting} guest tiles grow when fewer guests attend.`);
+          for (const person of people) {
+            for (const edge of ['left', 'top', 'width', 'height']) assert.ok(Number.isFinite(Number.parseFloat(person.style[edge])));
+          }
+          assert.equal(env.node('slide-viewer').hidden, !deck);
+          assert.equal(env.node('slide-nav').hidden, !deck);
+          assert.equal(env.node('stage-decor').children.length === 0, !deck || setting === 'video');
+          if (!deck && count === 1) {
+            assert.equal(people[0].style.width, '97%'); assert.equal(people[0].style.height, '95%');
+          }
+          env.view.dispose();
+        }
+      }
+    }
+  } finally {
+    if (previous === undefined) delete globalThis.sessionStorage; else globalThis.sessionStorage = previous;
+  }
+});
+
+test('audience fills the room while the moderator has a separate host seat and labels stay explicit', () => {
   const env = setup({ config: { personas: [
     { id: 'vc', name: 'Dana', role: 'Skeptical VC' },
     { id: 'custom-1', name: 'A careful reviewer', role: 'Methods reviewer', custom: true },
@@ -249,6 +353,8 @@ test('portrait framing contains the whole static image and keeps labels and spea
   assert.match(html, /\.portrait-image\s*\{[^}]*z-index:1/);
   assert.match(html, /\.seat-label\s*\{[^}]*z-index:2/);
   assert.match(html, /\.speaking-waves\s*\{[^}]*z-index:2/);
+  assert.match(html, /\.gallery \.seat:not\(\.host-seat\) \.speech-slot\s*\{[^}]*top:12px;[^}]*bottom:auto/,
+    'A gallery caption stays within its tile instead of covering header controls.');
   assert.match(html, /prefers-reduced-motion:reduce/);
 });
 
@@ -290,7 +396,8 @@ test('wizard preview preserves whole portraits, safe names and initials when eit
 });
 
 test('curveball states and ending preserve the live-room view contract', () => {
-  const env = setup({ config: { personas: [{ id: 'vc', name: 'Dana', role: 'VC' }] } });
+  const env = setup({ config: { personas: [{ id: 'vc', name: 'Dana', role: 'VC' }] },
+    deck: { page_count: 1, slides: [] } });
   const audience = env.node('tiles').children[0];
   env.view.curveball({ ui_effect: 'slides_black', line: 'Keep going without slides.' });
   assert.equal(env.node('slide-viewer').classList.contains('black'), true);
@@ -307,7 +414,7 @@ test('curveball states and ending preserve the live-room view contract', () => {
 });
 
 test('slide arrows stay available before presenting and while paused, then disable at report or disposal', () => {
-  const env = setup();
+  const env = setup({ config: { personas: [] }, deck: { page_count: 1, slides: [] } });
   env.view.phase('setup');
   assert.equal(env.node('prev').disabled, false); assert.equal(env.node('next').disabled, false);
   env.view.phase('paused');
@@ -326,7 +433,7 @@ test('new room markup retains hold, consent, errors and report controls without 
   assert.equal(new Set(ids).size, ids.length, 'Control IDs must remain unique.');
   for (const id of ['host', 'tiles', 'captions', 'btn-talk', 'btn-stop-reply', 'ptt-hint',
     'audio-mode', 'audio-status', 'mic-consent', 'room-error', 'report-ready', 'report-link',
-    'btn-end', 'btn-finish-session', 'qna-hint', 'conn']) {
+    'btn-end', 'btn-finish-session', 'qna-hint', 'conn', 'slide-nav']) {
     assert.ok(ids.includes(id), `Missing room contract element ${id}`);
   }
   assert.match(html, /Speech goes to Boson for transcription/);
@@ -334,7 +441,9 @@ test('new room markup retains hold, consent, errors and report controls without 
   const sidebar = html.slice(html.indexOf('<aside'), html.indexOf('</aside>'));
   assert.match(sidebar, /id="btn-finish-session"/, 'Early finish is separate from the main header control.');
   assert.doesNotMatch(sidebar, /id="btn-end"/);
-  assert.doesNotMatch(html, /<video\b/); assert.ok(!ids.includes('voice-on'));
+  assert.doesNotMatch(html, /<video\b|live-feed|cam-on|LiveKit/i); assert.ok(!ids.includes('voice-on'));
+  assert.match(html, /\.meeting-stage\s*\{[^}]*width:min\(100%,[^}]*100dvh/);
+  assert.match(html, /@media\(max-width:850px\)[^\n]*\.meeting-stage\s*\{\s*width:100%/);
   assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/);
   assert.doesNotMatch(css, /\.table-scene\s*\{[^}]*overflow:\s*hidden/);
 });
@@ -545,13 +654,14 @@ test('saved room setting changes the stage while authoritative personas and stat
     const env = setup({ session_id: 'designed-room', config: { preset_id: 'startup_pitch', personas: [
       { id: 'vc', name: 'Dana', role: 'Skeptical VC' },
       { id: 'student', name: 'Sam', role: 'Student' },
-    ] } });
+    ] }, deck: { page_count: 1, slides: [] } });
     assert.equal(env.node('room-setting').textContent, 'Boardroom');
     assert.equal(env.node('guest-count').textContent, '2 guests');
-    assert.equal(env.node('slide-viewer').style.left, '32%');
+    assert.equal(env.node('slide-viewer').style.left, '34%');
     const people = env.node('tiles').children;
     assert.equal(people.length, 2);
     assert.deepEqual(people.map((person) => person.dataset.persona), ['vc', 'student']);
+    assert.equal(people[0].style.width, '42.4%'); assert.equal(people[0].style.height, '53%');
     assert.notEqual(people[0].style.left, people[1].style.left);
     for (const person of people) assert.match(find(person, 'portrait-image').src, /^\/demo\/faces\/.+\.jpg$/);
     env.view.dispose();
@@ -566,10 +676,12 @@ test('missing room metadata falls back to the preset layout and retains visible 
   try {
     const env = setup({ session_id: 'new-room', config: { preset_id: 'class_presentation', personas: [
       { id: 'professor', name: 'Professor', role: 'Reviewer' },
-    ] } });
+    ] }, deck: { page_count: 1, slides: [] } });
     assert.equal(env.node('room-setting').textContent, 'Classroom');
-    assert.equal(env.node('slide-viewer').style.left, '27%');
+    assert.equal(env.node('slide-viewer').style.left, '30%');
     assert.equal(env.node('guest-count').textContent, '1 guest');
+    assert.equal(env.node('tiles').children[0].style.width, '94%');
+    assert.equal(env.node('tiles').children[0].style.height, '46%');
     env.view.phase('recovering'); assert.equal(env.node('phase').classList.contains('hot'), true);
     env.view.phase('answering'); assert.equal(env.node('phase').classList.contains('hot'), false);
     assert.equal(env.node('phase').classList.contains('mint'), true);

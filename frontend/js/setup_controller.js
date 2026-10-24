@@ -1,5 +1,5 @@
-import { createSetupState, audienceSummary, validateSetup, buildSessionRequest } from './setup_model.js';
-import { restoreSetupProfile } from './setup_profiles.js';
+import { createSetupState, audienceSummary, validateSetup, buildSessionRequest } from './setup_model.js?v=adaptive-room-1';
+import { restoreSetupProfile } from './setup_profiles.js?v=adaptive-room-1';
 
 export function createSetupController({ data, presetId, view, uploadSlides, createSession, navigate }) {
   const state = createSetupState(data, presetId);

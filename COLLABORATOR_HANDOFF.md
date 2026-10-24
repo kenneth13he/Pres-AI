@@ -6,7 +6,8 @@ continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
 
 ## Optimized release integration
 
-The user requested the new design now on `main` / `feat/frontend` at `9df73d3`.
+The optimized UI combines `main` / `feat/frontend` at `9df73d3` with the latest
+collaborator layout update `most-recent-update` at `b783dce`.
 It is adapted across the homepage, five-step setup wizard, live room and report.
 The new dark/mint/coral design uses Urbanist and JetBrains Mono, five room layouts,
 static portraits, profile preferences and the existing real report data. The release branch starts from the verified `yang` checkpoint `1392f74`; `yang` and the
@@ -16,7 +17,7 @@ framing, a dimmed/blurred backdrop, safe image-failure fallback, and name/speake
 Its alternate conversation engine, webcam and live-avatar pool are not imported.
 
 The setup keeps the tested controller/model: PDF-only upload limits and race cancellation,
-explicit failed-file recovery, validated 2–3-person audiences, generated fictional custom
+explicit failed-file recovery, validated 1–3-person audiences, generated fictional custom
 third seats, preset timing, and duplicate-Start protection. Profiles restore bounded
 preferences with hold-to-talk; no decks, credentials or microphone audio are stored in
 profiles. All presets remain reachable, file upload remains keyboard-accessible, and
@@ -25,13 +26,33 @@ high-contrast bottom bar with large targets, step labels and nearby validation f
 controls are omitted. Room and report controllers and all audio/transcription safeguards
 are unchanged. Boson reasoning/voice and videos-off remain the active local configuration.
 
-Validation: **299 backend + 178 frontend/audio tests** pass, with Ruff, Pyright, generated
+Validation: **309 backend + 188 frontend/audio tests** pass, with Ruff, Pyright, generated
 schema and mock checks. The actual local server returns the new HTML/CSS/module bytes
 for all checked resources; changed entry points/styles are versioned to avoid stale UI.
 New regressions exercise wizard navigation, upload gating, safe profiles and preset routes,
 and room-layout selection. These checks do not close P0-13's human presentation gate.
 
-## Post-push verification
+## Adaptive gallery and single-guest update
+
+The latest collaborator design (`b783dce`) is now adapted to this branch. Audience tiles
+fill their available region and grow for fewer guests. Without slides, all five settings
+use the full-stage gallery; slide controls hide and keyboard arrows cannot send phantom
+slide changes. Room and setup previews share the same geometry. Portraits stay whole,
+labels have bounded sizes, and the stage fits the viewport. Static moderator/PTT controls
+remain; no webcam or avatar requests are introduced.
+
+SessionConfig, generated schema, API and setup now accept 1–3 roster guests. Crosstalk is
+excluded for a solo audience, including the debug path. Saved single-guest profiles stay
+single. A generated free-text custom guest takes one seat alongside 1–2 roster guests;
+invalid totals are shown for correction without silently removing a selection.
+
+The gate passes **309 backend + 188 frontend/audio tests**, Ruff, Pyright, schema and mock
+checks. The restarted real local server accepts one/three guests, rejects zero/four,
+keeps PTT by default and serves the updated asset graph. Boson reasoning/voice remain
+selected and videos remain off. A paused test-room snapshot was preserved privately
+before the required backend restart. P0-13's human recorded runs remain open.
+
+## Earlier published release verification
 
 Published code commit `1d1e3b8` was cloned from GitHub into a new directory and installed
 from the pinned requirements in a new Python 3.12 environment. Actual `make setup`,
@@ -128,8 +149,8 @@ fresh human pair of this final build is still unverified.
 
 | Evidence | Result and limit |
 | --- | --- |
-| Offline backend gate | 299 tests; Ruff, Pyright, generated schema and mock fixtures passed, including Make/launcher setup, disconnect pause, ownership, teardown, clocks, report preparation and persistence. Re-run commands below on your checkout. |
-| Offline frontend/audio gate | 178 tests passed, including actual STT idle → voice close → room pause, frozen timers, pending-input discard, reconnect-before-Resume and control races. No microphone or vendor calls are used by these tests. |
+| Offline backend gate | 309 tests; Ruff, Pyright, generated schema and mock fixtures passed, including Make/launcher setup, disconnect pause, ownership, teardown, clocks, report preparation and persistence. Re-run commands below on your checkout. |
+| Offline frontend/audio gate | 188 tests passed, including actual STT idle → voice close → room pause, frozen timers, pending-input discard, reconnect-before-Resume and control races. No microphone or vendor calls are used by these tests. |
 | Voice hardware | User confirmed microphone transcription, distinct clear voices, complete PTT turns through pauses, and automatic closing/report handoff. Earlier voice-lab latency sign-off is not a full-room acoustic latency guarantee. |
 | Two real-audience human flows | Natural blackout and natural countdown → Q&A runs both reached reports automatically with clear audio. Together: 12 real Boson reasoning successes; zero recorded model failures/fallbacks/rejections, room errors, skips or unanswered questions. |
 | Boson structured-output preflight | Decisions, follow-ups, recovery grading and custom-persona expansion all passed a bounded live check. Responses use grounding/validation and explicit diagnostics. |

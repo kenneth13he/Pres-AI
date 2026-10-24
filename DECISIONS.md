@@ -134,3 +134,8 @@ A fresh GitHub yang clone installed pinned dependencies in a new Python3.12 envi
 ## 24 October 2026 — optimized release branch requested by user
 
 Create `feat/optimized-presentation-room` from verified `yang` checkpoint1392f74 and publish the optimized work there, preserving existing branches. Adopt main9df73d3 design and the static whole-face framing from most-recent-update5274a12 while retaining the tested modular backend/audio lifecycle, Boson voice/reasoning, default hold-to-talk and videos-off. Keep the prominent Continue bar, safe profiles, PDF upload/Start guards, authoritative report loading, audio-loss Pause and report persistence. Do not merge the alternative native-panel backend, webcam or live-avatar pool. A bounded fictional-input live provider check complements offline gates; it does not certify two human presentations or a new recording.
+
+
+## 24 October 2026 — use collaborator adaptive layout with guarded voice lifecycle
+
+The user requested the collaborator's latest design. Adapt b783dce's adaptive guest-region geometry, full gallery without a deck, bounded labels and viewport stage to the existing optimized branch. Allow1–3 roster guests consistently in contract/schema/API/setup; exclude crosstalk for solo audiences. Generated free-text guests retain server expansion and require1–2 roster guests. Preserve selected people when totals need correction. Keep static portraits/moderator, prominent Continue actions, Boson reasoning/voice, hold-to-talk default/floor and videos-off. No native-panel backend, webcam or LiveKit pool is imported. A backend restart is required for the new one-guest contract; preserve the prior paused test snapshot privately and create fresh manual rooms.
