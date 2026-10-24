@@ -82,3 +82,8 @@ Files outside my paths: .env.example (ORCHESTRATOR_TIMEOUT_S)
 Proposed decision changes (not implemented): none
 Next: all C-owned P0 lines are done; remaining C work is integration (P0-13) once A's room and B's voice land, then P1-2 curveballs and P1-4 fillers/WPM polish
 Open question for the team: whose Anthropic key, and its monthly cap — run `scripts/try_orchestrator.py` once it is in `.env`
+
+## P0-3b (C half) · 2026-10-23 · fix 1
+Fixed (per review, verified against the installed SDK 2.3.0): the SDK validates the JSON before `stop_reason` is visible, so a refusal with text, a truncated reply or a constraint violation raised instead of falling back — `_parse` now catches `ValidationError` and `anthropic.APIError` and treats `refusal`/`max_tokens` as "no answer"; `expand_persona` never raises (session creation can't 500 on the brain) and scrubs `voice_id`/`avatar_url`; `decide` enforces grounding — a question needs a ≥3-word excerpt found verbatim (quotes/case/whitespace-insensitive, across segment boundaries) in the recent transcript, a roster `persona_id`, and the slide actually shown; the system prompt says so; recovery gets an 8192-token budget and the same verbatim rule; client built with `max_retries=1` so the 8 s window is real; `try_orchestrator.py` exits early without a key.
+Evidence: 6 new tests, four of them through the real `anthropic` client over an `httpx2.MockTransport` (refusal text, truncation, 401, valid reply) — the path the fake client bypassed; suite 71/71
+Gate: green at the fix commit

@@ -26,6 +26,11 @@ from spec.contracts import TranscriptSegment  # noqa: E402
 
 
 async def main() -> int:
+    import os
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("ANTHROPIC_API_KEY is empty in .env — nothing to try.", file=sys.stderr)
+        return 2
     orch = ClaudeOrchestrator()
     roster = presets.personas()
     ctx = OrchestratorContext(

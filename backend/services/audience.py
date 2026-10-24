@@ -12,8 +12,12 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, TypeVar
+
+import anthropic
+from pydantic import ValidationError
 
 from spec.contracts import (
     CurveballKind,
@@ -195,7 +199,9 @@ with a line for the assigned speaker grounded in the current talk.
 Rules: prefer unsupported claims, confusing terms and missing evidence. Never invent facts
 about the slides or the presenter's company. No duplicates. Heckler and fact_check lines
 challenge the idea, never the person. Bait is plausible, adjacent, and beyond what was
-covered. Personas are fictional. Be brief."""
+covered. Personas are fictional. Be brief.
+Output rules: persona_id must be one of the listed persona ids exactly; cited_transcript_excerpt
+must be copied verbatim from the transcript (or null); slide_number is the slide shown now."""
 
 FOLLOW_UP_PROMPT = """Does the presenter's answer address the actual question? If yes,
 acknowledge in at most 6 words (for example "Fair enough, go on.") and hand back. If no,
@@ -233,29 +239,52 @@ class ClaudeOrchestrator:
 
     def __init__(self, client: Any | None = None, model: str | None = None) -> None:
         if client is None:
-            import anthropic
-
-            client = anthropic.AsyncAnthropic()
+            # One retry only: the 8 s window below is the real budget, not the SDK's 600 s.
+            client = anthropic.AsyncAnthropic(max_retries=1)
         self.client = client
         self.model = model or os.environ.get("ORCHESTRATOR_MODEL", "claude-opus-5-5")
         self.timeout_s = float(os.environ.get("ORCHESTRATOR_TIMEOUT_S", "8"))
 
     async def _parse(self, system: str, user: str, schema: type[T],
-                     effort: Literal["low", "high"]) -> T | None:
-        response = await asyncio.wait_for(
-            self.client.messages.parse(
-                model=self.model,
-                max_tokens=2048,
-                system=system,
-                output_config={"effort": effort},
-                messages=[{"role": "user", "content": user}],
-                output_format=schema,
-            ),
-            timeout=self.timeout_s,
-        )
-        if response.stop_reason == "refusal":
+                     effort: Literal["low", "high"], max_tokens: int = 2048) -> T | None:
+        """None means "no usable answer": a refusal, a truncated or schema-violating reply,
+        or an API error. The SDK validates the JSON before we see stop_reason, so a refusal
+        that carries text surfaces as ValidationError — caught here. A timeout propagates:
+        the engine turns it into an `error` event."""
+        try:
+            response = await asyncio.wait_for(
+                self.client.messages.parse(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    system=system,
+                    output_config={"effort": effort},
+                    messages=[{"role": "user", "content": user}],
+                    output_format=schema,
+                ),
+                timeout=self.timeout_s,
+            )
+        except (ValidationError, anthropic.APIError):
+            return None
+        if response.stop_reason in ("refusal", "max_tokens"):
             return None
         return response.parsed_output
+
+    @staticmethod
+    def _norm(text: str) -> str:
+        text = unicodedata.normalize("NFKC", text).casefold()
+        text = re.sub(r"[\"'\u2018\u2019\u201c\u201d\u2026]", " ", text)
+        return " ".join(text.split())
+
+    @classmethod
+    def verbatim(cls, quote: str | None, segments: list[TranscriptSegment]) -> bool:
+        """A quote counts only if it is at least three words and appears (quotes, case and
+        whitespace aside) in the given transcript (§13 Grounding)."""
+        if not quote:
+            return False
+        q = cls._norm(quote)
+        if len(q.split()) < 3:
+            return False
+        return q in cls._norm(" ".join(s.text for s in segments))
 
     # ---- formatting (pure, tested) --------------------------------------------------
 
@@ -310,10 +339,20 @@ class ClaudeOrchestrator:
         if out is None:
             return OrchestratorDecision(action="none", reason="model declined; skipped")
         # Enforce what the engine will check anyway, so a bad answer is a "none", not an error.
-        if out.action == "question" and not ctx.question_allowed:
-            return none
-        if out.action == "curveball" and out.curveball_kind not in ctx.eligible_kinds:
-            return none
+        ids = {p.id for p in ctx.personas}
+        if out.action == "question":
+            if not ctx.question_allowed or out.persona_id not in ids or not out.line:
+                return none
+            if not self.verbatim(out.cited_transcript_excerpt, ctx.recent_transcript):
+                return OrchestratorDecision(action="none",
+                                            reason="question had no verbatim excerpt; skipped")
+            out.slide_number = ctx.slide_number
+        elif out.action == "curveball":
+            if out.curveball_kind not in ctx.eligible_kinds:
+                return none
+            if out.persona_id is not None and out.persona_id not in ids:
+                out.persona_id = None  # the engine assigns a roster persona
+            out.slide_number = ctx.slide_number
         return out
 
     async def follow_up(
@@ -340,20 +379,29 @@ class ClaudeOrchestrator:
         user = (f"kind: {kind}\nline delivered: {line}\n"
                 f"measured time until the presenter resumed: {timing}\n"
                 f"next 60 s of presenter transcript:\n{self.format_transcript(after)}")
-        out = await self._parse(RECOVERY_PROMPT, user, RecoveryAssessment, "high")
+        out = await self._parse(RECOVERY_PROMPT, user, RecoveryAssessment, "high",
+                                max_tokens=8192)
         if out is None:
             return RecoveryAssessment(
                 score=None, evidence=None,
                 observation="The model declined to assess this recovery.",
                 suggestion="Name what happened in one sentence, then continue from your outline.",
             )
-        if out.evidence and not any(out.evidence.strip() in s.text for s in after):
+        if not self.verbatim(out.evidence, after):
             out.evidence = after[0].text  # evidence must be verbatim (§10)
         return out
 
     async def expand_persona(self, description: str, index: int) -> Persona:
-        out = await self._parse(PERSONA_PROMPT, f"description: {description.strip()}",
-                                Persona, "low")
+        """Never raises: session creation must not fail on the brain (§8)."""
+        try:
+            out = await self._parse(PERSONA_PROMPT, f"description: {description.strip()}",
+                                    Persona, "low")
+        except Exception:
+            out = None
         if out is None:
             return await MockOrchestrator().expand_persona(description, index)
-        return out.model_copy(update={"id": f"custom_{index}", "custom": True})
+        return out.model_copy(update={
+            "id": f"custom_{index}", "custom": True,
+            "voice_id": None, "avatar_url": None,  # Person B maps voices; the model never does
+            "skepticism": min(1.0, max(0.0, out.skepticism)),
+        })

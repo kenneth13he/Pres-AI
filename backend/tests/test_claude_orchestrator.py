@@ -1,5 +1,6 @@
 """The real orchestrator, without a key or network: prompt formatting, fallbacks, guards."""
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -56,7 +57,8 @@ def ctx(**overrides: Any) -> OrchestratorContext:
 async def test_decide_formats_the_context_and_returns_the_parsed_decision():
     want = OrchestratorDecision(action="question", persona_id="vc",
                                 line="What evidence supports 100,000 customers?",
-                                reason="unsupported", cited_transcript_excerpt="100,000 customers",
+                                reason="unsupported",
+                                cited_transcript_excerpt="100,000 customers in six months",
                                 slide_number=3)
     client = FakeClient(want)
     orch = ClaudeOrchestrator(client=client, model="claude-opus-5-5")
@@ -144,3 +146,83 @@ async def test_timeout_surfaces_as_an_exception_the_engine_turns_into_an_error_e
     orch.timeout_s = 0.01
     with pytest.raises(asyncio.TimeoutError):
         await orch.decide(ctx())
+
+
+# ---- through the real SDK (no network: httpx MockTransport) ------------------------------
+
+
+def sdk_client(body: dict, status: int = 200):
+
+    import anthropic
+    import httpx2  # the SDK's own HTTP stack (not `httpx`)
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status, json=body, request=request)
+
+    return anthropic.AsyncAnthropic(
+        api_key="sk-test", max_retries=0,
+        http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
+    )
+
+
+def message(text: str, stop_reason: str = "end_turn") -> dict:
+    return {
+        "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
+        "content": [{"type": "text", "text": text}], "stop_reason": stop_reason,
+        "stop_sequence": None, "usage": {"input_tokens": 10, "output_tokens": 10},
+    }
+
+
+async def test_refusal_with_text_through_the_real_sdk_is_a_none_not_a_crash():
+    orch = ClaudeOrchestrator(client=sdk_client(message("I can't help with that.", "refusal")))
+    got = await orch.decide(ctx())
+    assert got.action == "none"
+
+
+async def test_truncated_and_invalid_replies_through_the_real_sdk_fall_back():
+    orch = ClaudeOrchestrator(client=sdk_client(message('{"action": "quest', "max_tokens")))
+    assert (await orch.decide(ctx())).action == "none"
+    bad = json.dumps({"score": 250, "evidence": "x", "observation": "o", "suggestion": "s"})
+    orch = ClaudeOrchestrator(client=sdk_client(message(bad)))
+    got = await orch.assess_recovery("slides_down", "l", [seg(1, "a b c d")], 100)
+    assert got.score is None
+
+
+async def test_api_error_through_the_real_sdk_never_breaks_persona_expansion():
+    orch = ClaudeOrchestrator(client=sdk_client(
+        {"type": "error", "error": {"type": "authentication_error", "message": "bad key"}}, 401))
+    got = await orch.expand_persona("someone sceptical", 3)
+    assert got.id == "custom_3" and got.custom is True
+    assert (await orch.decide(ctx())).action == "none"
+
+
+async def test_valid_reply_through_the_real_sdk_parses_and_is_grounded():
+    good = json.dumps({
+        "action": "question", "persona_id": "vc",
+        "line": "What backs “100,000 customers in six months”?", "reason": "unsupported",
+        "cited_transcript_excerpt": "“100,000 customers in six months”", "slide_number": 99,
+    })
+    orch = ClaudeOrchestrator(client=sdk_client(message(good)))
+    got = await orch.decide(ctx())
+    assert got.action == "question" and got.persona_id == "vc"
+    assert got.slide_number == 3  # the slide actually shown, not the model's guess
+
+
+async def test_question_with_an_invented_quote_is_not_asked():
+    orch = ClaudeOrchestrator(client=FakeClient(OrchestratorDecision(
+        action="question", persona_id="vc", line="q", reason="r",
+        cited_transcript_excerpt="we are profitable already", slide_number=3)))
+    got = await orch.decide(ctx())
+    assert got.action == "none" and "verbatim" in got.reason
+    orch = ClaudeOrchestrator(client=FakeClient(OrchestratorDecision(
+        action="question", persona_id="Skeptical VC", line="q", reason="r",
+        cited_transcript_excerpt="100,000 customers in six months", slide_number=3)))
+    assert (await orch.decide(ctx())).action == "none"  # off-roster persona id
+
+
+def test_verbatim_check_is_forgiving_about_quotes_case_and_segment_boundaries():
+    segs = [seg(1, "So, the problem again"), seg(4, "is onboarding, honestly.")]
+    assert ClaudeOrchestrator.verbatim("“the PROBLEM again is onboarding”", segs)
+    assert not ClaudeOrchestrator.verbatim(" ", segs)
+    assert not ClaudeOrchestrator.verbatim("is onboarding", segs)  # < 3 words
+    assert not ClaudeOrchestrator.verbatim("the problem is churn", segs)
