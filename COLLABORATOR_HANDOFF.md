@@ -304,9 +304,18 @@ The user explicitly requested creating and publishing a new branch. Publication 
 `yang`, `main` and teammate branches are not rewritten. Collaborators should check out
 this branch, run the commands above, and configure their own private credentials.
 
-The release gate is **299 backend + 178 frontend/audio tests**, lint/type/schema/mocks,
+The current release gate is **309 backend + 188 frontend/audio tests**, lint/type/schema/mocks,
 private-credential checks and served asset verification. A bounded live Boson provider
 smoke synthesized fictional speech, transcribed it, generated a verbatim-grounded question
 without fallback and produced response PCM. This is API/audio-byte evidence, not a physical
 microphone or audible playback check. **P0-13 remains open.** The previously reviewed local
 backup satisfies P0-14's file criterion with the older-build limitations in its manifest.
+
+
+Adaptive-design code commit `896ada8` was subsequently pulled from GitHub into the verified
+checkout. With the unchanged pinned dependency environment, `make check` passed309 backend
+tests plus lint/types/schema/mocks and the frontend gate passed188 tests. The disposable
+HTTP/WebSocket/PDF/Pause/Resume/saved-report check also passed with mock providers and
+zero error events. The real local app separately accepted one/three guests, rejected
+zero/four and served the new design with Boson/Higgs/PTT and videos-off. This remains
+automatic verification; final human presentation acceptance is still open.

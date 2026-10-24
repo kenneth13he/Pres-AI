@@ -332,3 +332,7 @@ Gate: latest design is running locally with static portraits/videos off; prior p
 Files outside my paths: coordinated schema/backend/frontend updates and focused regressions required for the user's design request
 Proposed decision changes (not implemented): none
 Next: review the new gallery in Chrome and complete human recorded acceptance when available.
+
+
+## Adaptive design publication verification · 2026-10-24
+Published code commit896ada8 on feat/optimized-presentation-room. Pulled exact GitHub source into the verified separate checkout:309 backend tests plus lint/types/schema/mocks and188 frontend/audio tests passed. The first auxiliary smoke launch used the resolved base interpreter (missing httpx); rerunning with the intended project virtual environment passed the actual disposable app/HTTP/WebSocket/PDF/Pause/Resume/report check with zero error events and no provider calls. Application code was unchanged by that launcher correction. Local app has been restarted for the one-guest contract and the new gallery opened in Chrome. Keys/raw snapshots/media stay private and human final-build acceptance remains open.
