@@ -264,3 +264,11 @@ Gate: corrected build ready to freeze for fresh human acceptance; P0-13/P0-14 st
 Files outside my paths: backend/main.py ticker lifecycle and focused clock tests; backend Boson report prompt/diagnostics and report regression tests; aggregate handoff/status/decisions. Necessary fixes found by the user-requested final acceptance.
 Proposed decision changes (not implemented): none
 Next: restart the local app with the frozen fixes, prepare two fresh sessions, record natural blackout and countdown presentations without developer controls, validate reports/counters and save a clean backup. Recordings and raw evidence stay private.
+
+## Deadline handoff and immediate yang publication · 2026-10-24 · B (user requested)
+Built: corrected code is committed in2a9b85e. User now explicitly prioritizes immediate GitHub publication and a handoff with final tests left open. No further presentation requirements are imposed for publication. Preserved the earlier complete recording candidate and original reports; keys, raw evidence and media remain excluded from Git.
+Tests:285 backend +151 frontend/audio tests, Ruff/Pyright/schema/mocks pass at the code checkpoint. Two independent live saved-context report checks passed strict structure/grounding with metrics/recovery unchanged. Final diff/privacy/history checks and authenticated fast-forward push are the release gates; automated proof does not certify human microphone/playback.
+Gate: P0-13/P0-14 remain open. Corrected-build attempt e0f2de65 had two audio disconnection errors, only two captured presenter segments, no measured recovery and correctly skipped coaching. Run2 remained unstarted. The behavior is consistent with existing60s idle closure, but the exact client-local reason was not saved; the handoff documents manual reconnect/paused Resume before continuing after idle. No speculative transport change was made under the deadline.
+Files outside my paths: aggregate collaborator handoff, demo status and priority completion fields, requested for accurate collaborator continuity
+Proposed decision changes (not implemented): none
+Next: collaborators start with COLLABORATOR_HANDOFF.md; complete idle/reconnect acceptance and two recorded clean presentations of the corrected build, then choose the final backup. Earlier failed/partial evidence is retained, never relabelled clean.

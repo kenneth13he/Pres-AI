@@ -4,6 +4,21 @@ This is the verified voice-room integration for **`yang`**. Start here before
 continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
 `DECISIONS.md` entries for the user-approved local choices.
 
+## Deadline handoff
+
+The user requested immediate publication with final human tests left open. The code fixes
+are in `2a9b85e`: 285 backend and 151 frontend/audio tests, lint/type/schema/mocks, and two
+bounded live report replays pass. Hold-to-talk stays default; talking-head videos stay off.
+P0-13 and P0-14 are **not signed off**. A private six-minute recording candidate exists
+locally, but no clean pair of the corrected build has been completed.
+
+The subsequent corrected-build attempt recorded two voice disconnections and insufficient
+presentation text; report coaching correctly skipped. The countdown room was not started.
+Disconnections are consistent with the existing 60-second idle shutdown, but the exact
+browser-local cause was not retained. **Known limit:** audio can close while the room timer
+continues. Pause before a long idle period; use Reconnect microphone, or Resume from Pause,
+before continuing. Further full-room acceptance must include this idle/reconnect behavior.
+
 ## What is ready
 
 - The actual setup → room → Q&A → report flow is integrated. PDF slides, the audience
@@ -80,8 +95,8 @@ make the original runs clean final-build demonstrations.
 ### Still open
 
 - **P0-13 is not signed off:** two consecutive unaided, recorded runs of the corrected
-  frozen build still need acceptance. The latest blackout recovery was measured, but its
-  report fallback prevents clean-run sign-off. Historical incomplete attempts are retained.
+  frozen build still need acceptance. The recorded recovery demonstration had a report
+  fallback; the subsequent attempt had voice disconnections. Historical attempts are retained.
 - **P0-14 is not signed off:** a six-minute recording candidate exists locally in `demo/`,
   with the original preserved. It includes the report fallback; select the final backup
   after the clean pair. Recordings remain excluded from Git.

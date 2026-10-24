@@ -11,6 +11,13 @@ fallbacks, but incomplete final-build coverage. A subsequent recorded blackout r
 7.140-second recovery; its content-coaching validation failure prevents clean acceptance.
 **P0-13 and P0-14 remain open pending two fresh clean recorded runs after the fixes.**
 
+Deadline handoff: the user requested publication now with final tests explicitly open.
+The next corrected-build attempt had two voice disconnection errors and insufficient
+captured speech, so coaching was correctly skipped and no clean acceptance is claimed.
+The countdown room was not started. Existing 60-second idle audio closure can leave the
+room timer running; pause before long idle periods and reconnect before continuing.
+The exact browser-local cause of this attempt's disconnections was not saved.
+
 The table distinguishes live local behavior from remaining demo evidence. Historical
 checkpoints below retain the provider and test state that applied at the time.
 
