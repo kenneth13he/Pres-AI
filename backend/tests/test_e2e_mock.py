@@ -299,7 +299,7 @@ async def test_voice_failure_never_strands_the_phase():
     assert any(e.type == "error" and e.payload["where"] == "voice.speak" for e in session.events)
     starts = [e for e in session.events if e.type == "ai_speech_started"]
     ends = [e for e in session.events if e.type == "ai_speech_ended"]
-    assert len(starts) == len(ends) == 1
+    assert len(starts) == len(ends) == 2  # the host's welcome, then the heckle
 
 
 async def test_unmeasured_recovery_is_null_not_zero():
@@ -396,3 +396,56 @@ async def test_no_deck_means_no_slide_curveballs():
     assert "slides_down" not in session.scheduler.allowed_kinds
     allowed = session.scheduler.allowed_kinds
     assert "time_crunch" in allowed and "heckler" in allowed
+
+
+# ---- a real audience: welcome, "can you hear me", hello back, taking questions -----------
+
+
+def lines(session, speaker=None):
+    return [e.payload["line"] for e in session.events if e.type == "ai_speech_started"
+            and (speaker is None or e.payload["speaker"] == speaker)]
+
+
+async def test_the_host_welcomes_you_when_the_call_starts():
+    session = make_session()
+    await session.start(0)
+    assert lines(session, "moderator") == [
+        "Hi, thanks for joining — we can see and hear you. Go ahead whenever you're ready."]
+
+
+async def test_can_you_hear_me_gets_an_answer_but_not_every_time():
+    session = make_session()
+    await session.start(0)
+    await session.presenter_transcript(s(20), seg(20, "hello can you guys hear me"))
+    assert lines(session, "moderator")[-1] == "Yes, we can hear you clearly — go ahead."
+    await session.presenter_transcript(s(25), seg(25, "can you hear me now"))  # within cooldown
+    assert lines(session, "moderator").count("Yes, we can hear you clearly — go ahead.") == 1
+    await session.presenter_transcript(s(45), seg(45, "am I on mute?"))
+    assert lines(session, "moderator").count("Yes, we can hear you clearly — go ahead.") == 2
+    assert session.phase == "presenting" and session.questions == []
+
+
+async def test_a_hello_gets_one_hello_back_from_the_friendliest_panelist():
+    session = make_session()
+    await session.start(0)
+    await session.presenter_transcript(s(17), seg(17, "Hi everyone"))
+    await session.presenter_transcript(s(19), seg(19, "hello again"))
+    # Sam has the lowest skepticism on the panel
+    assert lines(session, "student") == ["Hi! Good to meet you — go ahead."]
+
+
+async def test_inviting_questions_gets_one_right_away():
+    session = make_session()
+    await session.start(0)
+    await session.presenter_transcript(s(10), seg(10, "We already have 2,000 paying users."))
+    # before the usual 30 s wait
+    await session.presenter_transcript(s(14), seg(14, "Any questions so far?"))
+    assert session.phase == "answering" and len(session.questions) == 1
+
+
+async def test_when_the_room_has_asked_enough_they_say_so():
+    session = make_session(difficulty="friendly")
+    await session.start(0)
+    session.questions = [{"follow_up_of": None, "curveball_id": None}] * 2  # budget used
+    await session.presenter_transcript(s(80), seg(80, "Does that make sense?"))
+    assert lines(session)[-1] == "No more questions from me for now — carry on."

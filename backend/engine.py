@@ -19,6 +19,7 @@ resume gap all behave as if the pause had not happened (CLAUDE.md §2, §5.4).
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -48,6 +49,20 @@ TIME_CRUNCH_MS = 60_000
 RECENT_TRANSCRIPT_MS = 30_000
 RECOVERY_WINDOW_MS = 60_000
 SLIDE_CURVEBALLS: set[CurveballKind] = {"slides_down", "elevator"}
+
+# ---- the social layer: how a real panel behaves on a call, beyond questions -------------
+HEARING_CHECK = re.compile(
+    r"\b(can|could|do) (you|y'?all)( guys| all| everyone)? (hear|see) me\b"
+    r"|\bam i (audible|on mute|muted|coming through)\b"
+    r"|\bare you( guys| all)? (there|with me)\b|\bis (this|my mic) (working|on)\b",
+    re.I)
+GREETING = re.compile(r"^\W*(hi|hello|hey|good (morning|afternoon|evening))\b", re.I)
+INVITATION = re.compile(
+    r"\b(any (questions|thoughts)|questions so far|does (that|this) make sense|what do you (guys )?"
+    r"think|happy to take questions|open (it )?(up )?(to|for) questions)\b", re.I)
+WELCOME = "Hi, thanks for joining — we can see and hear you. Go ahead whenever you're ready."
+HEARD_YOU = "Yes, we can hear you clearly — go ahead."
+SOCIAL_COOLDOWN_MS = 15_000
 DECIDE_BACKOFF_MS = 5_000  # the brain said "nothing to ask": give the talk 5 s before asking again
 # Curveballs that are a question in disguise: the presenter answers, then we resolve "answered".
 ANSWERABLE: set[CurveballKind] = {
@@ -107,6 +122,8 @@ class Session:
         self._question_counter = 0
         self._clock_ms = 0  # last session-clock time seen, stamps adapter events
         self._next_decide_ms = 0  # after a "none", wait before asking the brain again
+        self._last_social_ms: int | None = None
+        self._greeted_back = False
         # Called after an event lands outside a room action (a clip rendered in the
         # background), so main.py can push it to the browser at once.
         self.on_append: Callable[[], None] | None = None
@@ -174,6 +191,9 @@ class Session:
             await self.voice.start_voice_session(self.session_id, self.config)
         except Exception as exc:
             self._error(now_ms, "voice.start_voice_session", exc)
+        # A real call starts with the host letting you know they can see and hear you.
+        await self._speak(None, WELCOME, now_ms, "warm")
+        self._last_social_ms = now_ms
 
     async def slide_changed(self, now_ms: int, number: int) -> None:
         """Track slide, emit slide_changed, voice.send_context(slide text)."""
@@ -201,6 +221,48 @@ class Session:
             await self._resolve(active, now_ms, "auto_restored")
         if self.phase == "answering" and self.pending_question:
             await self._handle_answer(now_ms, seg.text)
+        elif self.phase in ("presenting", "qna"):
+            await self._social(now_ms, seg.text)
+
+    async def _social(self, now_ms: int, text: str) -> None:
+        """Answer the presenter the way a real panel would: confirm they can be heard, say
+        hello back once, and take questions when invited. Never counts against the presenter."""
+        recent = (self._last_social_ms is not None
+                  and now_ms - self._last_social_ms < SOCIAL_COOLDOWN_MS)
+        if HEARING_CHECK.search(text):
+            if not recent:
+                self._last_social_ms = now_ms
+                await self._speak(None, HEARD_YOU, now_ms, "warm")
+            return
+        if GREETING.search(text) and len(text.split()) <= 8 and not self._greeted_back:
+            self._greeted_back = True
+            self._last_social_ms = now_ms
+            friendly = min(self.config.personas, key=lambda p: p.skepticism)
+            await self._speak(friendly.id, "Hi! Good to meet you — go ahead.", now_ms, "warm")
+            return
+        if INVITATION.search(text):
+            await self._take_questions(now_ms)
+
+    async def _take_questions(self, now_ms: int) -> None:
+        """Invited to ask: ask now (skipping the usual wait), or say so if the room is done."""
+        asked = len([q for q in self.questions if not q["follow_up_of"] and not q["curveball_id"]])
+        if self.phase == "presenting" and asked >= self.scheduler.question_budget:
+            friendly = min(self.config.personas, key=lambda p: p.skepticism)
+            await self._speak(friendly.id, "No more questions from me for now — carry on.",
+                              now_ms, "warm")
+            return
+        try:
+            ctx = self._context(now_ms, True, [])
+            ctx.qna = True  # invited: may ask about the talk as a whole
+            ctx.recent_transcript = self.transcript[-12:]
+            decision = await self.orchestrator.decide(ctx)
+        except Exception as exc:
+            self._error(now_ms, "orchestrator.decide", exc)
+            return
+        if decision.action == "question" and self._grounded(decision) \
+                and decision.persona_id and decision.line:
+            await self._ask(decision.persona_id, decision.line, now_ms, decision.reason,
+                            decision.cited_transcript_excerpt, decision.slide_number)
 
     async def control(self, action: str, now_ms: int) -> None:
         """pause · resume · skip · restore_slides · end. Pause and Skip are never penalised."""

@@ -42,14 +42,16 @@ async def test_persona_line_becomes_a_clip_event_in_the_session_stream(tmp_path)
     await session.start(0)
     await session.slide_changed(s(1), 2)
     await session.force_curveball("heckler", s(70))
-    clips = [e for e in session.events
-             if e.type == "audio_status" and e.payload["status"] == "clip"]
+    clips = [e for e in session.events if e.type == "audio_status"
+             and e.payload["status"] == "clip" and e.payload["speaker"] == "vc"]
     assert len(clips) == 1
     clip = clips[0]
-    assert clip.payload["speaker"] == "vc" and clip.timestamp_ms == s(70)
+    assert clip.timestamp_ms == s(70)
     assert clip.payload["url"].startswith(f"/audio/{session.session_id}/")
     assert (tmp_path / clip.payload["url"].removeprefix("/audio/")).read_bytes() == b"ID3fake-mp3"
-    assert seen[0]["voice"] == "eleanor" and seen[0]["input"].startswith("<|emotion:anger|>")
+    heckle = next(r for r in seen if "wrapper" in r["input"])
+    assert heckle["voice"] == "eleanor" and heckle["input"].startswith("<|emotion:anger|>")
+    assert seen[0]["voice"] == "nora"  # the host's welcome opens the call
     assert SpendCounter.tts_chars > before
 
 
@@ -62,9 +64,9 @@ async def test_tts_failure_is_a_status_not_a_crash(tmp_path):
     await session.presenter_transcript(s(33), seg(33, "We will have 100,000 users by June."))
     await session.tick(s(36))
     assert session.phase == "answering"
-    failed = [e for e in session.events
-              if e.type == "audio_status" and e.payload["status"] == "tts_failed"]
-    assert failed and failed[0].payload["speaker"] == "vc"
+    failed = [e for e in session.events if e.type == "audio_status"
+              and e.payload["status"] == "tts_failed" and e.payload["speaker"] == "vc"]
+    assert failed
 
 
 # ---- talking heads (Higgs Avatar) ---------------------------------------------------------
@@ -127,7 +129,7 @@ async def test_a_seat_with_a_face_gets_a_lip_synced_video_clip(tmp_path):
     await session.slide_changed(s(1), 2)
     await session.force_curveball("heckler", s(70))
     clip = next(e for e in session.events if e.type == "audio_status"
-                and e.payload["status"] == "clip")
+                and e.payload["status"] == "clip" and e.payload["speaker"] == "vc")
     assert clip.payload["kind"] == "video" and clip.payload["url"].endswith(".mp4")
     assert ("POST", "/v1/videos") in calls
 
