@@ -4,7 +4,7 @@ Current local mode uses **live Boson/Higgs speech and audience reasoning** with 
 Boson key and balance. Hold-to-talk is the default; static portraits are used and avatar
 video is off. The Claude adapter remains available but was not used for these local runs.
 
-Last updated: 2026-10-24. Current checkpoint gate: **296 backend + 166 frontend/audio tests**,
+Last updated: 2026-10-24. Current checkpoint gate: **299 backend + 166 frontend/audio tests**,
 plus lint, type, schema and mock checks. Two earlier human flows had clear audio and
 automatic Q&A/report finish, with 12 reasoning successes and zero recorded errors or
 fallbacks, but incomplete final-build coverage. A subsequent recorded blackout run measured

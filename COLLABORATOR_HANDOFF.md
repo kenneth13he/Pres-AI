@@ -7,7 +7,7 @@ continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
 ## Deadline handoff
 
 The user requested publication with final human tests left open, then asked to finish the
-remaining important work automatically. The current gate is 296 backend and 166 frontend/audio
+remaining important work automatically. The current gate is 299 backend and 166 frontend/audio
 tests plus lint/type/schema/mocks. Report/clock fixes and two bounded live report replays
 were already verified. Hold-to-talk stays default; talking-head videos stay off.
 P0-13 remains unsigned. P0-14's local backup-file requirement is met: see
@@ -23,6 +23,26 @@ and cancels playback. Resume reconnects before continuing. Network failure shows
 local-only freeze until backend Pause is confirmed. No automatic paid reconnect loop was added;
 idle/hard limits remain. Actual idle-callback and real ASGI socket simulations pass, but a
 fresh human pair of this final build is still unverified.
+
+## Final release and compatibility check
+
+- A fresh clone of the published `yang` checkpoint was installed into a new Python 3.12
+  environment from the pinned requirements. Its full backend/frontend gate passed.
+- The final setup recipe was then exercised in that clean environment: Python fallback,
+  dependency installation, schema generation and private `.env` permissions all passed.
+  Three additional Make setup regressions preserve the six existing launcher regressions.
+- A separate mock/mock HTTP/WebSocket server served 42 checked pages/modules/portraits,
+  ingested the six-slide sample PDF, returned a valid slide PNG, captured one synthetic
+  held turn, froze Pause time, resumed and produced a valid report with zero error events.
+  This used no provider credentials and is automatic proof, not human microphone acceptance.
+- `origin/main` (`302c44b`) is an ancestor of the release. The latest alternate
+  `feat/voice-room` (`f958d7c`) has identical shared public report/persona/event contracts;
+  its report additions are already covered here. Its native panel/free-chat engine uses
+  a different protocol. A merge dry-run reports conflicts: do not wholesale merge it over
+  the tested single-orchestrator, hold-to-talk lifecycle. An intentional future migration
+  needs integration work; no unsafe late merge was performed.
+- Mock/offline checks require no vendor key, but normal page styling still uses the
+  Tailwind CDN and therefore needs internet or a cached copy. Live Boson use needs internet.
 
 ## What is ready
 
@@ -60,7 +80,7 @@ fresh human pair of this final build is still unverified.
 
 | Evidence | Result and limit |
 | --- | --- |
-| Offline backend gate | 296 tests; Ruff, Pyright, generated schema and mock fixtures passed, including disconnect pause, ownership, teardown, clocks, report preparation and persistence. Re-run commands below on your checkout. |
+| Offline backend gate | 299 tests; Ruff, Pyright, generated schema and mock fixtures passed, including Make/launcher setup, disconnect pause, ownership, teardown, clocks, report preparation and persistence. Re-run commands below on your checkout. |
 | Offline frontend/audio gate | 166 tests passed, including actual STT idle → voice close → room pause, frozen timers, pending-input discard, reconnect-before-Resume and control races. No microphone or vendor calls are used by these tests. |
 | Voice hardware | User confirmed microphone transcription, distinct clear voices, complete PTT turns through pauses, and automatic closing/report handoff. Earlier voice-lab latency sign-off is not a full-room acoustic latency guarantee. |
 | Two real-audience human flows | Natural blackout and natural countdown → Q&A runs both reached reports automatically with clear audio. Together: 12 real Boson reasoning successes; zero recorded model failures/fallbacks/rejections, room errors, skips or unanswered questions. |

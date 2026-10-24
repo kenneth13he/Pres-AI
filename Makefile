@@ -4,9 +4,22 @@ PY ?= .venv/bin/python
 UVICORN ?= .venv/bin/uvicorn
 
 setup:            ## one-time: create .venv and install pinned deps
-	uv venv .venv --python 3.12 || python3 -m venv .venv
-	uv pip install --python $(PY) -r requirements.txt || $(PY) -m pip install -r requirements.txt
+	@set -eu; \
+	if command -v uv >/dev/null 2>&1; then \
+		uv venv .venv --python 3.12; \
+	else \
+		setup_python=""; \
+		if command -v python3.12 >/dev/null 2>&1; then setup_python=python3.12; \
+		elif command -v python3 >/dev/null 2>&1; then setup_python=python3; fi; \
+		if [ -z "$$setup_python" ] || ! "$$setup_python" -c 'import sys; raise SystemExit(sys.version_info < (3, 12))'; then \
+			printf '%s\n' 'Python 3.12 or newer is required. Install Python 3.12 or uv before make setup.'; \
+			exit 1; \
+		fi; \
+		"$$setup_python" -m venv .venv; \
+	fi
 	cp -n .env.example .env || true
+	chmod 600 .env
+	uv pip install --python $(PY) -r requirements.txt || $(PY) -m pip install -r requirements.txt
 	$(MAKE) schema
 
 dev:              ## run the app (API + frontend) on $$PORT (default 8000)

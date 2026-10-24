@@ -17,6 +17,10 @@ node --test --test-timeout=5000 scripts/test_*.mjs  # browser/audio checks; Node
 
 Without keys everything runs on mocks: `VOICE_ADAPTER=mock`, `ORCHESTRATOR=mock`. The room can be built and demoed with no backend at all at `/room.html?mock=1` (replays `frontend/mocks/demo_session.json`) and `/report.html?mock=1`.
 
+Setup needs Python 3.12 or newer (or `uv`) and Node with `--test-timeout` support.
+Offline checks and mock mode make no vendor calls. The page styling still loads Tailwind
+from a CDN, so normal styling requires internet access or an already cached CDN asset.
+
 For live Boson voice and audience reasoning, privately set `BOSON_API_KEY`,
 `VOICE_ADAPTER=higgs`, and `ORCHESTRATOR=boson` in `.env`. Keep
 `BOSON_AVATAR_ENABLED=false` and `DEBUG_CURVEBALL_ENDPOINT=false` for presentation
@@ -54,7 +58,7 @@ fixes and the focused checks still needed.
 Reports now include a bounded text-coaching pass with evidence resolved from captured
 source IDs. Unsupported dimensions remain unassessed; recovery timing and event metrics
 stay deterministic. Audio stops before grading, and the report page automatically waits
-for feedback. Current checks: **296 backend + 166 frontend tests**. Unexpected audio loss
+for feedback. Current checks: **299 backend + 166 frontend tests**. Unexpected audio loss
 automatically pauses the room; Resume reconnects before either timer continues. The additional opt-in
 `scripts/try_report_assessment.py --live` probe uses fictional text and one real Boson
 grading call; it is separate from human presentation acceptance.
