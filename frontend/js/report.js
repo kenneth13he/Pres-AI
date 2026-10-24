@@ -11,9 +11,21 @@ const fmt = (v, unit = '') => (v == null ? dash : `${v}${unit}`);
 const t = (ms) => `${String(Math.floor(ms / 60000)).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
 const nice = (k) => k.replace(/_/g, ' ');
 
+// The panel grades the talk after the call ends (up to ~30 s); wait for it.
 let r;
-try { r = await getReport(qs.get('session') ?? ''); }
-catch (e) { document.body.innerHTML = `<main class="p-10 text-slate-400">No report yet (${esc(e.message)}). <a class="underline" href="/">Start over</a>.</main>`; throw e; }
+for (let i = 0; ; i++) {
+  try { r = await getReport(qs.get('session') ?? ''); break; }
+  catch (e) {
+    if (i >= 25) { document.body.innerHTML = `<main class="p-10 text-slate-400">No report yet (${esc(e.message)}). <a class="underline" href="/">Start over</a>.</main>`; throw e; }
+    $('caveats').textContent = 'The panel is writing your report…';
+    await new Promise((ok) => setTimeout(ok, 2000));
+  }
+}
+
+$('overall').innerHTML = r.overall_score == null ? '' : `${r.overall_score}<span class="text-lg text-slate-500">/100</span>`;
+$('strengths').innerHTML = r.strengths.length
+  ? r.strengths.map((x) => `<div class="rounded-xl border border-slate-800 p-4 text-sm">${esc(x)}</div>`).join('')
+  : '<p class="text-sm text-slate-500">Nothing assessed.</p>';
 
 $('caveats').textContent = r.metric_caveats.join(' ');
 

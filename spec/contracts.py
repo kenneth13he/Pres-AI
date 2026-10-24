@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 CurveballKind = Literal[
     "time_crunch",
@@ -167,6 +167,57 @@ class RecoveryAssessment(BaseModel):
 # ---- Report (CLAUDE.md §10) ----
 
 
+ReportDimension = Literal["clarity", "evidence", "structure", "question_handling"]
+
+
+class ReportRubricEvidence(BaseModel):
+    """Internal model output references existing presenter text; it cannot create quotes."""
+
+    model_config = ConfigDict(extra="forbid")
+    evidence_ids: list[str] = Field(max_length=2)
+    observation: str = Field(min_length=1, max_length=100)
+
+
+class ReportDimensionAssessment(ReportRubricEvidence):
+    score: int | None = Field(default=None, strict=True, ge=0, le=100)
+
+
+class ReportImprovementAssessment(ReportRubricEvidence):
+    suggestion: str = Field(min_length=1, max_length=120)
+
+
+class ReportPersonaAssessment(ReportDimensionAssessment):
+    persona_id: str = Field(min_length=1, max_length=80)
+
+
+class ReportAssessment(BaseModel):
+    """Internal bounded coaching rubric; the public Report contract stays unchanged."""
+
+    model_config = ConfigDict(extra="forbid")
+    dimensions: dict[ReportDimension, ReportDimensionAssessment] = Field(min_length=4, max_length=4)
+    strengths: list[ReportRubricEvidence] = Field(default_factory=list, max_length=2)
+    improvements: list[ReportImprovementAssessment] = Field(default_factory=list, max_length=2)
+    persona_feedback: list[ReportPersonaAssessment] = Field(default_factory=list, max_length=3)
+
+
+class ReportAssessmentQuestion(BaseModel):
+    question_id: str
+    persona_id: str
+    question: str
+    answer_evidence_ids: list[str]
+
+
+class ReportAssessmentContext(BaseModel):
+    """Bounded exact source text, ordered by source ID, with answer ownership explicit."""
+
+    evidence: dict[str, str]
+    questions: list[ReportAssessmentQuestion]
+    personas: dict[str, str]
+    partial: bool
+    presenter_words: int
+    permitted_dimensions: list[ReportDimension]
+
+
 class Improvement(BaseModel):
     observation: str
     evidence: str
@@ -209,6 +260,8 @@ class Report(BaseModel):
 
 # Models exported into spec/contracts.schema.json by scripts/gen_schema.py.
 SCHEMA_MODELS: list[type[BaseModel]] = [
+    ReportAssessment,
+    ReportAssessmentContext,
     Persona,
     CurveballMode,
     SessionConfig,

@@ -41,6 +41,7 @@ from .services import slides
 from .services.audience import Line, Orchestrator, OrchestratorContext, Trigger
 from .services.curveballs import CATALOG, CurveballEngine, CurveballRecord, paused_between
 from .services.report import build_report
+from .services.report_assessment import assess_report
 from .services.scheduler import Scheduler, SchedulerSnapshot
 from .services.voice_base import VoiceAdapter
 
@@ -599,6 +600,6 @@ class Session:
             await self.voice.stop_voice_session()
         except Exception as exc:
             self._error(now_ms, "voice.stop_voice_session", exc)
-        self.report = build_report(self)
+        self.report = await assess_report(self, build_report(self))
         self._emit("session_ended", now_ms,
                    {"report_url": f"/api/sessions/{self.session_id}/report"})
