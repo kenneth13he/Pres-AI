@@ -57,3 +57,13 @@ Notes for A: an answerable curveball emits both `curveball_triggered` and `quest
 Fixed (per second review): curveball `at_ms` is no longer shifted on resume — recovery timing subtracts the recorded pause intervals instead, so a pause after an early resume cannot inflate a measured gap and the report's times agree with the event log; a question the room cuts off (End, crunch expiry) is `skipped` with a reason and a `skipped` event, never "unanswered"; curveball pseudo-questions are excluded from the unanswered count; `enter_qna` disarms the crunch deadline and resolves an open crunch as `answered` when the presenter closes early (`timed_out` only at the deadline); `in_qna` is set before resolving so there is no detour through presenting; `_resolve` on an already-resolved record still restores the phase; REST `elapsed_ms` fixed (`start_ms is not None`); mock follow-up wording varies by persona and question; persona feedback quotes root questions, not follow-ups.
 Evidence: 4 new regression tests; suite 52/52; gate green
 Gate: green at the fix commit
+
+## P0-4 · 2026-10-23 · C · session 4
+Built: `slides.ingest_pdf` — PyMuPDF opens the upload from bytes, per page extracts cleaned text and renders a 96-dpi PNG under `data/decks/<id>/<n>.png` (served at `/decks/...`); presenter-safe `DeckError`s for not-a-PDF, encrypted, empty and >60 pages, mapped to HTTP 400 in `/api/slides`.
+Tests: test_slides.py 5/5 (text + PNG, 1-based `slide_text`, text cleaning, bad inputs, the HTTP route end to end incl. PNG serving); suite 57/57
+Gate: ruff, pyright, schema, mocks, pytest green
+Demo path: step 2 (upload PDF, slides render) now backend-live; needs A's `renderSlide` to show on screen
+Files outside my paths: pyproject.toml (pytest filterwarnings for the pymupdf/swig DeprecationWarning on 3.12)
+Proposed decision changes (not implemented): none
+Next: C half of P0-3b — `ClaudeOrchestrator` bodies (decide / follow_up / assess_recovery / expand_persona) behind the mock-tested seam, because the engine and slides now run
+Open question for the team: none

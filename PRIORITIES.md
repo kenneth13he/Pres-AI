@@ -12,7 +12,7 @@ Format: `priority · id · owner · done · blocked by · what`
 | P0 | P0-2 | B | no | — | Mic → model → spoken reply round trip (hour-1 tests 1–5 in CLAUDE.md §13) |
 | P0 | P0-3 | A | no | — | Setup flow: preset picker, PDF drop, Start — three clicks to `/room` |
 | P0 | P0-3b | A (+C) | no | — | Audience builder: roster picker, custom persona text, skepticism, curveball picker |
-| P0 | P0-4 | C | no | — | PDF upload → per-slide text + PNG (`services/slides.py`) |
+| P0 | P0-4 | C | yes | — | PDF upload → per-slide text + PNG (`services/slides.py`) |
 | P0 | P0-5 | C | yes (mock orchestrator + engine; Claude bodies land with P0-3b) | — | Orchestrator: one grounded question quoting the transcript (`test_e2e_mock::test_claim_question_answer_follow_up`) |
 | P0 | P0-6 | C | yes | — | Answer → follow-up (max 1) → hand back |
 | P0 | P0-7 | A | no | — | Room UI on mocks: slide viewer, tiles, speaking state, captions, timer, Pause/Skip/End |

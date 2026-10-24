@@ -21,3 +21,6 @@ reportMissingImports = true
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+  "ignore:builtin type .* has no __module__ attribute:DeprecationWarning",  # pymupdf/swig on 3.12
+]
