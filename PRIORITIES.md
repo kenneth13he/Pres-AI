@@ -16,7 +16,7 @@ Format: `priority · id · owner · done · blocked by · what`
 | P0 | P0-5 | C | no | — | Orchestrator: one grounded question quoting the transcript (`test_e2e_mock::test_claim_question_answer_follow_up`) |
 | P0 | P0-6 | C | no | P0-5 | Answer → follow-up (max 1) → hand back |
 | P0 | P0-7 | A | no | — | Room UI on mocks: slide viewer, tiles, speaking state, captions, timer, Pause/Skip/End |
-| P0 | P0-8 | C | no | — | Scheduler: one speaker, cooldowns, caps, no repeats (`test_scheduler.py`) |
+| P0 | P0-8 | C | yes | — | Scheduler: one speaker, cooldowns, caps, no repeats (`test_scheduler.py`) |
 | P0 | P0-9 | C | no | P0-8 | Curveball engine: slides_down / time_crunch / heckler + recovery tracking (`test_curveballs.py`, e2e) |
 | P0 | P0-10 | A | no | — | Curveball UI effects for the three MVP kinds, from mocks |
 | P0 | P0-11 | B | no | P0-2 | Persona voices (or one voice + labels) and a neutral moderator voice |

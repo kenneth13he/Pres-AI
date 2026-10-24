@@ -109,8 +109,19 @@ def eligible_kinds(
     - never_on_slide_1 kinds skip slide 1
     - needs_pause kinds only at a pause; distraction fires mid-speech by design
     """
-    # TODO(C)
-    raise NotImplementedError
+    out: list[CurveballKind] = []
+    for kind in allowed:
+        spec = CATALOG[kind]
+        if kind in fired or elapsed_ms < spec.min_elapsed_ms:
+            continue
+        if spec.never_on_slide_1 and slide_number <= 1:
+            continue
+        if elapsed_ms < spec.after_fraction_of_target * duration_target_s * 1000:
+            continue
+        if spec.needs_pause and not at_pause:
+            continue
+        out.append(kind)
+    return out
 
 
 @dataclass

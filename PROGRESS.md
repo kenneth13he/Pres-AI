@@ -11,3 +11,13 @@ Files outside my paths: n/a (scaffold)
 Proposed decision changes (not implemented): none
 Next: P0-2 (B), P0-3 + P0-7 on mocks (A), P0-8 then P0-5 (C) — all unblocked
 Open question for the team: whose Anthropic key, and its monthly cap (CLAUDE.md §15 Q6)
+
+## P0-8 · 2026-10-23 · C · session 1
+Built: the scheduler — eligibility as a pure function of a snapshot (phase, slide transition, cooldown scaled by interruption frequency, question/curveball budgets per difficulty, curveball mode off/choose/surprise) plus the curveball trigger rules in `curveballs.eligible_kinds` (min elapsed, ≥50 % of target for time_crunch, never slide 1, pause vs mid-speech, no repeats).
+Tests: test_scheduler.py 10/10 green; test_curveballs.py eligible-kinds tests green (the 4 trigger/resolve tests stay red for P0-9)
+Gate: lint, type, schema, mocks green; pytest 17 passed / 9 failed (remaining red = P0-5/6/9/12 spec)
+Demo path: unchanged
+Files outside my paths: none
+Proposed decision changes (not implemented): none
+Next: P0-9 (curveball engine trigger/resolve/measure_recovery), because P0-8 now passes; then P0-5 via engine.tick/_maybe_interrupt
+Open question for the team: none

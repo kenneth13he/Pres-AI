@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 
 from spec.contracts import CurveballKind, CurveballMode, Difficulty, InterruptionFrequency
 
+from . import curveballs
+
 # (persona questions, curveballs) per session — CLAUDE.md §6.3
 BUDGETS: dict[Difficulty, tuple[int, int]] = {
     "friendly": (2, 0),
@@ -45,13 +47,15 @@ class SchedulerSnapshot:
 
     @property
     def at_pause(self) -> bool:
-        # TODO(C): True when the presenter has been silent for PAUSE_SILENCE_MS.
-        raise NotImplementedError
+        if self.last_presenter_speech_ms is None:
+            return False
+        return self.now_ms - self.last_presenter_speech_ms >= PAUSE_SILENCE_MS
 
     @property
     def in_slide_transition(self) -> bool:
-        # TODO(C): True for SLIDE_TRANSITION_MS after a slide change.
-        raise NotImplementedError
+        if self.slide_changed_at_ms is None:
+            return False
+        return self.now_ms - self.slide_changed_at_ms < SLIDE_TRANSITION_MS
 
 
 @dataclass
@@ -75,10 +79,12 @@ class Scheduler:
     ) -> None:
         self.question_budget, self.curveball_budget = BUDGETS[difficulty]
         self.cooldown_ms = COOLDOWN_MS[frequency]
-        # TODO(C): resolve the allowed kinds from the mode:
-        #   off / disabled → [] ; choose → intersection with allowed_kinds ;
-        #   surprise → allowed_kinds
-        self.allowed_kinds: list[CurveballKind] = []
+        if not curveballs_enabled or curveball_mode.mode == "off":
+            self.allowed_kinds: list[CurveballKind] = []
+        elif curveball_mode.mode == "choose":
+            self.allowed_kinds = [k for k in curveball_mode.kinds if k in allowed_kinds]
+        else:
+            self.allowed_kinds = list(allowed_kinds)
 
     def eligible(self, s: SchedulerSnapshot) -> Eligibility:
         """Rules (CLAUDE.md §8, §6.2):
@@ -88,5 +94,20 @@ class Scheduler:
         - curveballs: elapsed ≥ FIRST_CURVEBALL_MS, curveballs_fired < curveball_budget,
           kinds from curveballs.eligible_kinds(...)
         """
-        # TODO(C)
-        raise NotImplementedError
+        if s.phase != "presenting" or s.in_slide_transition:
+            return Eligibility()
+        if s.last_event_end_ms is not None and s.now_ms - s.last_event_end_ms < self.cooldown_ms:
+            return Eligibility()
+        out = Eligibility()
+        if s.elapsed_ms >= FIRST_QUESTION_MS and s.questions_asked < self.question_budget:
+            out.question = True
+        if s.elapsed_ms >= FIRST_CURVEBALL_MS and s.curveballs_fired < self.curveball_budget:
+            out.curveball_kinds = curveballs.eligible_kinds(
+                allowed=self.allowed_kinds,
+                fired=s.fired_kinds,
+                elapsed_ms=s.elapsed_ms,
+                duration_target_s=s.duration_target_s,
+                slide_number=s.slide_number,
+                at_pause=s.at_pause,
+            )
+        return out
