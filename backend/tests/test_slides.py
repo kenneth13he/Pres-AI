@@ -88,3 +88,22 @@ def test_upload_route_returns_deck_and_serves_png():
         for deck_id in made:
             shutil.rmtree(slides.DATA_DIR / deck_id, ignore_errors=True)
             slides._DECKS.pop(deck_id, None)
+
+
+def test_websocket_start_runs_the_session_clock():
+    """Guards the Room wiring in main.py: presentation_started must not crash the socket."""
+    from fastapi.testclient import TestClient
+
+    from backend import presets as p
+    from backend.main import app
+
+    with TestClient(app) as client:
+        roster = p.personas()
+        people = [roster["vc"].model_dump(), roster["student"].model_dump()]
+        sid = client.post("/api/sessions", json={"config": {
+            "preset_id": "startup_pitch", "personas": people}}).json()["session_id"]
+        with client.websocket_connect(f"/ws/sessions/{sid}") as ws:
+            ws.send_json({"type": "presentation_started"})
+            first = ws.receive_json()
+            assert first["type"] == "session_started"
+        assert client.get(f"/api/sessions/{sid}").json()["phase"] == "presenting"

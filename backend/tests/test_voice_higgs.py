@@ -18,7 +18,7 @@ def higgs(tmp_path, status=200, seen=None):
         return httpx.Response(200, content=b"ID3fake-mp3", request=request)
     client = httpx.AsyncClient(base_url="https://api.boson.ai/v1",
                                transport=httpx.MockTransport(handler))
-    return HiggsVoice(client=client, audio_dir=tmp_path)
+    return HiggsVoice(client=client, audio_dir=tmp_path, background=False)
 
 
 def test_every_seat_gets_a_distinct_voice_not_the_moderators():
@@ -65,3 +65,145 @@ async def test_tts_failure_is_a_status_not_a_crash(tmp_path):
     failed = [e for e in session.events
               if e.type == "audio_status" and e.payload["status"] == "tts_failed"]
     assert failed and failed[0].payload["speaker"] == "vc"
+
+
+# ---- talking heads (Higgs Avatar) ---------------------------------------------------------
+
+from backend.services.voice_higgs import assign_faces  # noqa: E402
+
+
+def faces(tmp_path, names):
+    d = tmp_path / "faces"
+    d.mkdir()
+    for n in names:
+        (d / n).write_bytes(b"\xff\xd8fakejpeg")
+    return d
+
+
+def test_faces_pinned_then_pooled_and_test_faces_only_as_fallback(tmp_path):
+    d = faces(tmp_path, ["vc.jpg", "a.png", "b.jpg", "_test.jpg"])
+    got = assign_faces(["vc", "student", "professor"], d)
+    assert got["vc"].name == "vc.jpg"
+    assert {got["student"].name, got["professor"].name} == {"a.png", "b.jpg"}
+    only_test = faces(tmp_path / "x", ["_test.jpg"]) if (tmp_path / "x").mkdir() is None else None
+    got = assign_faces(["vc", "student"], only_test)
+    assert got["vc"].name == got["student"].name == "_test.jpg"
+    assert assign_faces(["vc"], tmp_path / "missing") == {}
+
+
+def avatar_higgs(tmp_path, video_status="completed", calls=None):
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if calls is not None:
+            calls.append((request.method, path))
+        if path.endswith("/audio/speech"):
+            return httpx.Response(200, content=b"ID3fake-mp3", request=request)
+        if path.endswith("/videos") and request.method == "POST":
+            return httpx.Response(200, json={"id": "video_1", "status": "queued"}, request=request)
+        if path.endswith("/videos/video_1"):
+            return httpx.Response(200, json={"id": "video_1", "status": video_status},
+                                  request=request)
+        if path.endswith("/videos/video_1/content"):
+            return httpx.Response(200, content=b"fake-mp4", request=request)
+        return httpx.Response(404, request=request)
+    client = httpx.AsyncClient(base_url="https://api.boson.ai/v1",
+                               transport=httpx.MockTransport(handler))
+    v = HiggsVoice(client=client, audio_dir=tmp_path / "audio",
+                   faces_dir=faces(tmp_path, ["vc.jpg"]), background=False)
+    v.avatar_enabled = True
+    v.avatar_budget_s = 1.2
+    return v
+
+
+async def test_a_seat_with_a_face_gets_a_lip_synced_video_clip(tmp_path):
+    calls: list = []
+    session = make_session()
+    session.voice = avatar_higgs(tmp_path, calls=calls)
+    session.voice.on_event(session._on_voice_event)
+    await session.start(0)
+    ready = next(e for e in session.events if e.type == "audio_status"
+                 and e.payload["status"] == "ready")
+    assert ready.payload["faces"] == {"vc": "/demo/faces/vc.jpg"}
+    await session.slide_changed(s(1), 2)
+    await session.force_curveball("heckler", s(70))
+    clip = next(e for e in session.events if e.type == "audio_status"
+                and e.payload["status"] == "clip")
+    assert clip.payload["kind"] == "video" and clip.payload["url"].endswith(".mp4")
+    assert ("POST", "/v1/videos") in calls
+
+
+async def test_a_late_render_falls_back_to_the_voice_over_the_portrait(tmp_path):
+    session = make_session()
+    session.voice = avatar_higgs(tmp_path, video_status="in_progress")
+    session.voice.on_event(session._on_voice_event)
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.force_curveball("heckler", s(70))
+    statuses = [e.payload["status"] for e in session.events if e.type == "audio_status"]
+    assert "avatar_late" in statuses
+    clip = next(e for e in session.events if e.type == "audio_status"
+                and e.payload["status"] == "clip")
+    assert clip.payload["kind"] == "audio" and clip.payload["url"].endswith(".mp3")
+
+
+async def test_background_rendering_never_blocks_the_room_and_keeps_order(tmp_path):
+    import asyncio
+
+    order: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        order.append(json.loads(request.content)["input"])
+        return httpx.Response(200, content=b"ID3", request=request)
+
+    v = HiggsVoice(client=httpx.AsyncClient(base_url="https://api.boson.ai/v1",
+                                           transport=httpx.MockTransport(handler)),
+                   audio_dir=tmp_path, faces_dir=tmp_path / "none")
+    clips: list[str] = []
+
+    async def on_event(ev):
+        if ev.payload["status"] == "clip":
+            clips.append(ev.payload["text"])
+
+    v.on_event(on_event)
+    await v.start_voice_session("s1", make_config())
+    await v.request_persona_turn("vc", "first", None)   # returns before rendering
+    await v.play_moderator_line("second")
+    assert clips == []
+    for _ in range(50):
+        if len(clips) == 2:
+            break
+        await asyncio.sleep(0.01)
+    assert clips == ["first", "second"] and order == ["first", "second"]
+
+
+async def test_the_brain_is_not_asked_every_second_after_a_none():
+    from backend.services.audience import MockOrchestrator
+
+    calls = 0
+
+    class Counting(MockOrchestrator):
+        async def decide(self, ctx):
+            nonlocal calls
+            calls += 1
+            return await super().decide(ctx)
+
+    session = make_session(difficulty="friendly")
+    session.orchestrator = Counting()
+    await session.start(0)
+    await session.presenter_transcript(s(31), seg(31, "um so yeah, hello there friends"))
+    for t in range(32, 40):
+        await session.tick(s(t))
+    assert calls == 2  # at 32 s and again after the 5 s backoff, not 8 times
+
+
+def test_video_shape_follows_the_portrait(tmp_path):
+    import pymupdf
+
+    from backend.services.voice_higgs import _video_size
+
+    shapes = {(800, 800): "640x640", (600, 800): "480x640", (800, 600): "640x480"}
+    for (w, h), want in shapes.items():
+        pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, w, h), False)
+        pix.save(tmp_path / f"{w}x{h}.png")
+        assert _video_size(tmp_path / f"{w}x{h}.png") == want
+    assert _video_size(tmp_path / "missing.jpg") == "480x640"

@@ -15,7 +15,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const state = {
   phase: 'setup', startedAt: null, pausedAt: null, slide: 1, deck: null, personas: [], preset: null,
   timerOverrideUntil: null, activeCurveball: null, link: null, inputMode: 'live', mic: null,
-  voices: true, lineTag: {},
+  voices: true, lineTag: {}, faces: {},
 };
 
 // ---- people at the table ------------------------------------------------------------
@@ -28,15 +28,24 @@ const initials = (name) => (name || '?').split(/\s+/).filter(Boolean).slice(0, 2
 
 function seatHtml(p, i, extra = '') {
   const [skin, shirt] = p.id === 'moderator' ? ['#94a3b8', '#334155'] : colourFor(i);
-  return `
-    <div class="seat tile ${extra}" data-persona="${p.id}">
-      <div class="bubble"><span class="tag"></span><span class="text"></span></div>
+  const face = state.faces[p.id];
+  const figure = face ? `
+      <div class="portrait">
+        <img src="${esc(face)}" alt="${esc(p.name)}" />
+        <video playsinline preload="auto"></video>
+        <span class="thinking">thinking…</span>
+        <div class="waves"><i></i><i></i><i></i></div>
+      </div>` : `
       <div class="person">
         <span class="thinking">thinking…</span>
         <div class="body" style="background:${shirt}"></div>
         <div class="head" style="background:${skin}">${esc(initials(p.name))}</div>
         <div class="waves"><i></i><i></i><i></i></div>
-      </div>
+      </div>`;
+  return `
+    <div class="seat tile ${face ? 'has-face' : ''} ${extra}" data-persona="${p.id}">
+      <div class="bubble"><span class="tag"></span><span class="text"></span></div>
+      ${figure}
     </div>`;
 }
 
@@ -172,13 +181,19 @@ function onEvent(ev) {
     }
     case 'ai_speech_ended': seat(p.speaker)?.classList.remove('thinking'); break;
     case 'audio_status':
+      // After a reload the server replays history: don't re-speak lines from before we joined.
+      if (p.status === 'clip' && state.joinedAtMs != null && ev.timestamp_ms < state.joinedAtMs - 3000) break;
       if (p.status === 'clip' && state.voices) {
         seat(p.speaker)?.classList.remove('thinking');
-        player.playClip({ url: p.url, speaker: p.speaker, text: p.text });
+        player.playClip({ url: p.url, speaker: p.speaker, text: p.text, kind: p.kind,
+                          el: p.kind === 'video' ? seat(p.speaker)?.querySelector('video') : null });
       } else if (p.status === 'tts_failed') {
         seat(p.speaker)?.classList.remove('thinking');
       }
-      $('conn').textContent = p.status === 'ready' ? 'live · voices on' : $('conn').textContent;
+      if (p.status === 'ready') {
+        $('conn').textContent = `live · voices on${p.avatars ? ' · talking heads on' : ''}`;
+        if (p.faces && Object.keys(p.faces).length) { state.faces = p.faces; renderTiles(); }
+      }
       break;
     case 'curveball_triggered': onCurveball(p); break;
     case 'curveball_resolved': clearCurveball(p); break;
@@ -267,7 +282,10 @@ if (isMock() || !sessionId) {
   state.personas = s.config.personas; state.preset = s.preset; state.deck = s.deck; state.inputMode = s.config.input_mode;
   state.slide = s.slide_number || 1;
   // Reconnect/reload mid-session: the server replays events and the clock carries on.
-  if (s.phase !== 'setup' && s.elapsed_ms > 0) { state.startedAt = Date.now() - s.elapsed_ms; $('btn-start').classList.add('hidden'); }
+  if (s.phase !== 'setup' && s.elapsed_ms > 0) {
+    state.startedAt = Date.now() - s.elapsed_ms; state.joinedAtMs = s.elapsed_ms;
+    $('btn-start').classList.add('hidden');
+  }
   $('preset-name').textContent = s.preset.name;
   renderTiles(); renderSlide();
   state.link = connect(sessionId, onEvent, (st) => { $('conn').textContent = st; });

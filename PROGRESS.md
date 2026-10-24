@@ -103,3 +103,10 @@ Files outside my paths: none
 Proposed decision changes (not implemented): none
 Next: integration support for A/B; P1-2/P1-4 are already in place by construction and get flipped when A can show them
 Open question for the team: Anthropic monthly cap (we have spent well under $1 so far)
+
+## Voice room + talking heads · 2026-10-24 · C (covering B/A, on branch feat/voice-room)
+Built: Higgs TTS voices per persona (distinct presets, anger tag for the heckler); the room view (wall screen, audience seated around a table, speaking glow, sound bars, bubbles; clips play one at a time; mic muted while the room talks); Higgs Avatar talking heads — each seat with a portrait from `demo/faces/` gets a lip-synced MP4 per line (video shape matched to the portrait), falling back to voice-over-still past a 9 s budget or on any error. Rendering moved off the room's critical path (one background worker, in order; clips pushed to the browser as they land). The brain backs off 5 s after a "none" instead of being asked every second. Reload no longer replays old clips.
+Measured live: TTS ~2 s per line; avatar clip ~5–8 s for a 4–8 s line; video rate limit is undocumented and tripped at 3 rapid requests (fallback covers it).
+Tests: test_voice_higgs.py 9/9 (voices, faces, clip events, video/fallback, background order, shape), backoff test, websocket wiring test; suite 82/82
+Gate: green at the commit
+Open question for the team: which fictional portraits to use (only Boson's single sample face is in the repo, so every seat looks the same)

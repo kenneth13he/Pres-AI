@@ -57,6 +57,23 @@ body { background: #0b0d12; color: #e7e9ee; }
 .seat .waves i:nth-child(2) { animation-delay: .15s } .seat .waves i:nth-child(3) { animation-delay: .3s }
 @keyframes wave { 0%,100% { height: 4px } 50% { height: 18px } }
 
+/* a seat with a real-looking face: a portrait card that becomes a talking head */
+.seat.has-face { width: 132px; }
+.portrait {
+  position: relative; width: 132px; height: 176px; border-radius: 14px; overflow: hidden;
+  background: #111827; box-shadow: 0 0 0 3px #0b0d12, 0 10px 30px #0008;
+  transition: box-shadow .2s;
+}
+.portrait img, .portrait video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.portrait video { opacity: 0; transition: opacity .15s; }
+.portrait.live video { opacity: 1; }
+.portrait .waves { right: 8px; top: 8px; }
+.portrait .thinking { top: 6px; left: 8px; right: auto; background: #0b0d12cc; padding: 1px 6px; border-radius: 8px; }
+.seat.has-face .bubble { bottom: 186px; }
+.seat.speaking .portrait { box-shadow: 0 0 0 3px #22d3ee, 0 0 30px #22d3ee88; }
+.seat.has-face.flash .portrait { animation: flash .6s ease-in-out 3; }
+.seat.has-face.speaking { transform: translateY(-4px); }
+
 .seat.speaking { transform: translateY(-6px); }
 .seat.speaking .head { box-shadow: 0 0 0 3px #22d3ee, 0 0 28px #22d3ee99; }
 .seat.speaking .waves { display: flex; }

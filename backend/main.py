@@ -61,6 +61,12 @@ class Room:
         self.ticker: asyncio.Task[None] | None = None
         self.lock = asyncio.Lock()
         self.t0: int | None = None
+        self._flushes: set[asyncio.Task[None]] = set()
+
+    def schedule_flush(self) -> None:
+        task = asyncio.get_running_loop().create_task(self.flush())
+        self._flushes.add(task)  # keep a reference until it finishes
+        task.add_done_callback(self._flushes.discard)
 
     def now_ms(self) -> int:
         return 0 if self.t0 is None else wall_ms() - self.t0
@@ -192,7 +198,10 @@ async def create_session(body: CreateSession) -> dict[str, Any]:
         deck=slides.get_deck(config.deck_id),
         curveballs_enabled=os.environ.get("CURVEBALLS_ENABLED", "true") == "true",
     )
-    ROOMS[session_id] = Room(session)
+    room = Room(session)
+    # Clips rendered in the background reach the browser as soon as they exist.
+    session.on_append = lambda: room.schedule_flush()
+    ROOMS[session_id] = room
     return {"session_id": session_id, "config": config.model_dump(), "preset": preset.model_dump()}
 
 

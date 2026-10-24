@@ -16,7 +16,9 @@ Money: $0.015 per 1K characters; a 20-word line is ~$0.0015. SpendCounter feeds 
 
 from __future__ import annotations
 
+import asyncio
 import os
+import time
 import uuid
 from pathlib import Path
 
@@ -28,6 +30,14 @@ from .voice_base import OnEvent, OnTranscript
 
 BASE_URL = "https://api.boson.ai/v1"
 AUDIO_DIR = Path(__file__).resolve().parents[2] / "data" / "audio"
+# Fictional portraits for the talking heads. `<persona_id>.jpg|png|webp` pins a face to a
+# persona; any other image is handed out to the remaining seats in name order. Files whose
+# name starts with "_" are used only when nothing else is there (test faces).
+FACES_DIR = Path(__file__).resolve().parents[2] / "demo" / "faces"
+FACE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+# Measured 24 Oct: a 4 s line renders in ~5 s. Past this budget the voice plays over the
+# still portrait instead, so a slow or throttled render never delays the room.
+AVATAR_BUDGET_S = float(os.environ.get("BOSON_AVATAR_BUDGET_S", "9"))
 PRESET_VOICES = ["marcus", "eleanor", "jake", "chloe", "oliver", "nora"]
 MODERATOR_VOICE = "nora"
 
@@ -73,12 +83,49 @@ def assign_voices(config: SessionConfig) -> dict[str, str]:
     return out
 
 
+def assign_faces(persona_ids: list[str], faces_dir: Path | None = None) -> dict[str, Path]:
+    """Persona id → portrait file. Pinned files first, then the rest in name order; test
+    faces (leading "_") only if there are no others. Seats without a face stay illustrated."""
+    d = faces_dir or FACES_DIR
+    files = sorted(p for p in d.glob("*") if p.suffix.lower() in FACE_EXTS) if d.exists() else []
+    pinned = {p.stem: p for p in files}
+    pool = [p for p in files if p.stem not in persona_ids and not p.stem.startswith("_")]
+    if not pool:
+        pool = [p for p in files if p.stem.startswith("_")]
+    out: dict[str, Path] = {}
+    for pid in persona_ids:
+        if pid in pinned:
+            out[pid] = pinned[pid]
+    free = [p for p in pool if p not in out.values()]
+    for pid in persona_ids:
+        if pid in out or not pool:
+            continue
+        # A single available face is shared; otherwise each seat gets its own until they run out.
+        if len(pool) == 1:
+            out[pid] = pool[0]
+        elif free:
+            out[pid] = free.pop(0)
+    return out
+
+
 class HiggsVoice:
+    """Lines are rendered off the room's critical path: `request_persona_turn` queues the line
+    and returns at once; one worker renders the queue in order (TTS ~2 s, + video ~5–8 s) and
+    announces each clip as it is ready. `background=False` renders inline (tests)."""
+
     def __init__(self, client: httpx.AsyncClient | None = None,
-                 audio_dir: Path | None = None) -> None:
+                 audio_dir: Path | None = None, faces_dir: Path | None = None,
+                 background: bool = True) -> None:
+        self.background = background
+        self._queue: asyncio.Queue[tuple[str, str, str | None]] = asyncio.Queue()
+        self._worker: asyncio.Task[None] | None = None
         self.api_key = os.environ.get("BOSON_API_KEY", "")
         self.tts_model = os.environ.get("BOSON_TTS_MODEL", "higgs-tts-3")
         self.audio_dir = audio_dir or AUDIO_DIR
+        self.faces_dir = faces_dir or FACES_DIR
+        self.avatar_enabled = os.environ.get("BOSON_AVATAR_ENABLED", "false") == "true"
+        self.avatar_budget_s = AVATAR_BUDGET_S
+        self._faces: dict[str, Path] = {}
         self._on_event: OnEvent | None = None
         self._on_transcript: OnTranscript | None = None
         self._session_id = ""
@@ -112,19 +159,59 @@ class HiggsVoice:
         except httpx.HTTPError as exc:
             await self._status("tts_failed", speaker=speaker, detail=str(exc)[:200])
             return
-        name = f"{uuid.uuid4().hex[:12]}.mp3"
+        stem = uuid.uuid4().hex[:12]
         out = self.audio_dir / self._session_id
         out.mkdir(parents=True, exist_ok=True)
-        (out / name).write_bytes(resp.content)
-        await self._status("clip", speaker=speaker, voice=voice, text=text,
-                           url=f"/audio/{self._session_id}/{name}")
+        (out / f"{stem}.mp3").write_bytes(resp.content)
+        video = await self._talking_head(speaker, resp.content, out / f"{stem}.mp4")
+        if video:
+            await self._status("clip", speaker=speaker, voice=voice, text=text, kind="video",
+                               url=f"/audio/{self._session_id}/{stem}.mp4")
+        else:
+            await self._status("clip", speaker=speaker, voice=voice, text=text, kind="audio",
+                               url=f"/audio/{self._session_id}/{stem}.mp3")
+
+    async def _talking_head(self, speaker: str, mp3: bytes, dest: Path) -> bool:
+        """Higgs Avatar: portrait + the line's audio → lip-synced MP4 (with the audio in it).
+        False on anything short of a finished video inside the budget — the caller then plays
+        the voice over the still portrait. Never raises."""
+        face = self._faces.get(speaker)
+        if not (self.avatar_enabled and face):
+            return False
+        deadline = time.monotonic() + self.avatar_budget_s
+        try:
+            resp = await self._client.post(
+                "/videos",
+                data={"model": "higgs-avatar", "size": _video_size(face)},
+                files={"ref_image": (face.name, face.read_bytes(), _mime(face)),
+                       "input": ("line.mp3", mp3, "audio/mpeg")},
+            )
+            resp.raise_for_status()
+            video_id = resp.json()["id"]
+            while time.monotonic() < deadline:
+                await asyncio.sleep(0.5)
+                st = (await self._client.get(f"/videos/{video_id}")).json()
+                if st.get("status") == "completed":
+                    content = await self._client.get(f"/videos/{video_id}/content")
+                    content.raise_for_status()
+                    dest.write_bytes(content.content)
+                    return True
+                if st.get("status") == "failed":
+                    break
+        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            await self._status("avatar_failed", speaker=speaker, detail=str(exc)[:200])
+            return False
+        await self._status("avatar_late", speaker=speaker)
+        return False
 
     # ---- VoiceAdapter --------------------------------------------------------------------
 
     async def start_voice_session(self, session_id: str, config: SessionConfig) -> None:
         self._session_id = session_id
         self._voices = assign_voices(config)
-        await self._status("ready", voices=self._voices)
+        self._faces = assign_faces([p.id for p in config.personas], self.faces_dir)
+        await self._status("ready", voices=self._voices, avatars=self.avatar_enabled,
+                           faces={pid: f"/demo/faces/{p.name}" for pid, p in self._faces.items()})
 
     async def send_context(self, text: str) -> None:
         return None  # Shape 2 needs no context on the voice side
@@ -132,18 +219,37 @@ class HiggsVoice:
     async def request_persona_turn(
         self, persona_id: str, text: str, style: str | None = None
     ) -> None:
-        await self._render(persona_id, text, style)
+        await self._say(persona_id, text, style)
 
     async def play_moderator_line(self, text: str) -> None:
-        await self._render("moderator", text, "neutral")
+        await self._say("moderator", text, "neutral")
+
+    async def _say(self, speaker: str, text: str, style: str | None) -> None:
+        if not self.background:
+            await self._render(speaker, text, style)
+            return
+        self._queue.put_nowait((speaker, text, style))
+        if self._worker is None or self._worker.done():
+            self._worker = asyncio.create_task(self._work())
+
+    async def _work(self) -> None:
+        while not self._queue.empty():
+            speaker, text, style = self._queue.get_nowait()
+            try:
+                await self._render(speaker, text, style)
+            except Exception as exc:  # a broken render never kills the worker
+                await self._status("tts_failed", speaker=speaker, detail=str(exc)[:200])
 
     async def play_sfx(self, sfx_id: str) -> None:
         return None  # phone/door are local clips the browser plays from sfx_url
 
     async def cancel_speech(self) -> None:
-        return None  # clips are played by the browser; it cancels its own queue on Skip
+        """Skip/Pause: drop lines not yet rendered (the browser stops what is playing)."""
+        while not self._queue.empty():
+            self._queue.get_nowait()
 
     async def stop_voice_session(self) -> None:
+        # Let the last line (the closing ack) finish rendering; the worker exits on its own.
         await self._status("stopped")
 
     async def _status(self, status: str, **extra: object) -> None:
@@ -152,3 +258,24 @@ class HiggsVoice:
                 type="audio_status", session_id=self._session_id, timestamp_ms=0,
                 payload={"status": status, "adapter": "higgs", **extra},
             ))
+
+
+def _mime(path: Path) -> str:
+    return {".png": "image/png", ".webp": "image/webp"}.get(path.suffix.lower(), "image/jpeg")
+
+
+def _video_size(face: Path) -> str:
+    """Match the video's shape to the portrait's, so the face doesn't jump when the still
+    photo hands over to the talking head (Higgs sizes: 640x640, 480x640, 640x480)."""
+    try:
+        import pymupdf
+
+        pix = pymupdf.Pixmap(str(face))
+        ratio = pix.width / pix.height
+    except Exception:
+        return "480x640"
+    if ratio > 1.15:
+        return "640x480"
+    if ratio < 0.87:
+        return "480x640"
+    return "640x640"

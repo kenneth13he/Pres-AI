@@ -15,12 +15,17 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
   function next() {
     if (current || !queue.length) { if (!current) onIdle(); return; }
     const clip = queue.shift();
-    const audio = new Audio(clip.url);
+    // A talking-head clip plays in the speaker's seat (its own <video>, audio included);
+    // a voice-only clip plays through a detached <audio>.
+    const audio = clip.kind === 'video' && clip.el ? clip.el : new Audio();
+    audio.src = clip.url;
     current = { audio, clip };
     onClipStart(clip);
+    if (clip.kind === 'video' && clip.el) clip.el.closest('.portrait')?.classList.add('live');
     const done = () => {
       if (current?.audio !== audio) return;
       current = null;
+      if (clip.el) clip.el.closest('.portrait')?.classList.remove('live');
       onClipEnd(clip);
       next();
     };
@@ -37,7 +42,11 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
 
   function cancel() {           // Skip / Pause: stop the voice and drop what is queued
     queue.length = 0;
-    if (current) { const { audio, clip } = current; current = null; audio.pause(); onClipEnd(clip); }
+    if (current) {
+      const { audio, clip } = current; current = null; audio.pause();
+      clip.el?.closest('.portrait')?.classList.remove('live');
+      onClipEnd(clip);
+    }
     onIdle();
   }
 

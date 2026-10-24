@@ -19,6 +19,7 @@ resume gap all behave as if the pause had not happened (CLAUDE.md §2, §5.4).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from spec.contracts import (
@@ -46,6 +47,7 @@ log = logging.getLogger(__name__)
 TIME_CRUNCH_MS = 60_000
 RECENT_TRANSCRIPT_MS = 30_000
 RECOVERY_WINDOW_MS = 60_000
+DECIDE_BACKOFF_MS = 5_000  # the brain said "nothing to ask": give the talk 5 s before asking again
 # Curveballs that are a question in disguise: the presenter answers, then we resolve "answered".
 ANSWERABLE: set[CurveballKind] = {
     "heckler", "latecomer", "bait", "fact_check", "plain_language", "vip_arrives", "crosstalk",
@@ -100,12 +102,18 @@ class Session:
         self.report: Report | None = None
         self._question_counter = 0
         self._clock_ms = 0  # last session-clock time seen, stamps adapter events
+        self._next_decide_ms = 0  # after a "none", wait before asking the brain again
+        # Called after an event lands outside a room action (a clip rendered in the
+        # background), so main.py can push it to the browser at once.
+        self.on_append: Callable[[], None] | None = None
         self.voice.on_event(self._on_voice_event)
 
     async def _on_voice_event(self, ev: SessionEvent) -> None:
         """Adapter events (audio clips, status) join the session stream on our clock."""
         self.events.append(ev.model_copy(update={"session_id": self.session_id,
                                                  "timestamp_ms": self._clock_ms}))
+        if self.on_append:
+            self.on_append()
 
     # ---- helpers ---------------------------------------------------------------------------
 
@@ -309,13 +317,17 @@ class Session:
             now_ms=now_ms,
         )
         elig = self.scheduler.eligible(snap)
-        if not elig.anything:
+        if not elig.anything or now_ms < self._next_decide_ms:
             return
         try:
             decision = await self.orchestrator.decide(
                 self._context(now_ms, elig.question, elig.curveball_kinds))
         except Exception as exc:
             self._error(now_ms, "orchestrator.decide", exc)
+            self._next_decide_ms = now_ms + DECIDE_BACKOFF_MS
+            return
+        if decision.action == "none":
+            self._next_decide_ms = now_ms + DECIDE_BACKOFF_MS
             return
         if decision.action == "question" and elig.question:
             if self._grounded(decision) and decision.persona_id and decision.line:
