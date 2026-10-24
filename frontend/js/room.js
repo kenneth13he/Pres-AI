@@ -59,7 +59,10 @@ function buildStage() {
     ${L.seats.map((t, i) => {
       const p = T[i]; if (!p) return '';
       const img = state.images[p.id] ?? state.faces[p.id];
-      return `<div class="tile ${img ? 'photo' : ''} ${p.id === VIP.id ? 'vip-in' : ''}" data-id="${esc(p.id)}" style="${rect(t)};border-radius:0.8cqw;background:${tileBg(img, i + 1)}">
+      // A face is shown whole (contain) whatever the tile's shape; a blurred copy fills the sides.
+      const face = img ? `<div class="tile-fill" style="background-image:url('${esc(img)}')"></div><div class="tile-img" style="background-image:url('${esc(img)}')"></div>` : '';
+      return `<div class="tile ${img ? 'photo' : ''} ${p.id === VIP.id ? 'vip-in' : ''}" data-id="${esc(p.id)}" style="${rect(t)};border-radius:0.8cqw;background:${img ? '#0e1012' : tileBg(null, i + 1)}">
+        ${face}
         <span class="tile-tag hidden" style="font-size:${cq(t.w, 0.055, 8)}"></span>
         <div style="position:absolute;left:5%;right:5%;bottom:6%;display:flex;justify-content:space-between;align-items:flex-end;gap:6px">
           <div style="min-width:0;text-shadow:0 1px 4px rgba(0,0,0,.6)"><div style="font-size:${cq(t.w, 0.075, 9)};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</div><div style="font-size:${cq(t.w, 0.055, 8)};color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.role)}${p.custom && p.role !== 'Custom guest' ? ' · Custom' : ''}</div></div>

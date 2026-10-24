@@ -27,8 +27,12 @@
     .end-btn { padding: 9px 16px; border-radius: 10px; border: 0; background: var(--raised-3); font-size: 14px; font-weight: 700; cursor: pointer; }
     .end-btn.done { background: var(--mint); color: var(--mint-ink); }
     /* live Higgs face (LiveKit) replaces the still once it has joined; name and tag stay on top */
-    #stage .tile video.live-feed { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
-    #stage .tile[data-id] > :not(video) { z-index: 1; }
+    /* faces are portrait (3:4) and tiles are any shape: show the whole person, never a crop */
+    #stage .tile .tile-fill { position: absolute; inset: -12%; background: center / cover no-repeat; filter: blur(14px) brightness(.45) saturate(.9); z-index: 0; }
+    #stage .tile .tile-img { position: absolute; inset: 0; background: center / contain no-repeat; z-index: 1; }
+    #stage .tile video.live-feed { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; }
+    #stage .tile.live-on .tile-img { display: none; }
+    #stage .tile[data-id] > :not(video):not(.tile-fill):not(.tile-img) { z-index: 2; }
     #stage .tile.thinking { box-shadow: 0 0 0 2px oklch(0.82 0.15 150 / .35); animation: think 1.2s ease-in-out infinite; }
     @keyframes think { 50% { box-shadow: 0 0 0 2px oklch(0.82 0.15 150 / .1); } }
     /* your own seat: the webcam, mirrored, never sent anywhere */
