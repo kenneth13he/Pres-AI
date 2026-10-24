@@ -11,6 +11,7 @@ export async function startMic({ onLevel, onSegment, pushToTalk = false, pttKey 
   });
   const t0 = performance.now();
   let live = !pushToTalk;
+  let muted = false;     // true while an AI voice plays, so we never transcribe the room
   let stopped = false;
 
   // ---- level meter ------------------------------------------------------------------
@@ -24,7 +25,7 @@ export async function startMic({ onLevel, onSegment, pushToTalk = false, pttKey 
     analyser.getByteTimeDomainData(buf);
     let sum = 0;
     for (const v of buf) { const d = (v - 128) / 128; sum += d * d; }
-    onLevel(live ? Math.min(1, Math.sqrt(sum / buf.length) * 4) : 0);
+    onLevel(live && !muted ? Math.min(1, Math.sqrt(sum / buf.length) * 4) : 0);
     raf = requestAnimationFrame(meter);
   };
   meter();
@@ -45,7 +46,7 @@ export async function startMic({ onLevel, onSegment, pushToTalk = false, pttKey 
         if (r.isFinal) {
           const text = r[0].transcript.trim();
           const end = Math.round(performance.now() - t0);
-          if (text && live) onSegment({ start_ms: segStart, end_ms: end, text, speaker: 'presenter', confidence: r[0].confidence ?? null });
+          if (text && live && !muted) onSegment({ start_ms: segStart, end_ms: end, text, speaker: 'presenter', confidence: r[0].confidence ?? null });
           segStart = null;
         }
       }
@@ -68,6 +69,7 @@ export async function startMic({ onLevel, onSegment, pushToTalk = false, pttKey 
   return {
     hasSTT: Boolean(SR),
     stream,
+    setMuted(v) { muted = v; if (v) segStart = null; },
     stop() {
       stopped = true;
       cancelAnimationFrame(raf);

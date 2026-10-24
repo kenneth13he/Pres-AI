@@ -298,5 +298,7 @@ async def _handle_client_message(room: Room, msg: dict[str, Any]) -> None:
 
 (ROOT / "data" / "decks").mkdir(parents=True, exist_ok=True)
 app.mount("/decks", StaticFiles(directory=ROOT / "data" / "decks"), name="decks")
+(ROOT / "data" / "audio").mkdir(parents=True, exist_ok=True)
+app.mount("/audio", StaticFiles(directory=ROOT / "data" / "audio"), name="audio")
 app.mount("/demo", StaticFiles(directory=ROOT / "demo"), name="demo")
 app.mount("/", StaticFiles(directory=ROOT / "frontend", html=True), name="frontend")

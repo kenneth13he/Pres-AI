@@ -1,22 +1,24 @@
 """Higgs (Boson AI) voice adapter — Person B owns this file.
 
-Status: SKELETON. TTS 3 and client-secret minting are implemented from the docs and
-untested; Realtime is a TODO until the hour-1 tests in CLAUDE.md §13 pick a shape.
-What the docs say (23 Oct 2026), verify before building on it:
-  TTS        POST https://api.boson.ai/v1/audio/speech   model higgs-tts-3
-             stream=true + response_format="pcm" → 16-bit 24 kHz mono PCM
-             tags: <|emotion:anger|> <|style:whispering|> <|prosody:pause|> <|sfx:cough|> <|reset|>
-  Realtime   wss://api.boson.ai/v1/realtime?model=higgs-realtime  (OpenAI Realtime-compatible)
-             server_vad | semantic_vad | null; barge-in built in; STT via higgs-stt-3.1 →
-             conversation.item.input_audio_transcription.completed (final only)
-  Secrets    POST /v1/realtime/client_secrets → ephemeral key bai-eph-… for the browser
-Money: every session is created with a hard timeout and closed in a `finally`.
+Status: Shape 2 (split), TTS half. Every persona and moderator line is rendered by Higgs
+TTS 3 as an mp3 clip in that persona's preset voice, saved under data/audio/<session>/ and
+announced with an `audio_status` event carrying the clip URL; the browser plays the clips in
+order. Speech-to-text is still the browser's (mic.js) until the Realtime/STT half lands.
+
+What the docs say (23 Oct 2026), verified live the same day:
+  TTS        POST https://api.boson.ai/v1/audio/speech   model higgs-tts-3   ~2 s per line
+             presets: chloe, eleanor, jake, marcus, nora, oliver (GET /v1/audio/voices is
+             the *custom* voice list and is empty for us)
+             tags: <|emotion:anger|> <|style:whispering|> <|prosody:pause|> <|sfx:cough|>
+  Realtime   wss://api.boson.ai/v1/realtime?model=higgs-realtime — TODO(B), Shape 1 / STT
+Money: $0.015 per 1K characters; a 20-word line is ~$0.0015. SpendCounter feeds /health.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
+import uuid
+from pathlib import Path
 
 import httpx
 
@@ -25,17 +27,23 @@ from spec.contracts import SessionConfig, SessionEvent
 from .voice_base import OnEvent, OnTranscript
 
 BASE_URL = "https://api.boson.ai/v1"
-PCM_SAMPLE_RATE = 24_000
+AUDIO_DIR = Path(__file__).resolve().parents[2] / "data" / "audio"
+PRESET_VOICES = ["marcus", "eleanor", "jake", "chloe", "oliver", "nora"]
+MODERATOR_VOICE = "nora"
 
-# Persona → preset voice. Fill from GET /v1/audio/voices during hour-1 test 4.
-VOICE_FOR_PERSONA: dict[str, str] = {
-    "moderator": "default",
+# Roster default voices (distinct within every preset's three seats). Custom personas and
+# clashes get the first preset not already at the table.
+ROSTER_VOICES: dict[str, str] = {
+    "vc": "eleanor", "student": "jake", "professor": "marcus", "methods": "oliver",
+    "mentor": "chloe", "classmate": "jake", "hiring_manager": "eleanor",
+    "senior_eng": "marcus", "recruiter": "chloe", "customer": "chloe",
+    "journalist": "eleanor", "exec": "oliver",
 }
-# Persona style hint → TTS delivery tags placed at the start of the text.
+# Persona style hint → TTS delivery tags at the start of the text.
 STYLE_TAGS: dict[str, str] = {
     "impatient": "<|emotion:anger|><|prosody:speed_fast|>",
     "confused": "<|emotion:confusion|>",
-    "thoughtful": "<|emotion:contemplation|><|prosody:speed_slow|>",
+    "thoughtful": "<|emotion:contemplation|>",
     "neutral": "",
 }
 
@@ -51,18 +59,34 @@ class SpendCounter:
         return cls.tts_chars / 1000 * 0.015 + cls.realtime_ms / 60_000 * 0.016
 
 
+def assign_voices(config: SessionConfig) -> dict[str, str]:
+    """Persona id → preset voice, all distinct and never the moderator's voice."""
+    out: dict[str, str] = {"moderator": MODERATOR_VOICE}
+    used = {MODERATOR_VOICE}
+    for p in config.personas:
+        want = p.voice_id or ROSTER_VOICES.get(p.id)
+        if want in PRESET_VOICES and want not in used:
+            out[p.id] = want
+        else:
+            out[p.id] = next((v for v in PRESET_VOICES if v not in used), PRESET_VOICES[0])
+        used.add(out[p.id])
+    return out
+
+
 class HiggsVoice:
-    def __init__(self) -> None:
+    def __init__(self, client: httpx.AsyncClient | None = None,
+                 audio_dir: Path | None = None) -> None:
         self.api_key = os.environ.get("BOSON_API_KEY", "")
         self.tts_model = os.environ.get("BOSON_TTS_MODEL", "higgs-tts-3")
-        self.realtime_model = os.environ.get("BOSON_REALTIME_MODEL", "higgs-realtime")
+        self.audio_dir = audio_dir or AUDIO_DIR
         self._on_event: OnEvent | None = None
         self._on_transcript: OnTranscript | None = None
         self._session_id = ""
-        self._client = httpx.AsyncClient(
+        self._voices: dict[str, str] = {"moderator": MODERATOR_VOICE}
+        self._client = client or httpx.AsyncClient(
             base_url=BASE_URL,
             headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=httpx.Timeout(30.0, connect=10.0),
+            timeout=httpx.Timeout(15.0, connect=5.0),
         )
 
     def on_event(self, callback: OnEvent) -> None:
@@ -71,81 +95,60 @@ class HiggsVoice:
     def on_transcript(self, callback: OnTranscript) -> None:
         self._on_transcript = callback
 
-    # ---- TTS 3 (Shape 2 speech path) --------------------------------------------
+    # ---- TTS ---------------------------------------------------------------------------
 
-    async def tts_pcm_stream(
-        self, text: str, voice: str, style: str | None = None
-    ) -> AsyncIterator[bytes]:
-        """Yield raw PCM chunks for `text`. The browser's audio.js plays this format."""
+    async def _render(self, speaker: str, text: str, style: str | None) -> None:
+        """Render one line to an mp3 clip and announce it. A failure is an audio_status with
+        status "tts_failed": the caption already showed the line, so the room carries on."""
+        voice = self._voices.get(speaker) or PRESET_VOICES[0]
         tagged = STYLE_TAGS.get(style or "neutral", "") + text
         SpendCounter.tts_chars += len(tagged)
-        payload = {
-            "model": self.tts_model,
-            "input": tagged,
-            "voice": voice,
-            "stream": True,
-            "response_format": "pcm",
-        }
-        async with self._client.stream("POST", "/audio/speech", json=payload) as resp:
+        try:
+            resp = await self._client.post("/audio/speech", json={
+                "model": self.tts_model, "input": tagged, "voice": voice,
+                "response_format": "mp3",
+            })
             resp.raise_for_status()
-            async for chunk in resp.aiter_bytes():
-                yield chunk
+        except httpx.HTTPError as exc:
+            await self._status("tts_failed", speaker=speaker, detail=str(exc)[:200])
+            return
+        name = f"{uuid.uuid4().hex[:12]}.mp3"
+        out = self.audio_dir / self._session_id
+        out.mkdir(parents=True, exist_ok=True)
+        (out / name).write_bytes(resp.content)
+        await self._status("clip", speaker=speaker, voice=voice, text=text,
+                           url=f"/audio/{self._session_id}/{name}")
 
-    # ---- Realtime (Shape 1; also the STT path in Shape 2) ------------------------
-
-    async def mint_client_secret(self) -> dict:
-        """Ephemeral browser credential. The API key never leaves this process."""
-        resp = await self._client.post("/realtime/client_secrets", json={})
-        resp.raise_for_status()
-        return resp.json()
-
-    # ---- VoiceAdapter --------------------------------------------------------------
+    # ---- VoiceAdapter --------------------------------------------------------------------
 
     async def start_voice_session(self, session_id: str, config: SessionConfig) -> None:
         self._session_id = session_id
-        # TODO(B, hour 1-4): open the Realtime WebSocket (Shape 1) or start the STT-only
-        # session (Shape 2); forward input_audio_transcription.completed to _on_transcript
-        # with our own start_ms from speech_started.
-        await self._status("not_implemented")
+        self._voices = assign_voices(config)
+        await self._status("ready", voices=self._voices)
 
     async def send_context(self, text: str) -> None:
-        # TODO(B): session.update / conversation.item.create with slide context (Shape 1).
-        return None
+        return None  # Shape 2 needs no context on the voice side
 
     async def request_persona_turn(
         self, persona_id: str, text: str, style: str | None = None
     ) -> None:
-        # TODO(B): Shape 1 → make Realtime speak `text` (hour-1 test 2).
-        #          Shape 2 → stream tts_pcm_stream(...) to the browser and emit
-        #          ai_speech_started / ai_speech_ended around it.
-        await self._status(f"persona_turn_not_implemented:{persona_id}")
+        await self._render(persona_id, text, style)
 
     async def play_moderator_line(self, text: str) -> None:
-        await self.request_persona_turn("moderator", text, "neutral")
+        await self._render("moderator", text, "neutral")
 
     async def play_sfx(self, sfx_id: str) -> None:
-        # Vocal sfx (cough, sigh) can go through TTS tags; phone/door are local clips the
-        # browser plays from the curveball event's sfx_url. Nothing to do server-side.
-        return None
+        return None  # phone/door are local clips the browser plays from sfx_url
 
     async def cancel_speech(self) -> None:
-        # TODO(B): response.cancel / conversation.item.truncate (Shape 1), or stop the
-        # PCM stream (Shape 2).
-        return None
+        return None  # clips are played by the browser; it cancels its own queue on Skip
 
     async def stop_voice_session(self) -> None:
-        try:
-            pass  # TODO(B): close the Realtime socket.
-        finally:
-            await self._client.aclose()
+        await self._status("stopped")
 
-    async def _status(self, status: str) -> None:
+    async def _status(self, status: str, **extra: object) -> None:
         if self._on_event:
-            await self._on_event(
-                SessionEvent(
-                    type="audio_status",
-                    session_id=self._session_id,
-                    timestamp_ms=0,
-                    payload={"status": status, "adapter": "higgs"},
-                )
-            )
+            await self._on_event(SessionEvent(
+                type="audio_status", session_id=self._session_id, timestamp_ms=0,
+                payload={"status": status, "adapter": "higgs", **extra},
+            ))

@@ -99,6 +99,13 @@ class Session:
         self.qna_asked = 0
         self.report: Report | None = None
         self._question_counter = 0
+        self._clock_ms = 0  # last session-clock time seen, stamps adapter events
+        self.voice.on_event(self._on_voice_event)
+
+    async def _on_voice_event(self, ev: SessionEvent) -> None:
+        """Adapter events (audio clips, status) join the session stream on our clock."""
+        self.events.append(ev.model_copy(update={"session_id": self.session_id,
+                                                 "timestamp_ms": self._clock_ms}))
 
     # ---- helpers ---------------------------------------------------------------------------
 
@@ -116,6 +123,7 @@ class Session:
         return self.events[since:]
 
     def _emit(self, type_: str, now_ms: int, payload: dict[str, Any] | None = None) -> SessionEvent:
+        self._clock_ms = now_ms
         ev = SessionEvent(type=type_, session_id=self.session_id, timestamp_ms=now_ms,  # type: ignore[arg-type]
                           payload=payload or {})
         self.events.append(ev)

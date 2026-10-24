@@ -1,44 +1,56 @@
 // Plays the AI voices and local SFX in the browser.
-// Owner: Person B. Two paths: `playUrl` for a finished clip (TTS mp3 the backend saved),
-// `enqueue` for raw 16-bit 24 kHz mono PCM chunks (Higgs TTS 3 `pcm` streaming or Realtime
-// `response.output_audio.delta` after base64 decode).
+// Owner: Person B. Clips (Higgs TTS mp3s announced by `audio_status`) play strictly one at a
+// time in arrival order — only one AI voice ever speaks (CLAUDE.md §8). `enqueuePcm` is the
+// raw 16-bit 24 kHz path for the Realtime/streaming shape later.
 
 const SAMPLE_RATE = 24000;
 
-export function createPlayer() {
+export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onIdle = () => {} } = {}) {
   const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
-  let nextAt = 0;
-  let sources = [];
+  const queue = [];        // [{url, speaker, text}]
+  let current = null;      // {audio, clip}
+  let enabled = true;
   const sfxEl = document.getElementById('sfx');
-  let clip = null;
 
-  function enqueue(pcmBytes) {
+  function next() {
+    if (current || !queue.length) { if (!current) onIdle(); return; }
+    const clip = queue.shift();
+    const audio = new Audio(clip.url);
+    current = { audio, clip };
+    onClipStart(clip);
+    const done = () => {
+      if (current?.audio !== audio) return;
+      current = null;
+      onClipEnd(clip);
+      next();
+    };
+    audio.onended = done;
+    audio.onerror = done;
+    audio.play().catch(done);
+  }
+
+  function playClip(clip) {
+    if (!enabled) return;
+    queue.push(clip);
+    next();
+  }
+
+  function cancel() {           // Skip / Pause: stop the voice and drop what is queued
+    queue.length = 0;
+    if (current) { const { audio, clip } = current; current = null; audio.pause(); onClipEnd(clip); }
+    onIdle();
+  }
+
+  let nextAt = 0;
+  function enqueuePcm(pcmBytes) {
     const int16 = new Int16Array(pcmBytes.buffer, pcmBytes.byteOffset, Math.floor(pcmBytes.byteLength / 2));
-    const f32 = new Float32Array(int16.length);
-    for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768;
+    const f32 = Float32Array.from(int16, (v) => v / 32768);
     const buf = ctx.createBuffer(1, f32.length, SAMPLE_RATE);
     buf.copyToChannel(f32, 0);
     const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
+    src.buffer = buf; src.connect(ctx.destination);
     const at = Math.max(ctx.currentTime + 0.02, nextAt);
-    src.start(at);
-    nextAt = at + buf.duration;
-    sources.push(src);
-    src.onended = () => { sources = sources.filter((s) => s !== src); };
-  }
-
-  function playUrl(url) {
-    cancel();
-    clip = new Audio(url);
-    clip.play().catch(() => {});
-  }
-
-  function cancel() {           // barge-in / Skip: drop everything queued
-    sources.forEach((s) => { try { s.stop(); } catch { /* already stopped */ } });
-    sources = [];
-    nextAt = 0;
-    if (clip) { clip.pause(); clip = null; }
+    src.start(at); nextAt = at + buf.duration;
   }
 
   function playSfx(url) {
@@ -47,5 +59,11 @@ export function createPlayer() {
     sfxEl.play().catch(() => {});
   }
 
-  return { enqueue, playUrl, cancel, playSfx, resume: () => ctx.resume(), get busy() { return sources.length > 0 || Boolean(clip && !clip.paused); } };
+  return {
+    playClip, cancel, enqueuePcm, playSfx,
+    resume: () => ctx.resume(),
+    setEnabled(v) { enabled = v; if (!v) cancel(); },
+    get busy() { return Boolean(current) || queue.length > 0; },
+    get speaker() { return current?.clip.speaker ?? null; },
+  };
 }
