@@ -36,3 +36,13 @@ Files outside my paths: none
 Proposed decision changes (not implemented): none
 Next: P0-5 + P0-6 — engine.py start/slide_changed/presenter_transcript/tick/_maybe_interrupt/_ask/_handle_answer/_speak/_fire_curveball/_resolve and MockOrchestrator.decide/follow_up/assess_recovery, because P0-8 and P0-9 now pass
 Open question for the team: none
+
+## P0-5 + P0-6 (+ P0-12 C half) · 2026-10-23 · C · session 3
+Built: the engine (`backend/engine.py`) — start, slide_changed, presenter_transcript, tick (time_crunch deadline → Q&A, auto-resolve, scheduler → orchestrator → ask/fire), questions with one follow-up max, _speak via the voice seam, curveball firing (answerable kinds become a pending question; time_crunch keeps presenting; others recover), _resolve with the orchestrator's recovery assessment merged into the event, pause/resume/skip/restore_slides/end, Q&A step, finish → report. `MockOrchestrator` bodies: claim detection → grounded question from the most skeptical persona, thin-answer follow-up, timing-based recovery score, custom-persona expansion. `build_report`: fillers/WPM only from timestamped transcript with caveats, recovery dimension from scored curveballs, improvements with evidence quotes, key moments, persona feedback, unanswered count.
+Tests: test_e2e_mock.py 8/8 (5 spec + heckler answered→resolved, one-event-at-a-time + cooldown, restore_slides + Q&A flow); test_report.py 4/4 (nulls with caveats, fillers+WPM, WPM null without end times, unanswered named); suite 39/39
+Gate: ruff, pyright, schema, mocks, pytest all green — first fully green gate
+Demo path: steps 4–8 now run on the mock orchestrator end to end (DEMO_STATUS.md to be flipped after review)
+Files outside my paths: none
+Proposed decision changes (not implemented): none
+Next: P0-4 (slides.ingest_pdf) and the C half of P0-3b (ClaudeOrchestrator bodies incl. expand_persona), because the engine now runs
+Open question for the team: none

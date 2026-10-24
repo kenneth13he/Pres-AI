@@ -101,3 +101,58 @@ async def test_failed_question_never_breaks_the_session():
     await session.tick(s(36))  # no claim to ground a question in → "none"
     assert session.phase == "presenting"
     assert "question_queued" not in types(session)
+
+
+async def test_heckler_is_answered_then_resolved_as_answered():
+    session = make_session()
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.force_curveball("heckler", s(70))
+    assert session.phase == "answering" and session.pending_question is not None
+    assert session.pending_question["curveball_id"] == "cb-1"
+    await session.presenter_transcript(
+        s(80), seg(80, "No — the wrapper is ten percent of it; the data pipeline is the moat."))
+    res = next(e for e in session.events if e.type == "curveball_resolved")
+    assert res.payload["resolution"] == "answered"
+    assert res.payload["recovery"]["score"] is not None
+    assert session.phase == "presenting"
+
+
+async def test_one_event_at_a_time_and_cooldown_between_them():
+    session = make_session(difficulty="brutal")
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.presenter_transcript(s(33), seg(33, "We have 2,000 users already."))
+    await session.tick(s(36))
+    assert session.phase == "answering"
+    await session.force_curveball("slides_down", s(37))  # refused: a question is pending
+    assert session.curveballs.active is None
+    await session.presenter_transcript(
+        s(45), seg(45, "Yes, two thousand paying users from the three pilot schools we signed."))
+    assert session.phase == "presenting"
+    await session.presenter_transcript(s(50), seg(50, "And revenue is 40% up month on month."))
+    await session.tick(s(53))  # inside the 40 s cooldown → nothing
+    assert len([e for e in session.events if e.type == "question_queued"]) == 1
+
+
+async def test_restore_slides_resolves_early_and_qna_asks_then_finishes():
+    session = make_session(qna_questions=1)
+    await session.start(0)
+    await session.slide_changed(s(1), 3)
+    await session.force_curveball("slides_down", s(100))
+    await session.presenter_transcript(s(102), seg(102, "Fine, from memory then."))
+    await session.control("restore_slides", s(110))
+    res = next(e for e in session.events if e.type == "curveball_resolved")
+    assert res.payload["resolution"] == "presenter_restored"
+    assert res.payload["recovery"]["resume_after_ms"] == 2_000
+    await session.control("end", s(150))
+    assert session.phase == "qna"
+    await session.presenter_transcript(s(151), seg(151, "Our churn is only 2 percent."))
+    await session.tick(s(152))  # Q&A question grounded in that claim
+    assert session.phase == "answering"
+    await session.presenter_transcript(
+        s(160), seg(160, "Measured over six months across every cohort we have onboarded so far."))
+    assert session.phase == "qna"
+    await session.tick(s(161))  # 1 of 1 asked → finish
+    assert session.ended and session.report is not None
+    assert session.report.metrics["unanswered_questions"] == 0

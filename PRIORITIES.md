@@ -13,14 +13,14 @@ Format: `priority · id · owner · done · blocked by · what`
 | P0 | P0-3 | A | no | — | Setup flow: preset picker, PDF drop, Start — three clicks to `/room` |
 | P0 | P0-3b | A (+C) | no | — | Audience builder: roster picker, custom persona text, skepticism, curveball picker |
 | P0 | P0-4 | C | no | — | PDF upload → per-slide text + PNG (`services/slides.py`) |
-| P0 | P0-5 | C | no | — | Orchestrator: one grounded question quoting the transcript (`test_e2e_mock::test_claim_question_answer_follow_up`) |
-| P0 | P0-6 | C | no | P0-5 | Answer → follow-up (max 1) → hand back |
+| P0 | P0-5 | C | yes (mock orchestrator + engine; Claude bodies land with P0-3b) | — | Orchestrator: one grounded question quoting the transcript (`test_e2e_mock::test_claim_question_answer_follow_up`) |
+| P0 | P0-6 | C | yes | — | Answer → follow-up (max 1) → hand back |
 | P0 | P0-7 | A | no | — | Room UI on mocks: slide viewer, tiles, speaking state, captions, timer, Pause/Skip/End |
 | P0 | P0-8 | C | yes | — | Scheduler: one speaker, cooldowns, caps, no repeats (`test_scheduler.py`) |
 | P0 | P0-9 | C | yes (engine; e2e wiring lands with P0-5/6) | — | Curveball engine: slides_down / time_crunch / heckler + recovery tracking (`test_curveballs.py`, e2e) |
 | P0 | P0-10 | A | no | — | Curveball UI effects for the three MVP kinds, from mocks |
 | P0 | P0-11 | B | no | P0-2 | Persona voices (or one voice + labels) and a neutral moderator voice |
-| P0 | P0-12 | A + C | no | P0-9 | Report page: dimensions, Recovery card, key moments, evidence quotes |
+| P0 | P0-12 | A + C | C done (`build_report`); A page pending | — | Report page: dimensions, Recovery card, key moments, evidence quotes |
 | P0 | P0-13 | all | no | all P0 | End-to-end live run, twice in a row, nobody touching it |
 | P0 | P0-14 | all | no | P0-13 | Backup screen recording in `demo/` |
 

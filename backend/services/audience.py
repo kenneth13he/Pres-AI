@@ -10,6 +10,7 @@ The prompts and the Claude call shape are settled; the bodies are skeletons.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
@@ -21,6 +22,8 @@ from spec.contracts import (
     RecoveryAssessment,
     TranscriptSegment,
 )
+
+from .curveballs import CATALOG
 
 
 @dataclass
@@ -55,33 +58,105 @@ class Orchestrator(Protocol):
 # ---------------------------------------------------------------------------------
 
 
+# A sentence that makes a checkable claim: a number, a quantity word, or an absolute.
+CLAIM_RE = re.compile(
+    r"[^.!?]*\b(\d[\d,.]*\s*(%|percent|million|thousand|k|x)?|customers|users|revenue|"
+    r"everyone|nobody|always|never|best|first|only)\b[^.!?]*[.!?]?",
+    re.IGNORECASE,
+)
+SUBSTANTIVE_WORDS = 12  # an answer this long is taken as having given the detail
+
+
+def find_claim(segments: list[TranscriptSegment]) -> str | None:
+    """The most recent presenter sentence that states a checkable claim, verbatim."""
+    for seg in reversed(segments):
+        if seg.speaker != "presenter":
+            continue
+        m = CLAIM_RE.search(seg.text)
+        if m:
+            return m.group(0).strip()
+    return None
+
+
 class MockOrchestrator:
+    """Deterministic stand-in: grounds a question in a detected claim, asks one follow-up
+    when the answer is thin, scores recovery from timing. No network."""
+
     async def decide(self, ctx: OrchestratorContext) -> OrchestratorDecision:
-        # TODO(C): if question_allowed and the recent transcript contains a claim (a number,
-        # "%", "customers", "users", "always", "never"...), return a question from the most
-        # skeptical persona that quotes the claim in cited_transcript_excerpt. Else if
-        # eligible_kinds, return a curveball of the first kind (persona = one whose `plays`
-        # includes it). Else "none".
-        return OrchestratorDecision(action="none", reason="not implemented")
+        if ctx.question_allowed:
+            claim = find_claim(ctx.recent_transcript)
+            already = {q.get("q") for q in ctx.prior_qa}
+            if claim and all(claim not in (q or "") for q in already):
+                persona = max(ctx.personas, key=lambda p: p.skepticism)
+                return OrchestratorDecision(
+                    action="question",
+                    persona_id=persona.id,
+                    line=f'You said "{claim[:70].rstrip(".")}" — what evidence supports that?',
+                    reason="unsupported claim in transcript",
+                    cited_transcript_excerpt=claim,
+                    slide_number=ctx.slide_number,
+                )
+        if ctx.eligible_kinds:
+            kind = ctx.eligible_kinds[0]
+            spec = CATALOG[kind]
+            persona_id = None
+            if spec.speaker == "persona":
+                players = [p for p in ctx.personas if kind in p.plays] or ctx.personas
+                persona_id = players[0].id
+            return OrchestratorDecision(
+                action="curveball",
+                curveball_kind=kind,
+                persona_id=persona_id,
+                line=spec.default_line or None,
+                reason="curveball budget available and kind eligible",
+                slide_number=ctx.slide_number,
+            )
+        return OrchestratorDecision(action="none", reason="nothing worth interrupting for")
 
     async def follow_up(
         self, question: str, answer: str, persona: Persona, used: int
     ) -> FollowUpVerdict:
-        # TODO(C): used ≥ 1 or a substantive answer → satisfied ("Fair enough, go on.");
-        # a thin answer → one follow-up asking for the missing detail.
-        return FollowUpVerdict(verdict="satisfied", line="Go on.")
+        if used >= 1 or len(answer.split()) >= SUBSTANTIVE_WORDS:
+            return FollowUpVerdict(verdict="satisfied", line="Fair enough, go on.")
+        return FollowUpVerdict(
+            verdict="follow_up",
+            line="That's the plan — what early data do you have for it?",
+            missing_detail="evidence for the stated approach",
+        )
 
     async def assess_recovery(
         self, kind: CurveballKind, line: str, after: list[TranscriptSegment],
         resume_after_ms: int | None,
     ) -> RecoveryAssessment:
-        # TODO(C): deterministic rubric stand-in: quote after[0].text as evidence; score from
-        # resume_after_ms; 0 with a clear observation when `after` is empty.
-        raise NotImplementedError
+        if not after:
+            return RecoveryAssessment(
+                score=0, evidence="(no presenter speech after the event)",
+                observation="Did not resume within the window.",
+                suggestion="Keep a three-point outline in your head so you can restart anywhere.",
+            )
+        if resume_after_ms is None:
+            score, observation = 50, "Resumed; timing could not be measured."
+        elif resume_after_ms < 5_000:
+            score, observation = 85, "Resumed promptly and kept the thread."
+        else:
+            score, observation = 60, "Slow to resume."
+        return RecoveryAssessment(
+            score=score, evidence=after[0].text, observation=observation,
+            suggestion="Name what happened in one sentence, then continue from your outline.",
+        )
 
     async def expand_persona(self, description: str, index: int) -> Persona:
-        # TODO(C): a Persona with id f"custom_{index}", custom=True, role=description.
-        raise NotImplementedError
+        words = description.strip().split()
+        return Persona(
+            id=f"custom_{index}",
+            name=" ".join(words[:3]).title() or f"Custom {index}",
+            role=description.strip()[:60] or "Custom audience member",
+            focus=["what this person cares about", "clarity"],
+            skepticism=0.6,
+            style_hint="neutral",
+            plays=["heckler", "bait"],
+            custom=True,
+        )
 
 
 # ---------------------------------------------------------------------------------
