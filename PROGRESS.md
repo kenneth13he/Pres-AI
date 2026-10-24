@@ -317,3 +317,9 @@ Gate: user authorized new-branch publication and post-push verification. P0-13 r
 Files outside my paths: frontend integration, meaningful frontend regressions and handoff/readme/demo/decision records, all required by requested optimized release
 Proposed decision changes (not implemented): none
 Next: push the reviewed commit to the new branch, verify its remote SHA and test a fresh checkout; provide the exact branch link and any remaining human acceptance limits.
+
+
+## Post-push release verification · 2026-10-24
+Published: feat/optimized-presentation-room at code commit1d1e3b8; Git remote and GitHub metadata match. A new GitHub clone installed pinned requirements in a fresh Python3.12 environment; actual setup, full299 backend gate and178 frontend/audio tests passed. Disposable server static/module/portrait checks, PDF/PNG, default PTT, synthetic held WebSocket input, frozen Pause timer, Resume/End and persisted report passed with zero error events and no provider calls. Separate bounded real Boson synthetic-speech/transcription/grounded-reasoning/response-PCM check passed without fallback.
+Gate: all automatic release checks passed. Human two-run and audible microphone/playback acceptance remain open; no perfect-operation or new recording claim is made. This verification update is documentation only, with application/tests/dependencies unchanged from1d1e3b8. Keys/raw evidence/media remain excluded.
+Next: collaborators use the optimized branch and COLLABORATOR_HANDOFF.md; finish the documented human acceptance when available.

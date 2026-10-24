@@ -31,6 +31,23 @@ for all checked resources; changed entry points/styles are versioned to avoid st
 New regressions exercise wizard navigation, upload gating, safe profiles and preset routes,
 and room-layout selection. These checks do not close P0-13's human presentation gate.
 
+## Post-push verification
+
+Published code commit `1d1e3b8` was cloned from GitHub into a new directory and installed
+from the pinned requirements in a new Python 3.12 environment. Actual `make setup`,
+`make check` and the frontend gate passed: **299 backend + 178 frontend/audio tests**.
+A disposable mock/mock server from that checkout served all 28 checked page/module/style
+URLs and all portrait assets, uploaded the six-page PDF, returned a valid slide PNG,
+created a hold-to-talk session by default, processed a synthetic held WebSocket turn,
+froze Pause time, resumed, ended and persisted a valid report. There were zero error
+events and no provider calls in that smoke test. The separate bounded real Boson speech →
+transcription → grounded question → speech check also passed without fallback.
+
+GitHub's branch SHA and the fetched checkout were verified against the published commit.
+This verification update changes documentation only; application, tests and dependency
+sources remain identical to that verified code commit. Two human recorded presentations
+and same-build audible microphone/playback acceptance remain open under P0-13.
+
 ## Earlier deadline handoff
 
 The user requested publication with final human tests left open, then asked to finish the
