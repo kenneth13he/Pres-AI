@@ -210,25 +210,100 @@ def test_video_shape_follows_the_portrait(tmp_path):
 
 
 def test_custom_persona_voice_follows_its_face_and_roster_faces_stay_reserved(tmp_path):
+    from backend.services.voice_higgs import character_of, delivery_tags
     from spec.contracts import Persona
 
-    d = faces(tmp_path, ["vc.jpg", "student.jpg", "mentor.jpg", "pool_1_margaret.f.jpg",
-                         "pool_2_lucas.m.jpg"])
+    d = faces(tmp_path, ["vc--grace.jpg", "student--ethan.jpg", "mentor--emily.jpg",
+                         "pool_1--margaret.jpg", "pool_2--lucas.jpg"])
     custom = Persona(id="custom_1", name="Mum", role="baker", focus=["money"], skepticism=0.6,
                      custom=True)
     cfg = make_config(personas=[presets.personas()["vc"].model_dump(),
                                 presets.personas()["student"].model_dump(),
                                 custom.model_dump()])
     got = assign_faces([p.id for p in cfg.personas], d)
-    assert got["custom_1"].name == "pool_1_margaret.f.jpg"  # not mentor.jpg: that's reserved
+    assert got["custom_1"].name == "pool_1--margaret.jpg"  # not mentor's: that's reserved
     voices = assign_voices(cfg, got)
-    assert voices["vc"] == "eleanor" and voices["student"] == "jake"
-    assert voices["custom_1"] == "chloe"  # female face → the free female voice
+    # Each character keeps its own voice; Margaret shares Grace's base voice but not her sound.
+    assert voices == {"moderator": "nora", "vc": "eleanor", "student": "jake",
+                      "custom_1": "eleanor"}
+    assert delivery_tags(character_of(got["vc"]), None) == ""
+    assert "pitch_low" in delivery_tags(character_of(got["custom_1"]), None)
+
+
+def test_a_character_sounds_the_same_in_every_preset(tmp_path):
+    from backend.services.voice_higgs import CHARACTER_VOICES
+
+    d = faces(tmp_path, ["classmate--daniel.jpg", "student--ethan.jpg",
+                         "professor--dr_wilson.jpg"])
+    cfg = make_config(preset_id="class_presentation", personas=[
+        presets.personas()[pid].model_dump() for pid in ("professor", "student", "classmate")])
+    voices = assign_voices(cfg, assign_faces([p.id for p in cfg.personas], d))
+    assert voices["classmate"] == CHARACTER_VOICES["daniel"][0]  # never re-voiced for a clash
+    assert voices["professor"] == CHARACTER_VOICES["dr_wilson"][0]
+
+
+def test_mood_sets_the_emotion_and_the_signature_stays():
+    from backend.services.voice_higgs import delivery_tags
+
+    assert delivery_tags("margaret", "warm").startswith("<|emotion:contentment|>")
+    assert delivery_tags("margaret", "warm").endswith("<|prosody:speed_slow|>")
+    assert delivery_tags("grace", "impatient") == "<|emotion:anger|><|prosody:speed_fast|>"
+    assert delivery_tags(None, "pressing") == "<|emotion:determination|>"
 
 
 def test_repo_faces_cover_every_roster_persona():
     from pathlib import Path
 
     faces_dir = Path(__file__).resolve().parents[2] / "demo" / "faces"
+    from backend.services.voice_higgs import CHARACTER_VOICES, character_of
+
     for pid in presets.personas():
-        assert (faces_dir / f"{pid}.jpg").exists(), pid
+        files = list(faces_dir.glob(f"{pid}--*.jpg"))
+        assert len(files) == 1, pid
+        assert character_of(files[0]) in CHARACTER_VOICES, files[0].name
+
+
+async def test_idle_loop_is_rendered_once_per_face_and_announced(tmp_path):
+    import asyncio
+
+    posts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/videos") and request.method == "POST":
+            posts.append("video")
+            return httpx.Response(200, json={"id": "video_1", "status": "queued"}, request=request)
+        if path.endswith("/videos/video_1"):
+            return httpx.Response(200, json={"id": "video_1", "status": "completed"},
+                                  request=request)
+        if path.endswith("/content"):
+            return httpx.Response(200, content=b"fake-mp4", request=request)
+        return httpx.Response(404, request=request)
+
+    def voice():
+        v = HiggsVoice(client=httpx.AsyncClient(base_url="https://api.boson.ai/v1",
+                                                transport=httpx.MockTransport(handler)),
+                       audio_dir=tmp_path / "audio",
+                       faces_dir=faces(tmp_path, ["vc--grace.jpg"])
+                       if not (tmp_path / "faces").exists() else tmp_path / "faces")
+        v.avatar_enabled = True
+        return v
+
+    idles: list[str] = []
+
+    async def on_event(ev):
+        if ev.payload["status"] == "idle":
+            idles.append(ev.payload["url"])
+
+    v = voice()
+    v.on_event(on_event)
+    await v.start_voice_session("s1", make_config())
+    for _ in range(200):  # ffmpeg's first start can take a moment
+        if idles:
+            break
+        await asyncio.sleep(0.05)
+    assert idles and idles[0].startswith("/audio/_idle/vc--grace-") and posts == ["video"]
+    v2 = voice()  # a new session reuses the cached loop: no second render
+    v2.on_event(on_event)
+    await v2.start_voice_session("s2", make_config())
+    assert len(idles) == 2 and posts == ["video"]

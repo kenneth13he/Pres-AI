@@ -15,8 +15,17 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const state = {
   phase: 'setup', startedAt: null, pausedAt: null, slide: 1, deck: null, personas: [], preset: null,
   timerOverrideUntil: null, activeCurveball: null, link: null, inputMode: 'live', mic: null,
-  voices: true, lineTag: {}, faces: {},
+  voices: true, lineTag: {}, faces: {}, idle: {},
 };
+
+function startIdle(id) {
+  const el = seat(id)?.querySelector('video.idle');
+  const url = state.idle[id];
+  if (!el || !url) return;
+  if (!el.src.endsWith(url)) el.src = url;
+  el.currentTime = Math.random() * 3; // people don't blink in unison
+  el.play().then(() => el.closest('.portrait')?.classList.add('idle-on')).catch(() => {});
+}
 
 // ---- people at the table ------------------------------------------------------------
 const PALETTE = [
@@ -29,10 +38,13 @@ const initials = (name) => (name || '?').split(/\s+/).filter(Boolean).slice(0, 2
 function seatHtml(p, i, extra = '') {
   const [skin, shirt] = p.id === 'moderator' ? ['#94a3b8', '#334155'] : colourFor(i);
   const face = state.faces[p.id];
+  // Layers, bottom to top: still photo (first paint) → idle loop (listening: blinks, small
+  // moves) → talking clip. When a line ends we fade back to the idle loop, never the still.
   const figure = face ? `
       <div class="portrait">
         <img src="${esc(face)}" alt="${esc(p.name)}" />
-        <video playsinline preload="auto"></video>
+        <video class="idle" playsinline muted loop preload="auto"></video>
+        <video class="talk" playsinline preload="auto"></video>
         <span class="thinking">thinking…</span>
         <div class="waves"><i></i><i></i><i></i></div>
       </div>` : `
@@ -50,15 +62,13 @@ function seatHtml(p, i, extra = '') {
 }
 
 function renderTiles() {
+  // Everyone sits together behind one table; the moderator is the room's host by the screen.
   const people = state.personas;
-  const mid = Math.ceil(people.length / 2);
-  // moderator sits at the end of the table; the panel fills the middle
-  const ordered = [...people.slice(0, mid).map((p, i) => [p, i]), ...people.slice(mid).map((p, i) => [p, mid + i])];
-  $('tiles').innerHTML = ordered.map(([p, i]) => seatHtml(p, i)).join('') +
-    seatHtml({ id: 'moderator', name: 'Moderator' }, 0, 'moderator');
-  $('plates').innerHTML = ordered.map(([p]) => `
-    <div class="plate"><b>${esc(p.name)}</b><br>${esc(p.role)}${p.custom ? ' · custom' : ''}</div>`).join('') +
-    '<div class="plate" style="opacity:.6"><b>Moderator</b><br>runs the room</div>';
+  $('tiles').innerHTML = people.map((p, i) => seatHtml(p, i, i === 1 && people.length === 3 ? 'far' : '')).join('');
+  $('host').innerHTML = seatHtml({ id: 'moderator', name: 'Host' }, 0, 'moderator');
+  $('plates').innerHTML = people.map((p) => `
+    <div class="plate"><b>${esc(p.name)}</b><br>${esc(p.role)}${p.custom ? ' · custom' : ''}</div>`).join('');
+  for (const id of Object.keys(state.idle)) startIdle(id);
 }
 const seat = (id) => $('tiles').querySelector(`[data-persona="${id}"]`);
 
@@ -186,10 +196,11 @@ function onEvent(ev) {
       if (p.status === 'clip' && state.voices) {
         seat(p.speaker)?.classList.remove('thinking');
         player.playClip({ url: p.url, speaker: p.speaker, text: p.text, kind: p.kind,
-                          el: p.kind === 'video' ? seat(p.speaker)?.querySelector('video') : null });
+                          el: p.kind === 'video' ? seat(p.speaker)?.querySelector('video.talk') : null });
       } else if (p.status === 'tts_failed') {
         seat(p.speaker)?.classList.remove('thinking');
       }
+      if (p.status === 'idle') { state.idle[p.speaker] = p.url; startIdle(p.speaker); }
       if (p.status === 'ready') {
         $('conn').textContent = `live · voices on${p.avatars ? ' · talking heads on' : ''}`;
         if (p.faces && Object.keys(p.faces).length) { state.faces = p.faces; renderTiles(); }

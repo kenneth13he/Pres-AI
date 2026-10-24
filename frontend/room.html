@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PresAI · Room</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="/css/app.css?v=room3" />
+  <link rel="stylesheet" href="/css/app.css?v=room5" />
 </head>
 <body class="min-h-screen">
   <main class="mx-auto max-w-7xl px-4 py-5">
@@ -53,7 +53,9 @@
           </div>
         </div>
 
-        <div class="table-scene mt-6">
+        <div class="table-scene mt-4">
+          <div class="back-wall"></div>
+          <div id="host" class="host"></div>
           <div id="tiles" class="seats"></div>
           <div class="table-top"><div id="plates" class="plates"></div></div>
           <div class="you-marker">you · presenting</div>
@@ -73,6 +75,6 @@
     <p class="mt-4 text-xs text-slate-600">Personas are fictional · Voices by Higgs TTS · Pause and Skip are never scored against you · <span id="conn">connecting…</span></p>
   </main>
   <audio id="sfx" preload="auto"></audio>
-  <script type="module" src="/js/room.js?v=room3"></script>
+  <script type="module" src="/js/room.js?v=room4"></script>
 </body>
 </html>

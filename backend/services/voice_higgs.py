@@ -41,6 +41,33 @@ AVATAR_BUDGET_S = float(os.environ.get("BOSON_AVATAR_BUDGET_S", "9"))
 PRESET_VOICES = ["marcus", "eleanor", "jake", "chloe", "oliver", "nora"]
 MODERATOR_VOICE = "nora"
 
+# A character's voice belongs to its face: the same person always sounds the same, in every
+# session and every preset. Characters that share a base voice are told apart by a fixed
+# prosody signature (pitch/pace), so no seat is ever re-voiced to resolve a clash.
+# Face files are named `<persona_id>--<character>.jpg` (pinned) or `pool_<n>--<character>.jpg`.
+CHARACTER_VOICES: dict[str, tuple[str, str]] = {
+    "grace": ("eleanor", ""),
+    "margaret": ("eleanor", "<|prosody:pitch_low|><|prosody:speed_slow|>"),
+    "emily": ("chloe", ""),
+    "sofia": ("chloe", "<|prosody:pitch_low|>"),
+    "ethan": ("jake", ""),
+    "daniel": ("jake", "<|prosody:pitch_low|>"),
+    "lucas": ("oliver", ""),
+    "arjun": ("oliver", "<|prosody:pitch_high|>"),
+    "mr_chen": ("marcus", ""),
+    "dr_wilson": ("marcus", "<|prosody:speed_slow|>"),
+}
+# Mood of the moment → emotion. The talking head's expression follows the voice, so this is
+# what makes the face frown at a heckle and soften on "fair enough".
+MOOD_TAGS: dict[str, str] = {
+    "impatient": "<|emotion:anger|><|prosody:speed_fast|>",
+    "confused": "<|emotion:confusion|>",
+    "thoughtful": "<|emotion:contemplation|>",
+    "pressing": "<|emotion:determination|>",
+    "warm": "<|emotion:contentment|>",
+    "neutral": "",
+}
+
 # Roster default voices (distinct within every preset's three seats). Custom personas and
 # clashes get the first preset not already at the table.
 ROSTER_VOICES: dict[str, str] = {
@@ -49,13 +76,21 @@ ROSTER_VOICES: dict[str, str] = {
     "senior_eng": "marcus", "recruiter": "chloe", "customer": "chloe",
     "journalist": "eleanor", "exec": "oliver",
 }
-# Persona style hint → TTS delivery tags at the start of the text.
-STYLE_TAGS: dict[str, str] = {
-    "impatient": "<|emotion:anger|><|prosody:speed_fast|>",
-    "confused": "<|emotion:confusion|>",
-    "thoughtful": "<|emotion:contemplation|>",
-    "neutral": "",
-}
+STYLE_TAGS = MOOD_TAGS  # older name, kept for callers
+
+
+def character_of(face: Path | None) -> str | None:
+    """`vc--grace.jpg` → "grace"; `pool_1--margaret.jpg` → "margaret"."""
+    if face is None or "--" not in face.stem:
+        return None
+    return face.stem.split("--", 1)[1].split(".")[0]
+
+
+def delivery_tags(character: str | None, mood: str | None) -> str:
+    """One group of delivery tokens (a new group replaces the previous one entirely):
+    the mood's emotion plus the character's fixed prosody signature."""
+    signature = CHARACTER_VOICES.get(character or "", ("", ""))[1]
+    return MOOD_TAGS.get(mood or "neutral", "") + signature
 
 
 class SpendCounter:
@@ -69,61 +104,53 @@ class SpendCounter:
         return cls.tts_chars / 1000 * 0.015 + cls.realtime_ms / 60_000 * 0.016
 
 
-FEMALE_VOICES = ["eleanor", "chloe"]
-MALE_VOICES = ["marcus", "jake", "oliver"]
-
-
-def face_gender(face: Path | None) -> str | None:
-    """Pool faces carry a tag in the name — `pool_1_margaret.f.jpg` — so a custom persona's
-    voice can match the face it was given."""
-    if face is None:
-        return None
-    tag = face.stem.rsplit(".", 1)[-1] if "." in face.stem else ""
-    return tag if tag in ("f", "m") else None
-
-
 def assign_voices(config: SessionConfig, faces: dict[str, Path] | None = None) -> dict[str, str]:
-    """Persona id → preset voice, all distinct and never the moderator's voice. A persona
-    without a roster voice (custom) gets a voice matching its face's gender when known."""
+    """Persona id → base preset voice. A seat with a known character face always uses that
+    character's voice (its prosody signature keeps it distinct); a faceless seat uses its
+    roster voice, or the first preset not yet at the table."""
     out: dict[str, str] = {"moderator": MODERATOR_VOICE}
     used = {MODERATOR_VOICE}
     for p in config.personas:
-        want = p.voice_id or ROSTER_VOICES.get(p.id)
-        if want in PRESET_VOICES and want not in used:
-            out[p.id] = want
+        character = character_of((faces or {}).get(p.id))
+        if character in CHARACTER_VOICES:
+            out[p.id] = CHARACTER_VOICES[character][0]
         else:
-            gender = face_gender((faces or {}).get(p.id))
-            prefer = (FEMALE_VOICES if gender == "f" else MALE_VOICES if gender == "m" else [])
-            out[p.id] = next((v for v in prefer + PRESET_VOICES if v not in used),
-                             PRESET_VOICES[0])
+            want = p.voice_id or ROSTER_VOICES.get(p.id)
+            out[p.id] = want if want in PRESET_VOICES and want not in used else next(
+                (v for v in PRESET_VOICES if v not in used), PRESET_VOICES[0])
         used.add(out[p.id])
     return out
 
 
+def _key(face: Path) -> str:
+    return face.stem.split("--", 1)[0]
+
+
 def assign_faces(persona_ids: list[str], faces_dir: Path | None = None) -> dict[str, Path]:
-    """Persona id → portrait file. Pinned files first, then the rest in name order; test
-    faces (leading "_") only if there are no others. Seats without a face stay illustrated."""
+    """Persona id → portrait. `<persona_id>--<character>` files are pinned; `pool_*` files go to
+    the remaining (custom) seats in name order, never repeating a character already seated.
+    Faces pinned to other roster personas are never handed out. Test faces (leading "_") are
+    used only when nothing else is there. Seats without a face stay illustrated."""
     d = faces_dir or FACES_DIR
     files = sorted(p for p in d.glob("*") if p.suffix.lower() in FACE_EXTS) if d.exists() else []
-    pinned = {p.stem: p for p in files}
-    # Faces pinned to *other* roster personas are not up for grabs: they belong to someone.
-    reserved = set(persona_ids) | set(ROSTER_VOICES)
-    pool = [p for p in files if p.stem not in reserved and not p.stem.startswith("_")]
-    if not pool:
-        pool = [p for p in files if p.stem.startswith("_")]
     out: dict[str, Path] = {}
     for pid in persona_ids:
-        if pid in pinned:
-            out[pid] = pinned[pid]
-    free = [p for p in pool if p not in out.values()]
+        pinned = next((f for f in files if _key(f) == pid), None)
+        if pinned:
+            out[pid] = pinned
+    reserved = set(persona_ids) | set(ROSTER_VOICES)
+    pool = [f for f in files if _key(f) not in reserved and not f.stem.startswith("_")]
+    if not pool:
+        pool = [f for f in files if f.stem.startswith("_")]
     for pid in persona_ids:
         if pid in out or not pool:
             continue
-        # A single available face is shared; otherwise each seat gets its own until they run out.
-        if len(pool) == 1:
-            out[pid] = pool[0]
-        elif free:
-            out[pid] = free.pop(0)
+        seated = {character_of(f) or f.stem for f in out.values()}
+        free = [f for f in pool if (character_of(f) or f.stem) not in seated]
+        if free:
+            out[pid] = free[0]
+        elif len(pool) == 1:
+            out[pid] = pool[0]  # a lone test face is shared
     return out
 
 
@@ -138,6 +165,7 @@ class HiggsVoice:
         self.background = background
         self._queue: asyncio.Queue[tuple[str, str, str | None]] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
+        self._idle_jobs: list[tuple[str, Path]] = []
         self.api_key = os.environ.get("BOSON_API_KEY", "")
         self.tts_model = os.environ.get("BOSON_TTS_MODEL", "higgs-tts-3")
         self.audio_dir = audio_dir or AUDIO_DIR
@@ -167,7 +195,7 @@ class HiggsVoice:
         """Render one line to an mp3 clip and announce it. A failure is an audio_status with
         status "tts_failed": the caption already showed the line, so the room carries on."""
         voice = self._voices.get(speaker) or PRESET_VOICES[0]
-        tagged = STYLE_TAGS.get(style or "neutral", "") + text
+        tagged = delivery_tags(character_of(self._faces.get(speaker)), style) + text
         SpendCounter.tts_chars += len(tagged)
         try:
             resp = await self._client.post("/audio/speech", json={
@@ -197,13 +225,18 @@ class HiggsVoice:
         face = self._faces.get(speaker)
         if not (self.avatar_enabled and face):
             return False
-        deadline = time.monotonic() + self.avatar_budget_s
+        ok = await self._avatar_video(face, ("line.mp3", mp3, "audio/mpeg"), dest,
+                                      budget_s=self.avatar_budget_s, speaker=speaker)
+        return ok
+
+    async def _avatar_video(self, face: Path, audio: tuple[str, bytes, str], dest: Path,
+                            budget_s: float, speaker: str = "") -> bool:
+        deadline = time.monotonic() + budget_s
         try:
             resp = await self._client.post(
                 "/videos",
                 data={"model": "higgs-avatar", "size": _video_size(face)},
-                files={"ref_image": (face.name, face.read_bytes(), _mime(face)),
-                       "input": ("line.mp3", mp3, "audio/mpeg")},
+                files={"ref_image": (face.name, face.read_bytes(), _mime(face)), "input": audio},
             )
             resp.raise_for_status()
             video_id = resp.json()["id"]
@@ -231,6 +264,42 @@ class HiggsVoice:
         self._voices = assign_voices(config, self._faces)
         await self._status("ready", voices=self._voices, avatars=self.avatar_enabled,
                            faces={pid: f"/demo/faces/{p.name}" for pid, p in self._faces.items()})
+        if self.avatar_enabled:
+            for pid, face in self._faces.items():
+                cached = self._idle_path(face)
+                if cached.exists():
+                    await self._status("idle", speaker=pid, url=self._idle_url(face))
+                elif self.background:
+                    self._idle_jobs.append((pid, face))
+            if self._idle_jobs and (self._worker is None or self._worker.done()):
+                self._worker = asyncio.create_task(self._work())
+
+    # ---- idle loops: the face is alive while listening, never a frozen photo ---------------
+
+    def _idle_path(self, face: Path) -> Path:
+        return self.audio_dir / "_idle" / f"{face.stem}-{int(face.stat().st_mtime)}.mp4"
+
+    def _idle_url(self, face: Path) -> str:
+        return f"/audio/_idle/{self._idle_path(face).name}"
+
+    async def _render_idle(self, speaker: str, face: Path) -> None:
+        """6 s of silence → Higgs Avatar → a listening loop (blinks, small head moves), made
+        seamless by playing it forward then backward. Cached per face file, so each face
+        costs one render ever. Failures leave the still portrait; nothing else depends on it."""
+        dest = self._idle_path(face)
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            raw = dest.with_suffix(".raw.mp4")
+            ok = await self._avatar_video(face, ("silence.wav", _silence_wav(6), "audio/wav"),
+                                          raw, budget_s=40)
+            if not ok:
+                return
+            if not await _pingpong(raw, dest):
+                raw.replace(dest)
+            raw.unlink(missing_ok=True)
+        for pid, f in self._faces.items():
+            if f == face:
+                await self._status("idle", speaker=pid, url=self._idle_url(face))
 
     async def send_context(self, text: str) -> None:
         return None  # Shape 2 needs no context on the voice side
@@ -252,12 +321,20 @@ class HiggsVoice:
             self._worker = asyncio.create_task(self._work())
 
     async def _work(self) -> None:
-        while not self._queue.empty():
-            speaker, text, style = self._queue.get_nowait()
-            try:
-                await self._render(speaker, text, style)
-            except Exception as exc:  # a broken render never kills the worker
-                await self._status("tts_failed", speaker=speaker, detail=str(exc)[:200])
+        """Spoken lines always go first; idle loops fill the gaps between them."""
+        while not self._queue.empty() or self._idle_jobs:
+            if not self._queue.empty():
+                speaker, text, style = self._queue.get_nowait()
+                try:
+                    await self._render(speaker, text, style)
+                except Exception as exc:  # a broken render never kills the worker
+                    await self._status("tts_failed", speaker=speaker, detail=str(exc)[:200])
+            else:
+                pid, face = self._idle_jobs.pop(0)
+                try:
+                    await self._render_idle(pid, face)
+                except Exception as exc:
+                    await self._status("idle_failed", speaker=pid, detail=str(exc)[:200])
 
     async def play_sfx(self, sfx_id: str) -> None:
         return None  # phone/door are local clips the browser plays from sfx_url
@@ -298,3 +375,33 @@ def _video_size(face: Path) -> str:
     if ratio < 0.87:
         return "480x640"
     return "640x640"
+
+
+def _silence_wav(seconds: int) -> bytes:
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(24_000)
+        w.writeframes(b"\x00\x00" * 24_000 * seconds)
+    return buf.getvalue()
+
+
+async def _pingpong(src: Path, dest: Path) -> bool:
+    """Forward then reversed → a loop with no seam. False if ffmpeg is unavailable/fails."""
+    import shutil
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return False
+    proc = await asyncio.create_subprocess_exec(
+        ffmpeg, "-y", "-loglevel", "error", "-i", str(src),
+        "-filter_complex", "[0:v]reverse[r];[0:v][r]concat=n=2:v=1:a=0[v]",
+        "-map", "[v]", "-an", "-movflags", "+faststart", str(dest),
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+    )
+    _, err = await proc.communicate()
+    return proc.returncode == 0 and dest.exists()

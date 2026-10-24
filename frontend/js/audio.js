@@ -25,7 +25,9 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
     const done = () => {
       if (current?.audio !== audio) return;
       current = null;
-      if (clip.el) clip.el.closest('.portrait')?.classList.remove('live');
+      // Fade back to the listening loop; without one, hold the last frame (never the still).
+      const portrait = clip.el?.closest('.portrait');
+      if (portrait?.classList.contains('idle-on')) portrait.classList.remove('live');
       onClipEnd(clip);
       next();
     };
@@ -44,7 +46,8 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
     queue.length = 0;
     if (current) {
       const { audio, clip } = current; current = null; audio.pause();
-      clip.el?.closest('.portrait')?.classList.remove('live');
+      const portrait = clip.el?.closest('.portrait');
+      if (portrait?.classList.contains('idle-on')) portrait.classList.remove('live');
       onClipEnd(clip);
     }
     onIdle();

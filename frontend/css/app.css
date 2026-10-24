@@ -114,3 +114,68 @@ body { background: #0b0d12; color: #e7e9ee; }
 
 /* legacy tile states (mock page still uses .tile) */
 .tile { transition: box-shadow .2s, transform .2s, opacity .3s; }
+
+/* ======================================================================================
+   ONE ROOM — everyone sits together behind the same table, in the same light.
+   (Overrides the card layout above.)
+   ====================================================================================== */
+.table-scene { position: relative; height: 320px; overflow: hidden; border-radius: 14px; }
+.back-wall {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 55% 60% at 50% 18%, #3a3226 0%, transparent 70%),      /* ceiling light */
+    linear-gradient(90deg, transparent 0 8%, #0000002e 8% 8.4%, transparent 8.4% 91.6%, #0000002e 91.6% 92%, transparent 92%),
+    linear-gradient(#2a241c 0%, #221d17 58%, #1a1612 58.2%, #15120e 100%);           /* wall / wainscot */
+}
+.host { position: absolute; left: 3%; top: 10px; z-index: 4; }
+.host .seat { width: auto; }
+.host .seat .person { width: 46px; height: 58px; }
+.host .seat .head { width: 30px; height: 30px; font-size: 11px; }
+.host .seat .body { width: 46px; height: 30px; }
+.host .bubble { bottom: auto; top: 0; left: 64px; transform: none; }
+.host .bubble.show { transform: none; }
+.host .bubble::after { left: -7px; bottom: auto; top: 12px; transform: none;
+  border: 7px solid transparent; border-right-color: #f8fafc; border-left: 0; }
+
+.seats {
+  position: absolute; left: 0; right: 0; bottom: 92px; height: 250px;
+  display: flex; justify-content: center; align-items: flex-end; gap: 0; z-index: 1;
+}
+.seat.has-face { width: 230px; margin: 0 -18px; }           /* shoulders overlap a little */
+.seat.has-face.far { transform: translateY(-14px) scale(.9); z-index: 0; }
+.seat.has-face .portrait {
+  width: 230px; height: 260px; border-radius: 0; background: transparent; box-shadow: none;
+  /* feather the edges so each person's own backdrop melts into this room */
+  /* head + shoulders silhouette: a tight head oval over a wider shoulder oval */
+  -webkit-mask-image:
+    radial-gradient(ellipse 25% 30% at 50% 36%, #000 70%, transparent 100%),
+    radial-gradient(ellipse 48% 34% at 50% 92%, #000 60%, transparent 100%);
+          mask-image:
+    radial-gradient(ellipse 25% 30% at 50% 36%, #000 70%, transparent 100%),
+    radial-gradient(ellipse 48% 34% at 50% 92%, #000 60%, transparent 100%);
+}
+/* one light for everyone: same warmth, same contrast */
+.portrait img, .portrait video { filter: sepia(.18) saturate(.88) brightness(.86) contrast(1.04); }
+.portrait video.idle, .portrait video.talk { opacity: 0; transition: opacity .25s ease; }
+.portrait.idle-on video.idle { opacity: 1; }
+.portrait.live video.talk { opacity: 1; }
+.portrait .waves { right: 26%; top: 18%; }
+.portrait .thinking { top: 10%; left: 50%; transform: translateX(-50%); }
+
+.seat.has-face.speaking { transform: none; }
+.seat.has-face.far.speaking { transform: translateY(-14px) scale(.9); }
+.seat.has-face.speaking .portrait { box-shadow: none; }
+.seat.has-face::after {                                      /* a soft spotlight on the speaker */
+  content: ""; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+  width: 70%; height: 40%; border-radius: 50%; opacity: 0; transition: opacity .3s;
+  background: radial-gradient(ellipse, #22d3ee55, transparent 70%); pointer-events: none;
+}
+.seat.has-face.speaking::after { opacity: 1; }
+.seat.has-face .bubble { bottom: 250px; }
+.seat.has-face.far .bubble { bottom: 262px; }
+.seat.has-face.flash .portrait { animation: none; }
+.seat.has-face.flash::after { opacity: 1; background: radial-gradient(ellipse, #f59e0b66, transparent 70%); }
+
+.table-top { bottom: 26px; width: min(96%, 820px); height: 110px; z-index: 2; }
+.plates { inset: 30px 8% auto 8%; gap: 28px; }
+.you-marker { z-index: 3; }

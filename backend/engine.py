@@ -395,7 +395,8 @@ class Session:
                                follow_up_of, curveball_id)
         if not curveball_id and self.phase == "presenting":
             self._set_phase("interruption", now_ms)
-        await self._speak(persona_id, question, now_ms)
+        # The mood sets the voice's emotion, and the talking head's expression follows it.
+        await self._speak(persona_id, question, now_ms, "pressing" if follow_up_of else None)
         self.pending_question = q
         self._set_phase("answering", now_ms)
 
@@ -421,7 +422,7 @@ class Session:
                             curveball_id=q["curveball_id"])
             return
         ack = verdict.line if verdict and verdict.verdict == "satisfied" else "Thanks — go on."
-        await self._speak(q["persona_id"], ack, now_ms)
+        await self._speak(q["persona_id"], ack, now_ms, "warm")  # even the VC is warm here
         self.pending_question = None
         self.followups_used = 0
         self.last_event_end_ms = now_ms
