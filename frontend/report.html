@@ -3,38 +3,60 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PresAI · Report</title>
+  <title>PresAI · Your session report</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/css/app.css" />
 </head>
 <body class="min-h-screen">
-  <main class="mx-auto max-w-4xl px-4 py-10">
-    <a href="/" class="text-sm text-slate-500 hover:text-slate-300">← new session</a>
-    <h1 class="mt-2 text-3xl font-semibold">Report card</h1>
-    <p id="caveats" class="mt-2 text-xs text-slate-500"></p>
-
-    <section id="dimensions" class="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5"></section>
-    <section id="metrics" class="mt-4 flex flex-wrap gap-3 text-sm text-slate-300"></section>
-
-    <section class="mt-10">
-      <h2 class="text-sm uppercase tracking-wide text-slate-400">Recovery</h2>
-      <div id="curveballs" class="mt-3 space-y-3"></div>
-    </section>
-
-    <section class="mt-10">
-      <h2 class="text-sm uppercase tracking-wide text-slate-400">Key moments</h2>
-      <ol id="moments" class="mt-3 space-y-2 text-sm"></ol>
-    </section>
-
-    <section class="mt-10">
-      <h2 class="text-sm uppercase tracking-wide text-slate-400">What to fix next time</h2>
-      <div id="improvements" class="mt-3 space-y-3"></div>
-    </section>
-
-    <section class="mt-10">
-      <h2 class="text-sm uppercase tracking-wide text-slate-400">From the audience</h2>
-      <div id="personas" class="mt-3 space-y-2 text-sm"></div>
-    </section>
+  <main id="report-shell" class="mx-auto max-w-5xl px-5 py-10" aria-busy="true">
+    <nav class="flex flex-wrap gap-5 text-sm" aria-label="Report navigation">
+      <a id="new-session" href="/" class="text-cyan-300 underline">Start a new session</a>
+      <a id="back-room" href="/" class="text-slate-300 underline" hidden>Back to your room</a>
+    </nav>
+    <header class="mt-8">
+      <p class="text-xs uppercase tracking-widest text-cyan-300">PresAI · Presentation practice</p>
+      <h1 class="mt-3 text-4xl font-semibold">Your session report</h1>
+      <p id="session-label" class="mt-2 text-sm text-slate-400"></p>
+      <p id="report-mode" class="mt-4 rounded-xl border border-amber-800 bg-amber-950/30 p-3 text-sm text-amber-200" hidden>Illustrative report · sample data. These values do not describe a live session.</p>
+      <p id="report-state" class="mt-5 text-sm text-slate-300" role="status" aria-live="polite">Loading your session report…</p>
+      <button id="retry-report" class="mt-3 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-medium text-black" hidden>Try again</button>
+    </header>
+    <div id="report-content" hidden>
+      <section class="mt-8 rounded-2xl border border-slate-800 bg-slate-900/40 p-5" aria-labelledby="overall-heading">
+        <h2 id="overall-heading" class="text-sm text-slate-400">Overall coaching score</h2>
+        <p id="overall-score" class="mt-2 text-3xl font-semibold">Not assessed</p>
+        <p class="mt-3 text-sm text-slate-400">Scores are coaching estimates. Unmeasured values remain unassessed. Pause and Skip are never scored against you.</p>
+      </section>
+      <section class="mt-10" aria-labelledby="dimension-heading">
+        <h2 id="dimension-heading" class="text-lg font-medium">Coaching dimensions</h2>
+        <div id="dimensions" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"></div>
+      </section>
+      <section class="mt-10" aria-labelledby="metric-heading">
+        <h2 id="metric-heading" class="text-lg font-medium">Session metrics</h2>
+        <ul id="metrics" class="mt-4 flex flex-wrap gap-3"></ul>
+        <ul id="caveats" class="mt-4 list-disc space-y-1 pl-5 text-sm text-slate-400" aria-label="Metric accuracy notes"></ul>
+      </section>
+      <section class="mt-10" aria-labelledby="recovery-heading">
+        <h2 id="recovery-heading" class="text-lg font-medium">Recovery under pressure</h2>
+        <div id="curveballs" class="mt-4 space-y-3"></div>
+      </section>
+      <section class="mt-10" aria-labelledby="moment-heading">
+        <h2 id="moment-heading" class="text-lg font-medium">Key moments</h2>
+        <ol id="moments" class="mt-4 space-y-2"></ol>
+      </section>
+      <section class="mt-10" aria-labelledby="strength-heading">
+        <h2 id="strength-heading" class="text-lg font-medium">What went well</h2>
+        <ul id="strengths" class="mt-4 list-disc space-y-2 pl-5"></ul>
+      </section>
+      <section class="mt-10" aria-labelledby="improvement-heading">
+        <h2 id="improvement-heading" class="text-lg font-medium">What to try next time</h2>
+        <div id="improvements" class="mt-4 space-y-3"></div>
+      </section>
+      <section class="mt-10 mb-8" aria-labelledby="persona-heading">
+        <h2 id="persona-heading" class="text-lg font-medium">From your audience</h2>
+        <div id="personas" class="mt-4 space-y-3"></div>
+      </section>
+    </div>
   </main>
   <script type="module" src="/js/report.js"></script>
 </body>

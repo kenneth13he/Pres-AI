@@ -16,9 +16,92 @@ Settled. Dated entries, newest first. Do not re-decide; a decision that looks wr
 
 ## Vendor (Person B fills in from the hour-1 tests)
 
-- Test 1 — round-trip latency: _pending_
-- Test 2 — scripted line on demand / per-turn voice: _pending_
-- Test 3 — STT timestamps: _pending_
-- Test 4 — TTS tags + two distinct preset voices: _pending_
-- Test 5 — ephemeral client secret in the browser: _pending_
-- **Voice architecture:** Shape 1 or Shape 2 — _decide by hour 2_
+- Test 1 — round-trip latency: accepted locally on 24 Oct using the plan’s push-to-talk fallback. User confirmed the native mic → generated speech path waits through pauses until release, answers correctly once, and begins audibly within roughly two seconds. Displayed speech-end → first received audio: 1663 ms (not instrumented acoustic latency). Earlier hands-free run had one premature reply; automatic end-of-turn detection is not signed off as equally reliable.
+- Test 2 — scripted line on demand / per-turn voice: live Realtime checks passed caption word matching for two turns and accepted session voice update default → eleanor. Audible voice difference unverified.
+- Test 3 — STT timestamps: final-only transcripts have no speech timestamps. Use browser PCM capture boundaries on the session clock; never transcript-arrival time. Synthetic manual commit transcribed without an autonomous reply (1.5 s observation).
+- Test 4 — TTS tags + two distinct preset voices: local binary transport live-checked with eleanor (moderator), marcus (VC, impatient tags), chloe (student, confused tags). On 24 Oct the user confirmed moderator, Dana and Sam are all clear and distinct; P0-11 accepted.
+- Test 5 — ephemeral client secret in the browser: mint endpoint and browser-style WebSocket subprotocol passed through Python; on 24 Oct the user successfully used the actual browser microphone and confirmed a good transcript. Agent browser control remains denied; hardware evidence comes from user feedback.
+- **Voice architecture (B, 23 Oct local): Shape 2.** Direct browser Realtime manual-commit STT with temporary credentials, backend TTS on a separate binary socket, and browser playback acknowledgement. Boson ignores `create_response:false` under vendor VAD, so browser utterance detection or PTT is required to preserve the single-orchestrator rule. Shape 1 scripted speech also passed the limited live test, but the split path keeps deterministic text/voice/style rendering separate from listening. Sources and local validation limits: `docs/VOICE_PROTOCOL.md`, `docs/VOICE_SETUP.md`.
+
+## 24 October 2026 — local voice acceptance (B)
+
+- **P0-2 complete locally with push-to-talk fallback.** Human retest held through a two-second mid-question pause and a longer natural question: no reply before release, one relevant answer, and audible onset within roughly two seconds. User reported 1663 ms to first received audio; device output delay is not measured by that display.
+- **P0-11 complete locally.** User confirmed moderator, VC and student clear and distinguishable.
+- **Turn control:** the voice-check defaults to explicit hold/release. Hands-free remains optional with a 1.1 s endpoint and quiet-tail tolerance; recording limits discard instead of auto-submitting. The earlier hands-free premature-turn failure remains documented.
+- **Scope:** native speech-to-speech is the P0-2 validation path. The presentation room retains the split transcription/orchestrator/TTS design; full room integration, two clean live demos and backup recording are still P0-13/P0-14 work. No local Anthropic key is configured.
+- Changes remain local, uncommitted and unpushed; no merge or collaborator message was performed.
+
+## 24 October 2026 — presentation-room voice integration (local, user requested)
+
+- **Hold-to-talk is the default for new sessions.** The user explicitly requested it for
+  the actual room. SessionConfig, generated schema and setup selection now agree; an
+  explicit hands-free choice is preserved. This supersedes the original default-live rule.
+- **One audience brain remains in control.** The room uses split Higgs transcription +
+  backend orchestrator + streamed Higgs TTS; native voice-check conversation remains separate.
+- **Presenter floor:** capture/release/discard/final carry one turn_id. Held speech and
+  pending STT suppress audience decisions; slow model calls recheck before speaking. The
+  event reader processes floor updates while ordered workers handle slow session actions.
+- **Controls:** Pause/Skip/End cancel capture/playback locally, then use REST so controls
+  can invalidate slow calls without waiting behind a transcript on the event connection.
+- **Verification:** 109 backend tests + 77 audio/controller tests, lint/type/schema/mocks pass.
+  Actual local-server test with live Higgs TTS passed the 30 s scheduler boundary, held and
+  pending-final floor, quoted question→answer→follow-up→ack, frozen pause and evidence report;
+  zero room error events. Transcripts and playback ACKs were simulated, not hardware/browser.
+- **Remaining:** this Mac has no Anthropic key, so the room visibly uses audience test mode.
+  Full human room acceptance, two stage-style live runs and backup recording remain pending.
+  No push, merge, PR or collaborator message was performed.
+
+## 24 October 2026 — requested local UI integration
+
+- Adapt the `feat/voice-room` UI, same-room JPEG portraits, audience builder and report
+  from commit `4b508eecf37915417cafe504ee95bd2e6335ab67`; keep the existing local voice
+  implementation and its hold-to-talk default. This is a selective integration, not a merge.
+- Keep the voices already accepted by the user. Static portrait selection uses the new
+  cast while preserving the local voice mapping, rather than reassigning voices by the
+  upstream portrait filename's role prefix.
+- Talking-head videos stay off as explicitly requested. No upstream avatar pipeline,
+  asynchronous clip queue or video dependencies are imported.
+- The user authorized the frontend work across owner boundaries for this local task.
+  No collaborator messaging, push or merge is authorized or performed.
+
+## 24 October 2026 — whole-room keyboard test safeguards
+
+- Space belongs to hold-to-talk while its microphone session exists, including temporary
+  playback/Pause blocks. Enter or clicking activates other buttons; editable fields keep
+  normal Space input. A denied hold requires a fresh release/press before it can capture.
+- Keyboard ownership ends when its turn is cancelled, disabled or directly released.
+  A later keyup cannot submit a new pointer hold. Nine deterministic regressions cover
+  delayed repeat, focused controls, blur and mixed-input ownership; frontend/audio suite
+  is 113 passing. Backend transport, voices and turn-floor protocol are unchanged.
+
+## 24 October 2026 — guided room acceptance fixes
+
+- Skip keeps transcript history and now visibly confirms dismissal/no penalty. A prominent
+  room-state message explains whose turn it is and whether the timer is paused.
+- Resume after an idle audio closure must reconnect speech/microphone before unpausing.
+  Failure leaves it paused. Repeated requests coalesce; End remains usable during connection;
+  terminal report/stop events prevent delayed responses reopening the room. Paused Q&A
+  reloads retain their closing-round context. Idle/hard limits are preserved.
+- Guided human checks and a separate automatic closing run passed. Keep initial failed
+  attempts in the acceptance record; do not call the main guided run error-free or an unaided
+  demo. Voices remain live, audience reasoning remains mock, and videos remain off.
+- Final local checks: 109 backend + 131 frontend/audio tests pass. Nothing committed/pushed.
+
+## 24 October 2026 — existing Boson key for the local audience
+
+- The user declined separate Claude API charges and requested reuse of their existing Boson key. Local `ORCHESTRATOR=boson` uses bounded text-only Higgs requests and shared structured audience validation; it is explicitly labelled live Boson audience. Claude remains selectable but is neither configured nor called. Existing Boson credit usage continues.
+- Track real per-operation success, failure, fallback, rejection and token usage. A provider label alone is not clean-run evidence. Missing real-mode credentials fail visibly rather than silently selecting mock. Respect shared spending/request limits and retain conservative spend carryover across this restart.
+- Persist finished local reports privately so a server restart does not lose acceptance evidence. No raw microphone audio is recorded.
+- Repeated accidental Finish Q&A clicks led to separate controls: the main End button starts Q&A once, then disables; deliberate early finish sits in the side panel. Automatic completion exposes the report link. Hold-to-talk, accepted voices, playback acknowledgements, videos off and local-only work remain.
+- Preflight and synthetic room checks passed; warmup 32d5c923 ended before the automatic blackout and cut off a closing follow-up. It does not count toward the two clean human presentations.
+
+## 24 October 2026 — findings from two real Boson presentations
+
+- Human sessions bb1e3b93 (natural blackout) and ff575163 (natural time crunch) both reached reports automatically with confirmed clear audio, no skips/unanswered questions and12 successful real Boson calls; zero reasoning failure/fallback/rejection or room-error events. Original evidence remains private under data/voice_checks/clean_presentations and saved reports survive restart.
+- Do not certify both original runs as fully clean: blackout speech was not observed before restoration; the crunch closing turn was captured215438–266194ms but arrived269397ms, after the265358ms expiry, so its original report missed assessment. Its generated warning also incorrectly said five minutes against the fixed60s timer.
+- Time-crunch speech now always uses the canonical sixty-second warning. A turn already held/pending at resolution can contribute its matching late final once, within existing hold/transcription limits. Resolution/deadline/Q&A timing remains unchanged; pause/cancel/skip/end/new-turn/terminal guards invalidate it. The report records a1.3s overrun and unavailable individual-word timing rather than assuming all words were before zero.
+- Separate exact-timing replay with the saved closing text, synthetic input delivery/clock, MockVoice and a real Boson grader passed. This is supplemental verification, not another human presentation or retrospective repair of the original report. Formal P0-13/P0-14 sign-off remains open.
+
+## 24 October 2026 — publish the verified checkpoint to yang
+
+The user explicitly requested updating their GitHub yang branch with verified work and a collaborator progress/next-steps file. This supersedes the earlier no-push instruction for this checkpoint. Publish source, tests, static fictional portraits and aggregate handoff evidence; keep keys, private runtime reports/transcripts/decks, diagnostic artifacts and recordings out. Preserve yang history and do not merge main or the later unverified voice-room/avatar experiments. Final publication checks are246 backend +133 frontend/audio tests plus lint/type/schema/mocks. Formal two-clean-demo/recording status remains open; publishing the code does not close those acceptance items.

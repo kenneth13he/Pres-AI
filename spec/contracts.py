@@ -89,7 +89,7 @@ class SessionConfig(BaseModel):
     curveballs: CurveballMode = CurveballMode()
     duration_target_s: int = 180
     qna_questions: int = Field(default=2, ge=0, le=3)
-    input_mode: InputMode = "live"
+    input_mode: InputMode = "push_to_talk"
     deck_id: str | None = None
 
 

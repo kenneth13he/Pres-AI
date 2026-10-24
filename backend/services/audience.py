@@ -31,6 +31,12 @@ from spec.contracts import (
 from .curveballs import CATALOG
 
 T = TypeVar("T")
+REASONING_OPERATIONS = ("decide", "follow_up", "assess_recovery", "expand_persona")
+REASONING_COUNTS = ("attempts", "successes", "failures", "fallbacks", "rejections", "skipped")
+
+
+def _empty_reasoning_counts() -> dict[str, dict[str, int]]:
+    return {operation: dict.fromkeys(REASONING_COUNTS, 0) for operation in REASONING_OPERATIONS}
 
 
 @dataclass
@@ -97,6 +103,13 @@ def find_claim(segments: list[TranscriptSegment], already_cited: set[str]) -> st
 class MockOrchestrator:
     """Deterministic stand-in: grounds a question in a detected claim, asks one follow-up
     when the answer is thin, scores recovery from timing. No network."""
+
+    def diagnostics(self) -> dict[str, Any]:
+        return {
+            "adapter": "mock", "model": None, "last_response_model": None,
+            "operations": _empty_reasoning_counts(), "totals": dict.fromkeys(REASONING_COUNTS, 0),
+            "usage": {"input_tokens": 0, "output_tokens": 0}, "last_error": None,
+        }
 
     async def decide(self, ctx: OrchestratorContext) -> OrchestratorDecision:
         if ctx.question_allowed:
@@ -224,55 +237,69 @@ to four focus areas, a skepticism from 0 to 1, a one-word style_hint (impatient,
 thoughtful or neutral), and which curveball kinds this persona could voice."""
 
 
-class ClaudeOrchestrator:
-    """Official `anthropic` SDK only (no raw HTTP, no OpenAI-compatible shim).
+class StructuredOrchestrator:
+    """Provider-neutral audience prompts, grounding guards, fallbacks and diagnostics.
 
-    Model `claude-opus-5-5`. Thinking stays adaptive (it cannot be disabled on this model);
-    latency is controlled with output_config.effort: "low" for decide/follow_up (they run in a
-    ~4 s window), "high" for assess_recovery. JSON comes back through structured outputs
-    (`client.messages.parse(..., output_format=<pydantic model>)`), never prefill. The system
-    prompts are byte-identical across calls so the prefix caches; everything that varies goes
-    in the user turn. A `stop_reason == "refusal"` returns None and the caller falls back to
-    a safe default — the session never breaks on the brain (§8).
-
-    `client` is injectable so the formatting and fallbacks are tested without a key.
+    A provider supplies only `_parse`; deliberate no-call caps and all semantic guards
+    stay shared so a transport cannot change the room's interruption rules.
     """
 
-    def __init__(self, client: Any | None = None, model: str | None = None) -> None:
-        if client is None:
-            # One retry only: the 8 s window below is the real budget, not the SDK's 600 s.
-            client = anthropic.AsyncAnthropic(max_retries=1)
-        self.client = client
-        self.model = model or os.environ.get("ORCHESTRATOR_MODEL", "claude-opus-5-5")
-        # Live-measured 23 Oct: decide 2.2–2.6 s, follow_up 2.1 s (effort low);
-        # assess_recovery 6.4 s (effort high) — hence two budgets.
+    def __init__(self, model: str, adapter: str) -> None:
+        self.model = model
+        self.adapter = adapter
         self.timeout_s = float(os.environ.get("ORCHESTRATOR_TIMEOUT_S", "8"))
         self.slow_timeout_s = float(os.environ.get("ORCHESTRATOR_SLOW_TIMEOUT_S", "15"))
+        self._reasoning_counts = _empty_reasoning_counts()
+        self._reasoning_usage = {"input_tokens": 0, "output_tokens": 0}
+        self._last_reasoning_error: dict[str, Any] | None = None
+        self._last_response_model: str | None = None
+
+    def diagnostics(self) -> dict[str, Any]:
+        """Safe audit metadata, never prompts, transcript text, credentials or vendor bodies.
+
+        A success means a usable structured API response; a later grounding rejection is
+        counted separately. Deliberate no-call limits are `skipped`, never fallbacks.
+        """
+        operations = {key: dict(value) for key, value in self._reasoning_counts.items()}
+        return {
+            "adapter": self.adapter, "model": self.model,
+            "last_response_model": self._last_response_model, "operations": operations,
+            "totals": {key: sum(value[key] for value in operations.values())
+                       for key in REASONING_COUNTS},
+            "usage": dict(self._reasoning_usage),
+            "last_error": (dict(self._last_reasoning_error)
+                           if self._last_reasoning_error is not None else None),
+        }
+
+    def _reasoning_error(self, operation: str, kind: str, error_class: str,
+                         status_code: int | None = None, *, fallback: bool = True) -> None:
+        counts = self._reasoning_counts[operation]
+        counts["failures"] += 1
+        if fallback:
+            counts["fallbacks"] += 1
+        self._last_reasoning_error = {
+            "operation": operation, "kind": kind, "error_class": error_class,
+            "status_code": status_code,
+        }
+
+    def _reject_reasoning(self, operation: str, kind: str) -> None:
+        self._reasoning_counts[operation]["rejections"] += 1
+        self._reasoning_counts[operation]["fallbacks"] += 1
+        self._last_reasoning_error = {
+            "operation": operation, "kind": kind, "error_class": "ReasoningRejected",
+            "status_code": None,
+        }
+
+    @staticmethod
+    def _operation(schema: type[Any]) -> str:
+        return {OrchestratorDecision: "decide", FollowUpVerdict: "follow_up",
+                RecoveryAssessment: "assess_recovery", Persona: "expand_persona"}[schema]
 
     async def _parse(self, system: str, user: str, schema: type[T],
                      effort: Literal["low", "high"], max_tokens: int = 2048,
                      timeout_s: float | None = None) -> T | None:
-        """None means "no usable answer": a refusal, a truncated or schema-violating reply,
-        or an API error. The SDK validates the JSON before we see stop_reason, so a refusal
-        that carries text surfaces as ValidationError — caught here. A timeout propagates:
-        the engine turns it into an `error` event."""
-        try:
-            response = await asyncio.wait_for(
-                self.client.messages.parse(
-                    model=self.model,
-                    max_tokens=max_tokens,
-                    system=system,
-                    output_config={"effort": effort},
-                    messages=[{"role": "user", "content": user}],
-                    output_format=schema,
-                ),
-                timeout=timeout_s or self.timeout_s,
-            )
-        except (ValidationError, anthropic.APIError):
-            return None
-        if response.stop_reason in ("refusal", "max_tokens"):
-            return None
-        return response.parsed_output
+        """Return validated provider output, or a recorded safe fallback."""
+        raise NotImplementedError
 
     @staticmethod
     def _norm(text: str) -> str:
@@ -324,7 +351,7 @@ class ClaudeOrchestrator:
             f"personas (fictional):\n{personas}\n\n"
             f"slide {ctx.slide_number} text:\n{ctx.slide_text[:1500] or '(no deck)'}\n\n"
             f"recent presenter transcript (last ~30 s):\n"
-            f"{ClaudeOrchestrator.format_transcript(ctx.recent_transcript)}\n\n"
+            f"{StructuredOrchestrator.format_transcript(ctx.recent_transcript)}\n\n"
             f"prior questions this session:\n{prior}\n\n"
             + ("round: closing Q&A — the presentation is over; ask the one question the talk "
                "left most open, grounded in the slides or anything said.\n" if ctx.qna else "")
@@ -340,6 +367,7 @@ class ClaudeOrchestrator:
     async def decide(self, ctx: OrchestratorContext) -> OrchestratorDecision:
         none = OrchestratorDecision(action="none", reason="no decision")
         if not ctx.question_allowed and not ctx.eligible_kinds:
+            self._reasoning_counts["decide"]["skipped"] += 1
             return none
         out = await self._parse(SYSTEM_PROMPT, self.format_context(ctx),
                                 OrchestratorDecision, "low")
@@ -349,17 +377,21 @@ class ClaudeOrchestrator:
         ids = {p.id for p in ctx.personas}
         if out.action == "question":
             if not ctx.question_allowed or out.persona_id not in ids or not out.line:
+                self._reject_reasoning("decide", "invalid_question")
                 return none
             if not self.verbatim(out.cited_transcript_excerpt, ctx.recent_transcript):
                 if not ctx.qna:
+                    self._reject_reasoning("decide", "ungrounded_question")
                     return OrchestratorDecision(action="none",
                                                 reason="question had no verbatim excerpt; skipped")
                 out.cited_transcript_excerpt = None  # Q&A may be grounded in the slides alone
             out.slide_number = ctx.slide_number
         elif out.action == "curveball":
             if out.curveball_kind not in ctx.eligible_kinds:
+                self._reject_reasoning("decide", "ineligible_curveball")
                 return none
             if out.persona_id is not None and out.persona_id not in ids:
+                self._reject_reasoning("decide", "unknown_persona")
                 out.persona_id = None  # the engine assigns a roster persona
             out.slide_number = ctx.slide_number
         return out
@@ -368,6 +400,7 @@ class ClaudeOrchestrator:
         self, question: str, answer: str, persona: Persona, used: int
     ) -> FollowUpVerdict:
         if used >= 1:
+            self._reasoning_counts["follow_up"]["skipped"] += 1
             return FollowUpVerdict(verdict="satisfied", line="Thanks — go on.")
         user = (f"persona: {persona.role} ({persona.name}); style: {persona.style_hint}\n"
                 f"question: {question}\nanswer: {answer}")
@@ -379,6 +412,7 @@ class ClaudeOrchestrator:
         resume_after_ms: int | None,
     ) -> RecoveryAssessment:
         if not after:
+            self._reasoning_counts["assess_recovery"]["skipped"] += 1
             return RecoveryAssessment(
                 score=None, evidence=None,
                 observation="No presenter speech was recorded after the event; not assessed.",
@@ -397,6 +431,7 @@ class ClaudeOrchestrator:
                 suggestion="Name what happened in one sentence, then continue from your outline.",
             )
         if not self.verbatim(out.evidence, after):
+            self._reject_reasoning("assess_recovery", "ungrounded_recovery")
             out.evidence = after[0].text  # evidence must be verbatim (§10)
         return out
 
@@ -406,6 +441,7 @@ class ClaudeOrchestrator:
             out = await self._parse(PERSONA_PROMPT, f"description: {description.strip()}",
                                     Persona, "low")
         except Exception:
+            self._reasoning_counts["expand_persona"]["fallbacks"] += 1
             out = None
         if out is None:
             return await MockOrchestrator().expand_persona(description, index)
@@ -416,3 +452,86 @@ class ClaudeOrchestrator:
             # Only kinds a persona actually voices; the live model also listed moderator kinds.
             "plays": [k for k in out.plays if CATALOG[k].speaker == "persona"],
         })
+
+
+class ClaudeOrchestrator(StructuredOrchestrator):
+    """Official `anthropic` SDK only (no raw HTTP, no OpenAI-compatible shim).
+
+    Model `claude-opus-5-5`. Thinking stays adaptive (it cannot be disabled on this model);
+    latency is controlled with output_config.effort: "low" for decide/follow_up (they run in a
+    ~4 s window), "high" for assess_recovery. JSON comes back through structured outputs
+    (`client.messages.parse(..., output_format=<pydantic model>)`), never prefill. The system
+    prompts are byte-identical across calls so the prefix caches; everything that varies goes
+    in the user turn. A `stop_reason == "refusal"` returns None and the caller falls back to
+    a safe default — the session never breaks on the brain (§8).
+
+    `client` is injectable so the formatting and fallbacks are tested without a key.
+    """
+
+    def __init__(self, client: Any | None = None, model: str | None = None) -> None:
+        if client is None:
+            # One retry only: the 8 s window below is the real budget, not the SDK's 600 s.
+            client = anthropic.AsyncAnthropic(max_retries=1)
+        self.client = client
+        super().__init__(model or os.environ.get("ORCHESTRATOR_MODEL", "claude-opus-5-5"),
+                         adapter="claude")
+
+    async def _parse(self, system: str, user: str, schema: type[T],
+                     effort: Literal["low", "high"], max_tokens: int = 2048,
+                     timeout_s: float | None = None) -> T | None:
+        """None means "no usable answer": a refusal, a truncated or schema-violating reply,
+        or an API error. The SDK validates the JSON before we see stop_reason, so a refusal
+        that carries text surfaces as ValidationError — caught here. A timeout propagates:
+        the engine turns it into an `error` event."""
+        operation = self._operation(schema)
+        self._reasoning_counts[operation]["attempts"] += 1
+        try:
+            response = await asyncio.wait_for(
+                self.client.messages.parse(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    system=system,
+                    output_config={"effort": effort},
+                    messages=[{"role": "user", "content": user}],
+                    output_format=schema,
+                ),
+                timeout=timeout_s or self.timeout_s,
+            )
+        except ValidationError as exc:
+            self._reasoning_error(operation, "invalid_structured_response", type(exc).__name__)
+            return None
+        except anthropic.APIError as exc:
+            status = getattr(exc, "status_code", None)
+            kind = "timeout" if isinstance(exc, anthropic.APITimeoutError) else "api_error"
+            self._reasoning_error(operation, kind, type(exc).__name__,
+                                  status if isinstance(status, int) else None)
+            return None
+        except TimeoutError as exc:
+            self._reasoning_error(operation, "timeout", type(exc).__name__, fallback=False)
+            raise
+        except asyncio.CancelledError:
+            self._reasoning_error(operation, "cancelled", "CancelledError", fallback=False)
+            raise
+        except Exception as exc:
+            self._reasoning_error(operation, "unexpected_error", type(exc).__name__, fallback=False)
+            raise
+        usage = getattr(response, "usage", None)
+        for name in self._reasoning_usage:
+            count = getattr(usage, name, None)
+            if isinstance(count, int) and count >= 0:
+                self._reasoning_usage[name] += count
+        actual_model = getattr(response, "model", None)
+        if isinstance(actual_model, str):
+            self._last_response_model = actual_model
+        if response.stop_reason == "refusal":
+            self._reasoning_error(operation, "refusal", "ModelRefusal")
+            return None
+        if response.stop_reason == "max_tokens":
+            self._reasoning_error(operation, "truncated_response", "TruncatedResponse")
+            return None
+        if not isinstance(response.parsed_output, schema):
+            self._reasoning_error(operation, "invalid_structured_response",
+                                  "InvalidStructuredResponse")
+            return None
+        self._reasoning_counts[operation]["successes"] += 1
+        return response.parsed_output

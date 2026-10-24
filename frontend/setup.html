@@ -3,85 +3,107 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PresAI · Setup</title>
+  <title>PresAI · Build your audience</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/css/app.css" />
 </head>
-<body class="min-h-screen">
-  <main class="mx-auto max-w-4xl px-4 py-10">
-    <a href="/" class="text-sm text-slate-500 hover:text-slate-300">← presets</a>
-    <h1 id="title" class="mt-2 text-3xl font-semibold">Setup</h1>
+<body class="min-h-screen bg-slate-950 text-slate-100">
+  <main class="mx-auto max-w-5xl px-5 py-10 sm:py-14">
+    <a href="/" class="text-sm text-slate-400 transition hover:text-cyan-300">← Change preset</a>
+    <p class="mt-7 text-xs font-medium uppercase tracking-widest text-cyan-400">PresAI · Your rehearsal room</p>
+    <h1 id="title" class="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Set the room</h1>
+    <p id="preset-description" class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-400">Choose your audience, add your slides, and practise handling the room.</p>
 
-    <!-- 2 · slides -->
-    <section class="mt-8 rounded-xl border border-slate-800 p-5">
-      <h2 class="text-sm uppercase tracking-wide text-slate-400">2 · Your slides (PDF)</h2>
-      <input id="pdf" type="file" accept="application/pdf" class="mt-3 block text-sm" />
-      <p id="pdf-status" class="mt-2 text-xs text-slate-500">Optional. Without a deck the room listens only.</p>
-    </section>
-
-    <!-- audience builder (P0-3b) -->
-    <section class="mt-6 rounded-xl border border-slate-800 p-5">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm uppercase tracking-wide text-slate-400">Audience</h2>
-        <button id="customise" class="text-sm text-cyan-400 hover:underline">Customise</button>
-      </div>
-      <div id="audience-summary" class="mt-3 flex flex-wrap gap-2 text-sm"></div>
-
-      <div id="builder" class="mt-4 hidden space-y-4">
-        <div>
-          <div class="text-xs text-slate-400">Pick two or three from the roster</div>
-          <div id="roster" class="mt-2 grid gap-2 sm:grid-cols-2"></div>
+    <fieldset id="setup-fields" class="mt-8 min-w-0 space-y-6">
+      <legend class="sr-only">Rehearsal settings</legend>
+      <section class="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 sm:p-6" aria-labelledby="audience-heading">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="audience-heading" class="text-base font-semibold"><span class="mr-2 text-cyan-400">01</span> Who is in the room?</h2>
+            <p id="seat-count" class="mt-1 text-xs text-slate-400">Loading your audience…</p>
+          </div>
+          <button id="customise" type="button" aria-expanded="false" aria-controls="builder" class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-cyan-300 transition hover:border-cyan-500">Customise audience</button>
         </div>
-        <div>
-          <div class="text-xs text-slate-400">…or describe someone (fictional, labelled "Custom")</div>
-          <textarea id="custom-persona" rows="2" placeholder="e.g. my thesis committee chair who hates jargon"
-                    class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-sm"></textarea>
+        <div id="audience-summary" class="mt-5 grid gap-3 sm:grid-cols-3" aria-live="polite"></div>
+        <p id="selection-help" class="mt-4 text-xs leading-relaxed text-slate-500">Choose two or three fictional audience members. The moderator hosts separately.</p>
+        <p id="selection-error" role="alert" class="mt-3 hidden rounded-lg border border-amber-700/50 bg-amber-950/20 p-3 text-sm text-amber-200"></p>
+
+        <div id="builder" class="mt-6 hidden space-y-6 border-t border-slate-800 pt-6">
+          <div>
+            <p class="text-sm font-medium text-slate-200">Pick your audience</p>
+            <p class="mt-1 text-xs text-slate-500">Each person has a different focus. Adjust how much they challenge you.</p>
+            <div id="roster" class="mt-4 grid gap-3 sm:grid-cols-2"></div>
+          </div>
+          <div class="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <label for="custom-persona" class="text-sm font-medium text-slate-200">Add a custom third person</label>
+              <button id="remove-custom" type="button" class="hidden text-xs text-cyan-300 hover:underline">Remove custom</button>
+            </div>
+            <p id="custom-help" class="mt-1 text-xs leading-relaxed text-slate-500">Describe a fictional audience member. Keep two roster people selected to leave them a seat.</p>
+            <textarea id="custom-persona" rows="2" maxlength="600" aria-describedby="custom-help custom-count"
+              placeholder="For example: a thesis committee member who wants every assumption explained"
+              class="mt-3 w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm outline-none focus:border-cyan-500"></textarea>
+            <p id="custom-count" class="mt-1 text-right text-xs text-slate-500">0 / 600</p>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- advanced -->
-    <details class="mt-6 rounded-xl border border-slate-800 p-5">
-      <summary class="cursor-pointer text-sm uppercase tracking-wide text-slate-400">Advanced</summary>
-      <div class="mt-4 grid gap-4 sm:grid-cols-2 text-sm">
-        <label>Difficulty
-          <select id="difficulty" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
-            <option value="friendly">Friendly — no curveballs</option>
-            <option value="normal" selected>Normal — 2 questions, 1 curveball</option>
-            <option value="brutal">Brutal — 3 questions, 2 curveballs</option>
-          </select>
-        </label>
-        <label>Interruptions
-          <select id="frequency" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
-            <option value="rare">Rare</option><option value="normal" selected>Normal</option><option value="often">Often</option>
-          </select>
-        </label>
-        <label>Curveballs
-          <select id="cb-mode" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
-            <option value="surprise" selected>Surprise me</option><option value="choose">Let me choose</option><option value="off">Off</option>
-          </select>
-        </label>
-        <label>Target length (minutes)
-          <input id="duration" type="number" min="1" max="20" value="3" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2" />
-        </label>
-        <div id="cb-choose" class="hidden sm:col-span-2 flex flex-wrap gap-2"></div>
-        <label>Q&amp;A questions at the end
-          <input id="qna" type="number" min="0" max="3" value="2" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2" />
-        </label>
-        <label>Input
-          <select id="input-mode" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
-            <option value="live" selected>Live microphone</option><option value="push_to_talk">Push to talk (hold Space)</option>
-          </select>
-        </label>
-      </div>
-    </details>
+      <section class="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 sm:p-6" aria-labelledby="slides-heading">
+        <h2 id="slides-heading" class="text-base font-semibold"><span class="mr-2 text-cyan-400">02</span> Bring your slides <span class="ml-1 text-xs font-normal text-slate-500">Optional</span></h2>
+        <div id="pdf-drop" class="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-5 text-center transition">
+          <p class="text-sm text-slate-300">Drop a PDF here, or choose a file</p>
+          <label class="mt-3 inline-block cursor-pointer rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-400">
+            Choose PDF
+            <input id="pdf" type="file" accept="application/pdf,.pdf" aria-describedby="pdf-status" class="sr-only" />
+          </label>
+          <p id="pdf-status" aria-live="polite" class="mt-3 text-xs text-slate-500">Optional · PDF only · up to 50 MB</p>
+          <button id="remove-pdf" type="button" class="mt-3 hidden text-xs text-cyan-300 hover:underline">Remove file · present without slides</button>
+        </div>
+      </section>
 
-    <!-- 3 · start -->
-    <div class="mt-8 flex items-center gap-4">
-      <button id="start" class="rounded-xl bg-cyan-500 px-6 py-3 text-lg font-medium text-black hover:bg-cyan-400">3 · Start</button>
-      <span id="start-status" class="text-sm text-slate-500"></span>
+      <details class="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 sm:p-6">
+        <summary class="cursor-pointer text-sm font-semibold text-slate-200">Advanced <span class="ml-2 font-normal text-slate-500">Pressure, timing, and microphone</span></summary>
+        <div class="mt-5 grid gap-5 text-sm sm:grid-cols-2">
+          <label for="difficulty">Difficulty
+            <select id="difficulty" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3">
+              <option value="friendly">Friendly · questions only</option><option value="normal" selected>Normal · 2 questions, 1 curveball</option><option value="brutal">Brutal · 2–3 questions, 2 curveballs</option>
+            </select>
+          </label>
+          <label for="frequency">Interruptions
+            <select id="frequency" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3">
+              <option value="rare">Rare</option><option value="normal" selected>Normal</option><option value="often">Often</option>
+            </select>
+          </label>
+          <label for="cb-mode">Curveballs
+            <select id="cb-mode" aria-describedby="curveball-note" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3">
+              <option value="surprise" selected>Surprise me</option><option value="choose">Let me choose</option><option value="off">Off</option>
+            </select>
+          </label>
+          <label for="duration">Target length · minutes
+            <input id="duration" type="number" min="1" max="20" step="1" value="3" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" />
+          </label>
+          <div class="sm:col-span-2">
+            <p id="curveball-note" class="text-xs leading-relaxed text-slate-500">The room picks a curveball when a natural moment comes.</p>
+            <div id="cb-choose" class="mt-3 hidden grid gap-2 sm:grid-cols-2"></div>
+          </div>
+          <label for="qna">Closing Q&amp;A · questions
+            <input id="qna" type="number" min="0" max="3" step="1" value="2" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" />
+          </label>
+          <label for="input-mode">Microphone
+            <select id="input-mode" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3">
+              <option value="push_to_talk" selected>Hold to talk · button or Space</option><option value="live">Hands-free microphone</option>
+            </select>
+          </label>
+        </div>
+      </details>
+    </fieldset>
+
+    <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+      <button id="start" type="button" disabled class="rounded-xl bg-cyan-400 px-6 py-3 text-base font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">Start rehearsal →</button>
+      <p id="start-status" role="status" aria-live="polite" class="text-sm text-slate-400">Loading audience choices…</p>
     </div>
-    <p class="mt-6 text-xs text-slate-600">We ask for your microphone when the room opens. Nothing is recorded or stored by default; the transcript lives in this session only.</p>
+    <p id="mic-consent" class="mt-5 max-w-3xl text-xs leading-relaxed text-slate-500">Hold-to-talk is the default. Microphone permission is requested when you start presenting in the room. Speech is sent to Boson for transcription. Raw microphone audio is not saved; your transcript stays in the local session.</p>
+    <p class="mt-3 text-xs text-slate-600">All audience members are fictional. Pause and Skip are never scored against you.</p>
   </main>
   <script type="module" src="/js/setup.js"></script>
 </body>

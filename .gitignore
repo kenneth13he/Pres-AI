@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 *.pyc
@@ -7,6 +9,7 @@ __pycache__/
 .DS_Store
 data/sessions/
 data/decks/
+data/voice_checks/
 demo/*.mp4
 demo/*.mov
 node_modules/

@@ -798,7 +798,7 @@
           "type": "integer"
         },
         "input_mode": {
-          "default": "live",
+          "default": "push_to_talk",
           "enum": [
             "live",
             "push_to_talk"

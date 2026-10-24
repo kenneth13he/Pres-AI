@@ -44,6 +44,14 @@ def session() -> Session:
     return make_session()
 
 
+@pytest.fixture(autouse=True)
+def offline_adapters(monkeypatch):
+    """A configured live .env must never turn an offline test into a vendor call."""
+    monkeypatch.setenv("ORCHESTRATOR", "mock")
+    monkeypatch.setenv("VOICE_ADAPTER", "mock")
+    monkeypatch.setenv("BOSON_SPEND_CARRYOVER_USD", "0")
+
+
 def s(seconds: float) -> int:
     """Seconds → ms, for a readable fake clock (session starts at t=0)."""
     return int(seconds * 1000)

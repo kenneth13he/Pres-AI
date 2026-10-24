@@ -2,9 +2,10 @@
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, TypeVar
 
 import pytest
+from pydantic import TypeAdapter
 
 from backend import presets
 from backend.services.audience import (
@@ -12,10 +13,14 @@ from backend.services.audience import (
     RECOVERY_PROMPT,
     SYSTEM_PROMPT,
     ClaudeOrchestrator,
+    MockOrchestrator,
     OrchestratorContext,
+    StructuredOrchestrator,
 )
 from backend.tests.conftest import seg
 from spec.contracts import FollowUpVerdict, OrchestratorDecision, Persona, RecoveryAssessment
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -147,6 +152,18 @@ async def test_timeout_surfaces_as_an_exception_the_engine_turns_into_an_error_e
     orch.timeout_s = 0.01
     with pytest.raises(asyncio.TimeoutError):
         await orch.decide(ctx())
+    status = orch.diagnostics()
+    assert status["operations"]["decide"] == {
+        "attempts": 1, "successes": 0, "failures": 1, "fallbacks": 0,
+        "rejections": 0, "skipped": 0,
+    }
+    assert status["last_error"] == {
+        "operation": "decide", "kind": "timeout", "error_class": "TimeoutError",
+        "status_code": None,
+    }
+    fallback = await orch.expand_persona("someone", 1)
+    assert fallback.custom
+    assert orch.diagnostics()["operations"]["expand_persona"]["fallbacks"] == 1
 
 
 # ---- through the real SDK (no network: httpx MockTransport) ------------------------------
@@ -238,3 +255,141 @@ async def test_qna_round_accepts_a_question_grounded_in_the_slides():
     got = await orch.decide(ctx(qna=True))
     assert got.action == "question" and got.cited_transcript_excerpt is None
     assert "closing Q&A" in client.messages.calls[-1]["messages"][0]["content"]
+
+
+async def test_diagnostics_record_real_sdk_success_and_tokens_as_independent_snapshots():
+    orch = ClaudeOrchestrator(client=sdk_client(message(json.dumps({
+        "action": "none", "reason": "Let the presenter finish.",
+    }))), model="configured-model")
+    assert (await orch.decide(ctx())).action == "none"
+    status = orch.diagnostics()
+    assert status["adapter"] == "claude" and status["model"] == "configured-model"
+    assert status["last_response_model"] == "claude-opus-5-5"
+    assert status["operations"]["decide"] == {
+        "attempts": 1, "successes": 1, "failures": 0, "fallbacks": 0,
+        "rejections": 0, "skipped": 0,
+    }
+    assert status["usage"] == {"input_tokens": 10, "output_tokens": 10}
+    assert status["last_error"] is None and status["totals"]["successes"] == 1
+    status["operations"]["decide"]["successes"] = 999
+    status["usage"]["input_tokens"] = 999
+    assert orch.diagnostics()["totals"]["successes"] == 1
+    assert orch.diagnostics()["usage"]["input_tokens"] == 10
+
+
+async def test_diagnostics_api_401_is_a_failure_and_never_exposes_vendor_text():
+    private_marker = "PRIVATE_VENDOR_BODY_CREDENTIAL_123"
+    orch = ClaudeOrchestrator(client=sdk_client({
+        "type": "error", "error": {"type": "authentication_error", "message": private_marker},
+    }, 401))
+    assert (await orch.decide(ctx())).action == "none"
+    assert (await orch.expand_persona("private persona description", 2)).custom
+    status = orch.diagnostics()
+    assert status["totals"]["attempts"] == 2 and status["totals"]["successes"] == 0
+    assert status["totals"]["failures"] == status["totals"]["fallbacks"] == 2
+    assert status["last_error"] == {
+        "operation": "expand_persona", "kind": "api_error",
+        "error_class": "AuthenticationError", "status_code": 401,
+    }
+    serialized = json.dumps(status)
+    for private in (private_marker, "private persona description", "sk-test", "100,000 customers"):
+        assert private not in serialized
+    status["last_error"]["kind"] = "mutated"
+    assert orch.diagnostics()["last_error"]["kind"] == "api_error"
+
+
+async def test_diagnostics_no_call_guards_are_skips_and_mock_is_explicit():
+    client = FakeClient(None)
+    orch = ClaudeOrchestrator(client=client)
+    await orch.decide(ctx(question_allowed=False, eligible_kinds=[]))
+    await orch.follow_up("q", "a", presets.personas()["vc"], used=1)
+    await orch.assess_recovery("slides_down", "line", [], None)
+    status = orch.diagnostics()
+    assert status["totals"]["skipped"] == 3 and status["totals"]["attempts"] == 0
+    assert status["totals"]["fallbacks"] == 0 and client.messages.calls == []
+    mock = MockOrchestrator().diagnostics()
+    assert mock["adapter"] == "mock" and mock["model"] is None
+    assert mock["totals"]["attempts"] == mock["totals"]["successes"] == 0
+
+
+async def test_diagnostics_grounding_rejection_is_separate_from_api_success():
+    orch = ClaudeOrchestrator(client=FakeClient(OrchestratorDecision(
+        action="question", persona_id="vc", line="q", reason="r",
+        cited_transcript_excerpt="the model invented this quote")))
+    assert (await orch.decide(ctx())).action == "none"
+    counts = orch.diagnostics()["operations"]["decide"]
+    assert counts["successes"] == counts["rejections"] == counts["fallbacks"] == 1
+    assert counts["failures"] == 0
+    assert orch.diagnostics()["last_error"]["kind"] == "ungrounded_question"
+
+
+@pytest.mark.parametrize("stop_reason,kind", [
+    ("refusal", "refusal"), ("max_tokens", "truncated_response"),
+])
+async def test_diagnostics_identify_exposed_stop_reasons(stop_reason, kind):
+    orch = ClaudeOrchestrator(client=FakeClient(FakeResponse(None, stop_reason=stop_reason)))
+    await orch.decide(ctx())
+    status = orch.diagnostics()
+    assert status["totals"]["failures"] == status["totals"]["fallbacks"] == 1
+    assert status["last_error"]["kind"] == kind
+
+
+async def test_sdk_validation_failure_is_honest_when_stop_reason_is_unavailable():
+    # messages.parse validates JSON before exposing stop_reason; do not guess from text.
+    orch = ClaudeOrchestrator(client=sdk_client(message("refusal body is private", "refusal")))
+    await orch.decide(ctx())
+    status = orch.diagnostics()
+    assert status["last_error"]["kind"] == "invalid_structured_response"
+    assert status["last_error"]["error_class"] == "ValidationError"
+    assert status["totals"]["successes"] == 0 and status["totals"]["fallbacks"] == 1
+    assert "refusal body is private" not in json.dumps(status)
+
+
+class BosonStub(StructuredOrchestrator):
+    """Only the provider transport changes; all semantic behavior comes from the core."""
+
+    def __init__(self, reply: dict[str, Any]) -> None:
+        super().__init__(model="higgs-realtime", adapter="boson")
+        self.reply = reply
+
+    async def _parse(self, system: str, user: str, schema: type[T],
+                     effort: Literal["low", "high"], max_tokens: int = 2048,
+                     timeout_s: float | None = None) -> T | None:
+        operation = self._operation(schema)
+        self._reasoning_counts[operation]["attempts"] += 1
+        output = TypeAdapter(schema).validate_python(self.reply)
+        self._reasoning_counts[operation]["successes"] += 1
+        return output
+
+
+@pytest.mark.parametrize("missing", ["persona_id", "line"])
+async def test_provider_neutral_core_rejects_missing_action_required_optional_fields(missing):
+    reply = {
+        "action": "question", "persona_id": "vc", "line": "What evidence supports that?",
+        "reason": "unsupported", "cited_transcript_excerpt": "100,000 customers in six months",
+    }
+    del reply[missing]
+    # The contract accepts these omitted optional fields; a speaking decision must not.
+    assert OrchestratorDecision.model_validate(reply).action == "question"
+    orch = BosonStub(reply)
+    assert (await orch.decide(ctx())).action == "none"
+    status = orch.diagnostics()
+    assert status["adapter"] == "boson" and status["model"] == "higgs-realtime"
+    assert status["totals"]["rejections"] == status["totals"]["fallbacks"] == 1
+    assert status["last_error"]["kind"] == "invalid_question"
+
+
+async def test_provider_neutral_core_preserves_grounding_and_deliberate_no_call_guards():
+    orch = BosonStub({
+        "action": "question", "persona_id": "vc", "line": "What evidence supports that?",
+        "reason": "unsupported", "cited_transcript_excerpt": "100,000 customers in six months",
+        "slide_number": 99,
+    })
+    decision = await orch.decide(ctx())
+    assert decision.action == "question" and decision.slide_number == 3
+    satisfied = await orch.follow_up("q", "a", presets.personas()["vc"], used=1)
+    recovery = await orch.assess_recovery("slides_down", "line", [], None)
+    assert satisfied.verdict == "satisfied" and recovery.score is None
+    assert orch.diagnostics()["totals"]["attempts"] == 1
+    assert orch.diagnostics()["totals"]["skipped"] == 2
+    assert orch.diagnostics()["totals"]["fallbacks"] == 0

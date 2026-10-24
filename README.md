@@ -4,15 +4,24 @@ An AI audience that listens to your presentation, interrupts with grounded quest
 
 **Read `CLAUDE.md` first.** It is the house rules and the shared source of truth: scope, priorities, contracts, team split, hour gates, vendor facts, money rules. Then `PRIORITIES.md` for what to build next, `DECISIONS.md` for what is settled, `demo/DEMO_STATUS.md` for what is live.
 
+**Continuing from the verified voice work on `yang`? Read [COLLABORATOR_HANDOFF.md](COLLABORATOR_HANDOFF.md).** It covers the current build, setup, test evidence, remaining checks, and the next work for each owner.
+
 ## Run it
 
 ```bash
 make setup        # .venv, pinned deps, .env from .env.example, schema
 make dev          # http://localhost:8000  (API + frontend, one process)
 make check        # the gate: ruff + pyright + schema + mock fixtures + pytest
+node --test --test-timeout=5000 scripts/test_*.mjs  # browser/audio checks; Node required
 ```
 
 Without keys everything runs on mocks: `VOICE_ADAPTER=mock`, `ORCHESTRATOR=mock`. The room can be built and demoed with no backend at all at `/room.html?mock=1` (replays `frontend/mocks/demo_session.json`) and `/report.html?mock=1`.
+
+For live Boson voice and audience reasoning, privately set `BOSON_API_KEY`,
+`VOICE_ADAPTER=higgs`, and `ORCHESTRATOR=boson` in `.env`. Keep
+`BOSON_AVATAR_ENABLED=false` and `DEBUG_CURVEBALL_ENDPOINT=false` for presentation
+checks. This uses Boson API credits. An Anthropic key is needed only if the team
+chooses `ORCHESTRATOR=claude`. Hold-to-talk is the room default.
 
 ## Layout
 
@@ -23,7 +32,7 @@ spec/contracts.py       THE types (pydantic)      spec/contracts.schema.json  ge
 spec/curveballs.md      curveball catalog
 backend/main.py         FastAPI: REST + WS + static frontend
 backend/engine.py       session state machine (C)
-backend/services/       scheduler · curveballs · audience (Claude) · report · slides (C)
+backend/services/       scheduler · curveballs · audience (Boson/Claude/mock) · report · slides (C)
                         voice_base · voice_mock · voice_higgs (B)
 backend/scenarios/      personas.yaml + presets (content, anyone)
 backend/tests/          the spec as tests; red until the owning priority lands
@@ -33,8 +42,13 @@ demo/                   DEMO_STATUS.md, demo_script.md, sfx/, sample deck
 docs/archive/           the original plan this grew from
 ```
 
-## State of the scaffold
+## Current state
 
-This is a **skeleton**: contracts, wiring, interfaces, tests and docs are real; the bodies marked `TODO(A|B|C)` are yours. `make check` is green on lint/type/schema/mocks and **red on tests by design** — each test file is the acceptance spec for a `PRIORITIES.md` line and goes green when that line lands (CLAUDE.md §12, step 3).
+The presentation room includes live Boson transcription, streamed persona speech,
+hold-to-talk controls, real audience reasoning, static portraits, an audience builder,
+curveballs, Q&A, and reports from actual session events. Offline backend and browser
+checks pass. Two human presentation flows completed; final clean-demo and recording
+sign-off remain open. The handoff separates original test evidence from subsequent
+fixes and the focused checks still needed.
 
 Owners: **A** frontend/demo UX · **B** voice (Higgs) · **C** backend/brain/curveballs/report.

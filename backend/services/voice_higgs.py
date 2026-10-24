@@ -1,22 +1,18 @@
-"""Higgs (Boson AI) voice adapter — Person B owns this file.
+"""Boson speech adapter: controlled STT in the browser, streamed TTS on its own socket.
 
-Status: SKELETON. TTS 3 and client-secret minting are implemented from the docs and
-untested; Realtime is a TODO until the hour-1 tests in CLAUDE.md §13 pick a shape.
-What the docs say (23 Oct 2026), verify before building on it:
-  TTS        POST https://api.boson.ai/v1/audio/speech   model higgs-tts-3
-             stream=true + response_format="pcm" → 16-bit 24 kHz mono PCM
-             tags: <|emotion:anger|> <|style:whispering|> <|prosody:pause|> <|sfx:cough|> <|reset|>
-  Realtime   wss://api.boson.ai/v1/realtime?model=higgs-realtime  (OpenAI Realtime-compatible)
-             server_vad | semantic_vad | null; barge-in built in; STT via higgs-stt-3.1 →
-             conversation.item.input_audio_transcription.completed (final only)
-  Secrets    POST /v1/realtime/client_secrets → ephemeral key bai-eph-… for the browser
-Money: every session is created with a hard timeout and closed in a `finally`.
+Only the backend holds the permanent key. A speech call completes after browser playback,
+not HTTP generation. The engine remains the sole owner of ai_speech_started/ended events.
 """
-
 from __future__ import annotations
 
+import asyncio
+import json
 import os
-from collections.abc import AsyncIterator
+import time
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import suppress
+from typing import Any
 
 import httpx
 
@@ -26,44 +22,103 @@ from .voice_base import OnEvent, OnTranscript
 
 BASE_URL = "https://api.boson.ai/v1"
 PCM_SAMPLE_RATE = 24_000
-
-# Persona → preset voice. Fill from GET /v1/audio/voices during hour-1 test 4.
-VOICE_FOR_PERSONA: dict[str, str] = {
-    "moderator": "default",
+VOICE_FOR_PERSONA = {
+    "moderator": "eleanor", "vc": "marcus", "student": "chloe",
+    "professor": "oliver", "mentor": "nora",
 }
-# Persona style hint → TTS delivery tags placed at the start of the text.
-STYLE_TAGS: dict[str, str] = {
+PRESET_VOICES = {"default", "chloe", "eleanor", "jake", "marcus", "nora", "oliver"}
+STYLE_TAGS = {
     "impatient": "<|emotion:anger|><|prosody:speed_fast|>",
     "confused": "<|emotion:confusion|>",
     "thoughtful": "<|emotion:contemplation|><|prosody:speed_slow|>",
     "neutral": "",
 }
+AudioSink = Callable[[str | bytes], Awaitable[None]]
+
+
+class VoiceError(RuntimeError):
+    """Safe to show to the presenter; vendor bodies/credentials never reach logs."""
 
 
 class SpendCounter:
-    """We keep our own counter because the vendor dashboard lags (CLAUDE.md §13 Money)."""
-
     tts_chars = 0
     realtime_ms = 0
+    reasoning_estimate_usd = 0.0
 
     @classmethod
     def estimate_usd(cls) -> float:
-        return cls.tts_chars / 1000 * 0.015 + cls.realtime_ms / 60_000 * 0.016
+        return (cls.tts_chars / 1000 * 0.015 + cls.realtime_ms / 60_000 * 0.016
+                + cls.reasoning_estimate_usd
+                + max(0.0, float(os.environ.get("BOSON_SPEND_CARRYOVER_USD", "0"))))
+
+
+def realtime_config() -> dict[str, Any]:
+    """Manual commit is essential: Boson ignores create_response:false under server VAD."""
+    return {
+        "type": "session.update",
+        "session": {
+            "model": os.environ.get("BOSON_REALTIME_MODEL", "higgs-realtime"),
+            "output_modalities": ["text"],
+            "audio": {
+                "input": {
+                    "format": {"type": "audio/pcm", "rate": PCM_SAMPLE_RATE},
+                    "transcription": {
+                        "model": os.environ.get("BOSON_STT_MODEL", "higgs-stt-3.1"),
+                        "language": "en",
+                    },
+                    "turn_detection": None,
+                },
+                "output": {"format": {"type": "audio/pcm", "rate": PCM_SAMPLE_RATE},
+                           "voice": "default"},
+            },
+            "max_output_tokens": 128,
+        },
+    }
 
 
 class HiggsVoice:
-    def __init__(self) -> None:
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self.api_key = os.environ.get("BOSON_API_KEY", "")
         self.tts_model = os.environ.get("BOSON_TTS_MODEL", "higgs-tts-3")
-        self.realtime_model = os.environ.get("BOSON_REALTIME_MODEL", "higgs-realtime")
         self._on_event: OnEvent | None = None
         self._on_transcript: OnTranscript | None = None
         self._session_id = ""
-        self._client = httpx.AsyncClient(
+        self._sink: AudioSink | None = None
+        self._clock: Callable[[], int] = lambda: 0
+        self._speech: asyncio.Task[None] | None = None
+        self._played = asyncio.Event()
+        self._play_id: str | None = None
+        self._accept_ack = False
+        self._speech_lock = asyncio.Lock()
+        self._voices = dict(VOICE_FOR_PERSONA)
+        self.speech_ended_at_ms = 0
+        self._closed = False
+        self._client = client or httpx.AsyncClient(
             base_url=BASE_URL,
             headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=httpx.Timeout(30.0, connect=10.0),
+            timeout=httpx.Timeout(20.0, connect=10.0),
         )
+
+    @property
+    def speaking(self) -> bool:
+        return self._speech is not None and not self._speech.done()
+
+    @property
+    def attached(self) -> bool:
+        return self._sink is not None
+
+    def attach(self, sink: AudioSink, clock: Callable[[], int]) -> None:
+        if self.attached:
+            raise VoiceError("An audio client is already connected.")
+        self._sink, self._clock = sink, clock
+
+    async def detach(self) -> None:
+        self._sink = None
+        await self.cancel_speech()
+
+    def acknowledge(self, play_id: str) -> None:
+        if self._accept_ack and play_id == self._play_id:
+            self._played.set()
 
     def on_event(self, callback: OnEvent) -> None:
         self._on_event = callback
@@ -71,81 +126,142 @@ class HiggsVoice:
     def on_transcript(self, callback: OnTranscript) -> None:
         self._on_transcript = callback
 
-    # ---- TTS 3 (Shape 2 speech path) --------------------------------------------
-
-    async def tts_pcm_stream(
-        self, text: str, voice: str, style: str | None = None
-    ) -> AsyncIterator[bytes]:
-        """Yield raw PCM chunks for `text`. The browser's audio.js plays this format."""
+    async def tts_pcm_stream(self, text: str, voice: str,
+                             style: str | None = None) -> AsyncIterator[bytes]:
+        if SpendCounter.estimate_usd() >= float(os.environ.get("SPEND_SOFT_CAP_USD", "60")):
+            raise VoiceError("The local voice spending limit has been reached.")
         tagged = STYLE_TAGS.get(style or "neutral", "") + text
         SpendCounter.tts_chars += len(tagged)
-        payload = {
-            "model": self.tts_model,
-            "input": tagged,
-            "voice": voice,
-            "stream": True,
-            "response_format": "pcm",
-        }
-        async with self._client.stream("POST", "/audio/speech", json=payload) as resp:
-            resp.raise_for_status()
-            async for chunk in resp.aiter_bytes():
-                yield chunk
+        try:
+            async with self._client.stream("POST", "/audio/speech", json={
+                "model": self.tts_model, "input": tagged, "voice": voice,
+                "stream": True, "response_format": "pcm",
+            }) as response:
+                if not response.is_success:
+                    raise VoiceError(f"Boson speech unavailable (HTTP {response.status_code}).")
+                async for chunk in response.aiter_bytes():
+                    if chunk:
+                        yield chunk
+        except httpx.HTTPError:
+            raise VoiceError("The Boson speech connection failed. Try again.") from None
 
-    # ---- Realtime (Shape 1; also the STT path in Shape 2) ------------------------
-
-    async def mint_client_secret(self) -> dict:
-        """Ephemeral browser credential. The API key never leaves this process."""
-        resp = await self._client.post("/realtime/client_secrets", json={})
-        resp.raise_for_status()
-        return resp.json()
-
-    # ---- VoiceAdapter --------------------------------------------------------------
+    async def mint_client_secret(self) -> dict[str, Any]:
+        try:
+            response = await self._client.post("/realtime/client_secrets", json={
+                "expires_after": {"seconds": 300},
+            })
+            if not response.is_success:
+                raise VoiceError(f"Boson connection unavailable (HTTP {response.status_code}).")
+            body = response.json()
+            if (not isinstance(body, dict) or not isinstance(body.get("value"), str)
+                    or not body["value"]):
+                raise VoiceError("Boson did not return a temporary credential.")
+            return {"value": body["value"], "expires_at": body.get("expires_at"),
+                    "url": "wss://api.boson.ai/v1/realtime", "config": realtime_config()}
+        except (httpx.HTTPError, ValueError):
+            raise VoiceError("Could not create a temporary voice connection.") from None
 
     async def start_voice_session(self, session_id: str, config: SessionConfig) -> None:
+        if self._closed:
+            raise VoiceError("The voice session has ended. Create a new room.")
         self._session_id = session_id
-        # TODO(B, hour 1-4): open the Realtime WebSocket (Shape 1) or start the STT-only
-        # session (Shape 2); forward input_audio_transcription.completed to _on_transcript
-        # with our own start_ms from speech_started.
-        await self._status("not_implemented")
+        for i, persona in enumerate(config.personas):
+            self._voices[persona.id] = (persona.voice_id if persona.voice_id in PRESET_VOICES
+                                       else VOICE_FOR_PERSONA.get(
+                                           persona.id, ["marcus", "chloe", "oliver"][i % 3]))
+        await self._status("ready" if self.attached else "waiting_for_audio")
 
     async def send_context(self, text: str) -> None:
-        # TODO(B): session.update / conversation.item.create with slide context (Shape 1).
+        # TTS speaks only the orchestrator's exact line; slide context stays with the brain.
         return None
 
-    async def request_persona_turn(
-        self, persona_id: str, text: str, style: str | None = None
-    ) -> None:
-        # TODO(B): Shape 1 → make Realtime speak `text` (hour-1 test 2).
-        #          Shape 2 → stream tts_pcm_stream(...) to the browser and emit
-        #          ai_speech_started / ai_speech_ended around it.
-        await self._status(f"persona_turn_not_implemented:{persona_id}")
+    async def request_persona_turn(self, persona_id: str, text: str,
+                                   style: str | None = None) -> None:
+        async with self._speech_lock:
+            if self._sink is None:
+                raise VoiceError("Audio is disconnected. Reconnect before speaking.")
+            self._speech = asyncio.create_task(self._say(persona_id, text, style))
+            task = self._speech
+            try:
+                await task
+            except asyncio.CancelledError:
+                caller = asyncio.current_task()
+                if caller is not None and caller.cancelling():
+                    raise
+            finally:
+                self.speech_ended_at_ms = self._clock()
+                self._speech = None
+                self._play_id = None
+                self._accept_ack = False
+
+    async def _say(self, persona_id: str, text: str, style: str | None) -> None:
+        self._play_id = uuid.uuid4().hex
+        self._played.clear()
+        first_at = None
+        started = time.monotonic()
+        try:
+            async with asyncio.timeout(30):
+                await self._status("speaking")  # flushes the engine's start before any PCM
+                await self._send({"type": "speech_started", "play_id": self._play_id,
+                                  "speaker": persona_id, "text": text})
+                async for chunk in self.tts_pcm_stream(
+                    text, self._voices.get(persona_id, "default"), style,
+                ):
+                    if first_at is None:
+                        first_at = round((time.monotonic() - started) * 1000)
+                    await self._send(chunk)
+                if first_at is None:
+                    raise VoiceError("Boson returned no speech audio.")
+                self._accept_ack = True
+                await self._send({"type": "speech_complete", "play_id": self._play_id,
+                                  "first_audio_ms": first_at})
+                await self._played.wait()
+        except TimeoutError:
+            with suppress(VoiceError):
+                await self._send({"type": "cancel"})
+            raise VoiceError("Voice playback timed out. Please reconnect audio.") from None
+        except BaseException:
+            with suppress(VoiceError):
+                await self._send({"type": "cancel"})
+            raise
+        finally:
+            await self._status("ready")
+
+    async def _send(self, data: dict[str, Any] | bytes) -> None:
+        if self._sink is None:
+            raise VoiceError("Audio disconnected during speech.")
+        try:
+            await self._sink(data if isinstance(data, bytes) else json.dumps(data))
+        except VoiceError:
+            raise
+        except Exception:
+            raise VoiceError("Audio disconnected during speech.") from None
 
     async def play_moderator_line(self, text: str) -> None:
         await self.request_persona_turn("moderator", text, "neutral")
 
     async def play_sfx(self, sfx_id: str) -> None:
-        # Vocal sfx (cough, sigh) can go through TTS tags; phone/door are local clips the
-        # browser plays from the curveball event's sfx_url. Nothing to do server-side.
         return None
 
     async def cancel_speech(self) -> None:
-        # TODO(B): response.cancel / conversation.item.truncate (Shape 1), or stop the
-        # PCM stream (Shape 2).
-        return None
+        if self._speech and not self._speech.done():
+            self._speech.cancel()
+        if self._sink:
+            await self._send({"type": "cancel"})
 
     async def stop_voice_session(self) -> None:
         try:
-            pass  # TODO(B): close the Realtime socket.
+            await self.cancel_speech()
+            if self._speech and self._speech is not asyncio.current_task():
+                with suppress(asyncio.CancelledError):
+                    await self._speech
         finally:
             await self._client.aclose()
+            self._closed = True
 
     async def _status(self, status: str) -> None:
         if self._on_event:
-            await self._on_event(
-                SessionEvent(
-                    type="audio_status",
-                    session_id=self._session_id,
-                    timestamp_ms=0,
-                    payload={"status": status, "adapter": "higgs"},
-                )
-            )
+            await self._on_event(SessionEvent(
+                type="audio_status", session_id=self._session_id, timestamp_ms=self._clock(),
+                payload={"status": status, "adapter": "higgs"},
+            ))

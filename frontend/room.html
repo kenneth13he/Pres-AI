@@ -7,57 +7,84 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/css/app.css" />
 </head>
-<body class="min-h-screen">
+<body class="room-page min-h-screen">
   <main class="mx-auto max-w-7xl px-4 py-6">
-    <header class="flex items-center justify-between">
+    <header class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <span class="text-sm text-slate-500">PresAI ·</span>
         <span id="preset-name" class="text-sm text-slate-300">Room</span>
         <span id="phase" class="ml-3 rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">setup</span>
+        <p id="room-state" class="mt-1 text-sm font-medium text-cyan-200" role="status" aria-live="polite">Microphone is off. Start when ready.</p>
       </div>
       <div class="flex items-center gap-4">
         <div id="timer" class="timer font-mono text-2xl">00:00</div>
-        <div class="flex gap-2 text-sm">
+        <div class="flex flex-wrap gap-2 text-sm">
           <button id="btn-start" class="rounded-lg bg-cyan-500 px-4 py-2 font-medium text-black">Start presenting</button>
-          <button id="btn-pause" class="rounded-lg bg-slate-800 px-3 py-2" title="P">Pause</button>
-          <button id="btn-skip" class="rounded-lg bg-slate-800 px-3 py-2" title="S">Skip</button>
+          <button id="btn-pause" class="rounded-lg bg-slate-800 px-3 py-2" title="Pause or resume the session">Pause</button>
+          <button id="btn-skip" class="rounded-lg bg-slate-800 px-3 py-2" title="Skip the current question or curveball">Skip</button>
           <button id="btn-restore" class="hidden rounded-lg bg-amber-600 px-3 py-2">Restore slides</button>
           <button id="btn-end" class="rounded-lg bg-slate-800 px-3 py-2">End → Q&amp;A</button>
         </div>
       </div>
     </header>
+    <p id="room-notice" class="mt-3 rounded-lg border border-emerald-800 bg-emerald-950/60 px-4 py-3 text-sm text-emerald-100" role="status" aria-live="polite" hidden></p>
 
-    <div class="mt-5 grid gap-5 lg:grid-cols-[2fr_1fr]">
-      <!-- slides -->
-      <section>
-        <div id="slide-viewer" class="slide-viewer overflow-hidden rounded-xl border border-slate-800">
-          <img id="slide-img" alt="" class="h-full w-full object-contain" />
-          <div id="slide-text" class="slide-text absolute inset-0 hidden place-items-center p-8 text-center text-slate-400"></div>
-          <div class="overlay">
-            <div>
-              <div class="text-3xl font-semibold" id="overlay-title">Projector disconnected</div>
-              <div class="mt-2 text-slate-400" id="overlay-sub">Keep going.</div>
+    <div class="room-layout mt-5">
+      <section class="meeting-room" aria-label="Presentation and audience room">
+        <div class="screen-row">
+          <div id="slide-viewer" class="slide-viewer screen overflow-hidden rounded-lg">
+            <img id="slide-img" alt="" class="h-full w-full object-contain" />
+            <div id="slide-text" class="slide-text absolute inset-0 hidden place-items-center p-8 text-center text-slate-400"></div>
+            <div class="overlay">
+              <div>
+                <div class="text-3xl font-semibold" id="overlay-title">Projector disconnected</div>
+                <div class="mt-2 text-slate-400" id="overlay-sub">Keep going.</div>
+              </div>
             </div>
           </div>
+          <div id="host" class="host"></div>
         </div>
-        <div class="mt-2 flex items-center justify-between text-sm text-slate-400">
+        <div class="slide-toolbar text-sm text-slate-400">
           <div class="flex gap-2">
-            <button id="prev" class="rounded bg-slate-800 px-3 py-1">←</button>
+            <button id="prev" aria-label="Previous slide" class="rounded bg-slate-800 px-3 py-1">←</button>
             <span id="slide-no">Slide 1</span>
-            <button id="next" class="rounded bg-slate-800 px-3 py-1">→</button>
+            <button id="next" aria-label="Next slide" class="rounded bg-slate-800 px-3 py-1">→</button>
           </div>
           <div class="flex items-center gap-2">
-            <span id="mic-label">mic</span>
+            <span id="mic-label">Mic level</span>
             <div class="meter w-32"><div id="mic-level"></div></div>
-            <span id="ptt-hint" class="hidden text-xs">hold Space to talk</span>
           </div>
+        </div>
+        <div class="table-scene" aria-label="Fictional audience at the table">
+          <div class="back-wall" aria-hidden="true"></div>
+          <div id="tiles" class="seats"></div>
+          <div class="table-top" aria-hidden="true"></div>
+          <div class="you-marker">you · presenting</div>
         </div>
       </section>
 
-      <!-- audience -->
-      <aside>
-        <div id="tiles" class="grid gap-3"></div>
-        <div id="captions" class="mt-4 h-64 space-y-2 overflow-y-auto rounded-xl border border-slate-800 p-3 text-sm"></div>
+      <aside class="transcript-panel" aria-label="Session controls and transcript">
+        <section class="room-audio rounded-xl border border-slate-800 p-4" aria-label="Microphone controls">
+          <div class="flex flex-wrap items-center gap-3">
+            <button id="btn-talk" class="rounded-lg bg-cyan-500 px-5 py-3 font-medium text-black" disabled>Hold to talk</button>
+            <button id="btn-stop-reply" class="rounded-lg bg-slate-800 px-3 py-2" disabled>Stop reply</button>
+            <span id="audio-mode" class="text-sm text-cyan-300">Hold to talk</span>
+            <p id="audio-status" class="text-sm text-slate-400" role="status">Microphone is off. Start when ready.</p>
+          </div>
+          <p id="mic-consent" class="mt-2 text-xs text-slate-500">Starting asks for microphone access. Speech goes to Boson for transcription; raw audio is not saved. The transcript stays in this local session.</p>
+          <p id="qna-hint" class="mt-3 text-sm text-cyan-200" role="status" hidden>Answer with Hold to talk. The report becomes ready automatically when Q&amp;A is complete.</p>
+          <button id="btn-finish-session" class="mt-2 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300" aria-describedby="qna-hint" hidden>Finish session early</button>
+          <details class="room-help mt-1 text-xs text-slate-400">
+            <summary>Presentation tips and controls</summary>
+            <p id="ptt-hint" class="mt-2">Hold the button or Space, including thinking pauses. Release when finished.</p>
+            <p class="mt-2">Space is reserved for speaking. Use Enter or click to activate the other controls.</p>
+            <p class="mt-2">Present for at least 30 seconds and release between points. Your audience asks about your claims, then listens to your answer.</p>
+          </details>
+          <p id="room-error" class="mt-2 text-sm text-amber-300" role="alert" hidden></p>
+          <p id="report-ready" class="mt-3 text-sm" hidden>Session finished. <a id="report-link" class="text-cyan-300 underline" href="/">Open the session report</a></p>
+        </section>
+        <h2 id="transcript-title" class="mb-3 mt-5 text-xs uppercase tracking-wide text-slate-400">Transcript history</h2>
+        <div id="captions" class="transcript-log" role="log" aria-live="polite" aria-relevant="additions"></div>
       </aside>
     </div>
 

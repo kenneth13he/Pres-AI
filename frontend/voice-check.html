@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PresAI · Voice check</title>
+<style>
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#101723; color:#edf3fa }
+body { margin:0; padding:48px 24px; } main { max-width:780px; margin:auto; }
+h1 { font-size:38px; margin:8px 0 18px; } p { line-height:1.6; color:#b4c2d4; }
+.eyebrow { color:#6ee7b7; letter-spacing:.13em; font-size:12px; text-transform:uppercase; }
+section { padding:24px; border:1px solid #2c3a4d; background:#162131; border-radius:16px; margin:20px 0; }
+.row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+button,select { background:#26384e; color:#edf3fa; border:1px solid #425775; padding:12px 16px; border-radius:9px; font:inherit; cursor:pointer; }
+button.primary { background:#6ee7b7; color:#112c28; border:0; font-weight:650; }
+button:disabled { opacity:.4; cursor:default; } label { display:inline-flex; align-items:center; gap:8px; }
+#talk { touch-action:none; user-select:none; }
+#status { color:#6ee7b7; min-height:24px; } #log { white-space:pre-wrap; line-height:1.6; max-height:240px; overflow:auto; }
+.track { height:8px; border-radius:8px; background:#28374a; margin:20px 0; overflow:hidden; } #level { height:100%; background:#6ee7b7; width:0; }
+.small { font-size:13px; } a { color:#6ee7b7; }
+</style>
+</head>
+<body><main>
+<div class="eyebrow">PresAI · local voice integration</div>
+<h1>Check the room’s voice.</h1>
+<p>Listen to a test line, then try the microphone. Audio goes to Boson for speech recognition;
+raw microphone audio is not saved. These checks use a small amount of your Boson credit.</p>
+<section>
+<div class="row"><button id="connect" class="primary">1. Connect audio</button>
+<select id="persona" aria-label="Test speaker"><option value="moderator">Moderator</option></select>
+<button id="speak" disabled>2. Play test line</button></div>
+<p id="status" role="status">Ready to connect.</p>
+</section>
+<section>
+<div class="row"><select id="mode" aria-label="Microphone mode"><option value="push_to_talk">Hold to talk · recommended</option>
+<option value="live">Hands-free · waits for a pause</option></select>
+<button id="mic" disabled>3. Start microphone</button>
+<button id="stop" disabled>Stop audio</button></div>
+<div class="row" style="margin-top:16px"><button id="talk" class="primary" disabled>Hold to ask a question</button>
+<button id="cancel-reply" disabled>Stop reply</button></div>
+<p class="small" id="turn-help">Hold the button or Space throughout your whole question, including pauses. Release only when finished.
+Losing focus discards an unfinished question.</p>
+<div class="track"><div id="level"></div></div>
+<label for="reply-mode">Reply mode</label>
+<select id="reply-mode" aria-label="Reply mode">
+<option value="live">Live AI conversation · Higgs</option>
+<option value="fixed">Fixed reply · audio diagnostic</option>
+<option value="off">Transcription only</option>
+</select>
+<p class="small">Choose a reply mode before connecting. Live conversation generates a new answer from your speech.
+The presentation room uses its separate audience backend for grounded questions.</p>
+<div id="log" aria-live="polite"></div>
+<p id="latency" class="small">Speech-end-to-first-received-audio timing appears after a reply.</p>
+</section>
+<p class="small">Keep headphones on to reduce speaker echo. Pause and Skip cancel queued speech.
+Test a question, then a different follow-up to check that live answers change with the conversation.</p>
+<a href="/">Open PresAI</a><audio id="sfx"></audio>
+</main><script type="module" src="/js/voice_check.js"></script></body></html>
