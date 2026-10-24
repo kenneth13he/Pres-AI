@@ -103,3 +103,13 @@ Files outside my paths: none
 Proposed decision changes (not implemented): none
 Next: integration support for A/B; P1-2/P1-4 are already in place by construction and get flipped when A can show them
 Open question for the team: Anthropic monthly cap (we have spent well under $1 so far)
+
+## P0-3 + P0-3b (A) + P0-7 + P0-10 + P0-12 (A) · 2026-10-24 13:50 · A · session 1
+Built: frontend redesign from the design handoff (docs/design/, references only, not served): premium-dark homepage with a self-playing demo room; 5-step setup wizard (profile → slides → room → audience with custom guests → curveballs) with a live room preview; event-driven live room (room layouts per setting, speaking ring, tile flash, blackout + Restore, dim, blank, VIP tile, crunch timer, captions, P/S/←/→); report card — all through the existing api.js / WebSocket seams.
+Tests: no new Python tests; mock fixture gains a heckler curveball (`make mocks`). Verified by driving headless Chrome: mock replay incl. pause/restore; live run on the real engine (mock orchestrator/voice): sample deck upload → room with slide PNGs → grounded question quoting the claim → follow-up → `slides_down` blackout → Restore → "back on track after 2.6 s" → Q&A → report with the quote and score 85.
+Gate: green (lint, pyright, schema, mocks, pytest 72/72) on the rebased branch
+Demo path: steps 1, 2, 6, 8 → live (A side); steps 3–5 still wait on B's voice/STT
+Files outside my paths: docs/design/ (handoff files); mic.js level meter (the TODO(A) half only)
+Proposed decision changes (not implemented): the design allows 1–10 guests; SessionConfig caps personas at 2–3, so the UI caps at 3 (`MAX_GUESTS` in frontend/js/rooms.js). Profile (role/goal/level/tone), room setting and presentation context have no contract fields and stay in localStorage — C to decide whether the orchestrator should see them.
+Next: P1-1 (demo-path polish)
+Open question for the team: B — custom guests send `voice_id` (a preset name or a Boson voice id); cloned voices need a backend route that calls `POST /v1/audio/voices` once and stores the id; until then they use the default voice (said on screen).

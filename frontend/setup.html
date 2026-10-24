@@ -3,86 +3,56 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PresAI · Setup</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Pres AI · Setup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <link rel="stylesheet" href="/css/app.css" />
+  <style>
+    .wiz-head { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 28px; border-bottom: 1px solid var(--raised-2); background: rgba(12,13,15,.85); backdrop-filter: blur(12px); }
+    .steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .steps button { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--faint); font-size: 14px; font-weight: 600; cursor: pointer; }
+    .steps button.cur { background: var(--raised-2); }
+    .steps button.reached { color: var(--text); }
+    .steps .num { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 500 11px var(--mono); background: var(--raised-2); color: var(--faint); }
+    .steps .cur .num { background: var(--text); color: var(--bg); }
+    .steps .done .num { background: var(--mint); color: var(--bg); }
+    .wiz-main { flex: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 40px 28px 48px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 40px; align-items: start; }
+    h1.title { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.03em; }
+    p.lede { margin: 8px 0 0; font-size: 16px; line-height: 1.5; color: var(--muted); }
+    .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+    .preview { position: sticky; top: 96px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); padding: 16px; }
+    .sum-row { display: flex; justify-content: space-between; gap: 16px; padding: 11px 4px; border-top: 1px solid #1f2326; font-size: 14px; }
+    .drop { margin-top: 28px; padding: 44px 24px; border-radius: 18px; border: 1.5px dashed var(--border-dashed); background: #101214; text-align: center; cursor: pointer; transition: all .2s; }
+    .drop.drag { border-color: var(--mint); background: oklch(0.82 0.15 150 / .06); }
+    .portrait { position: relative; width: 168px; height: 168px; border-radius: 14px; border: 1.5px dashed var(--border-dashed); background: var(--bg); cursor: pointer; overflow: hidden; display: grid; place-items: center; }
+    .add-tile { text-align: left; padding: 12px 14px; border-radius: 12px; border: 1.5px dashed var(--border-dashed); background: transparent; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; }
+    .add-tile:hover { border-color: oklch(0.82 0.15 150 / .6); background: oklch(0.82 0.15 150 / .04); }
+    .btn-save { padding: 11px 20px; border-radius: 10px; border: 0; background: var(--mint); color: var(--mint-ink); font-size: 14px; font-weight: 700; cursor: pointer; }
+    .btn-save:disabled { background: var(--raised-3); color: var(--faint); cursor: not-allowed; }
+    .tick { flex: none; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid #3a4043; color: var(--mint-ink); display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+    .tick.on { border-color: var(--mint); background: var(--mint); }
+  </style>
 </head>
-<body class="min-h-screen">
-  <main class="mx-auto max-w-4xl px-4 py-10">
-    <a href="/" class="text-sm text-slate-500 hover:text-slate-300">← presets</a>
-    <h1 id="title" class="mt-2 text-3xl font-semibold">Setup</h1>
-
-    <!-- 2 · slides -->
-    <section class="mt-8 rounded-xl border border-slate-800 p-5">
-      <h2 class="text-sm uppercase tracking-wide text-slate-400">2 · Your slides (PDF)</h2>
-      <input id="pdf" type="file" accept="application/pdf" class="mt-3 block text-sm" />
-      <p id="pdf-status" class="mt-2 text-xs text-slate-500">Optional. Without a deck the room listens only.</p>
-    </section>
-
-    <!-- audience builder (P0-3b) -->
-    <section class="mt-6 rounded-xl border border-slate-800 p-5">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm uppercase tracking-wide text-slate-400">Audience</h2>
-        <button id="customise" class="text-sm text-cyan-400 hover:underline">Customise</button>
+<body>
+  <div style="min-height:100vh;display:flex;flex-direction:column">
+    <header class="wiz-head">
+      <a href="/" class="logo"><span class="logo-mark"></span>Pres AI</a>
+      <nav id="steps" class="steps"></nav>
+      <a href="/" style="font-size:14px;color:var(--muted)">Exit</a>
+    </header>
+    <main class="wiz-main">
+      <div style="max-width:640px;width:100%">
+        <div id="body"><p class="lede">Loading…</p></div>
+        <div id="foot" style="margin-top:32px"></div>
       </div>
-      <div id="audience-summary" class="mt-3 flex flex-wrap gap-2 text-sm"></div>
-
-      <div id="builder" class="mt-4 hidden space-y-4">
-        <div>
-          <div class="text-xs text-slate-400">Pick two or three from the roster</div>
-          <div id="roster" class="mt-2 grid gap-2 sm:grid-cols-2"></div>
-        </div>
-        <div>
-          <div class="text-xs text-slate-400">…or describe someone (fictional, labelled "Custom")</div>
-          <textarea id="custom-persona" rows="2" placeholder="e.g. my thesis committee chair who hates jargon"
-                    class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-sm"></textarea>
-        </div>
-      </div>
-    </section>
-
-    <!-- advanced -->
-    <details class="mt-6 rounded-xl border border-slate-800 p-5">
-      <summary class="cursor-pointer text-sm uppercase tracking-wide text-slate-400">Advanced</summary>
-      <div class="mt-4 grid gap-4 sm:grid-cols-2 text-sm">
-        <label>Difficulty
-          <select id="difficulty" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
-            <option value="friendly">Friendly — no curveballs</option>
-            <option value="normal" selected>Normal — 2 questions, 1 curveball</option>
-            <option value="brutal">Brutal — 3 questions, 2 curveballs</option>
-          </select>
-        </label>
-        <label>Interruptions
-          <select id="frequency" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
-            <option value="rare">Rare</option><option value="normal" selected>Normal</option><option value="often">Often</option>
-          </select>
-        </label>
-        <label>Curveballs
-          <select id="cb-mode" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
-            <option value="surprise" selected>Surprise me</option><option value="choose">Let me choose</option><option value="off">Off</option>
-          </select>
-        </label>
-        <label>Target length (minutes)
-          <input id="duration" type="number" min="1" max="20" value="3" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2" />
-        </label>
-        <div id="cb-choose" class="hidden sm:col-span-2 flex flex-wrap gap-2"></div>
-        <label>Q&amp;A questions at the end
-          <input id="qna" type="number" min="0" max="3" value="2" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2" />
-        </label>
-        <label>Input
-          <select id="input-mode" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
-            <option value="live" selected>Live microphone</option><option value="push_to_talk">Push to talk (hold Space)</option>
-          </select>
-        </label>
-      </div>
-    </details>
-
-    <!-- 3 · start -->
-    <div class="mt-8 flex items-center gap-4">
-      <button id="start" class="rounded-xl bg-cyan-500 px-6 py-3 text-lg font-medium text-black hover:bg-cyan-400">3 · Start</button>
-      <span id="start-status" class="text-sm text-slate-500"></span>
-    </div>
-    <p class="mt-6 text-xs text-slate-600">We ask for your microphone when the room opens. Nothing is recorded or stored by default; the transcript lives in this session only.</p>
-  </main>
+      <aside id="preview" class="preview"></aside>
+    </main>
+  </div>
+  <input id="deck-file" type="file" accept=".pdf,application/pdf" class="hidden" />
+  <input id="ctx-file" type="file" accept=".txt,.md,.pdf,.doc,.docx" multiple class="hidden" />
+  <input id="portrait-file" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="hidden" />
+  <input id="clip-file" type="file" accept=".wav,.mp3,.opus,.pcm,.flac,audio/*" class="hidden" />
   <script type="module" src="/js/setup.js"></script>
 </body>
 </html>

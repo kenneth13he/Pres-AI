@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0c0d0f;color:#eceeed;font-family:Urbanist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#eceeed;text-decoration:none}a:hover{color:oklch(0.82 0.15 150)}
+*{box-sizing:border-box}
+button{font-family:inherit}
+input[type=range]{accent-color:oklch(0.82 0.15 150)}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column">
+
+<sc-if value="{{ inWizard }}" hint-placeholder-val="{{ true }}">
+  <header style="position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 28px;border-bottom:1px solid #1c1f22;background:rgba(12,13,15,.85);backdrop-filter:blur(12px)">
+    <a href="Home A - Premium Dark.dc.html" style="display:flex;align-items:center;gap:9px;font-weight:800;font-size:19px;letter-spacing:-0.02em">
+      <span style="width:18px;height:18px;border-radius:6px;background:oklch(0.82 0.15 150)"></span>Pres AI
+    </a>
+    <nav style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+      <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+        <button onClick="{{ s.go }}" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:0;border-radius:999px;background:{{ s.bg }};color:{{ s.fg }};font-size:14px;font-weight:600;cursor:pointer">
+          <span style="width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font:500 11px 'JetBrains Mono',monospace;background:{{ s.dotBg }};color:{{ s.dotFg }}">{{ s.mark }}</span>{{ s.label }}
+        </button>
+      </sc-for>
+    </nav>
+    <a href="Home A - Premium Dark.dc.html" style="font-size:14px;color:#9aa1a0">Exit</a>
+  </header>
+
+  <main style="flex:1;width:100%;max-width:1240px;margin:0 auto;padding:40px 28px 48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:40px;align-items:start">
+    <div style="max-width:640px;width:100%">
+
+      <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ true }}">
+        <h1 style="margin:0;font-size:34px;font-weight:800;letter-spacing:-0.03em">Choose a profile</h1>
+        <p style="margin:8px 0 0;font-size:16px;line-height:1.5;color:#9aa1a0">A profile keeps your details, room and audience, so you can reuse them with any deck.</p>
+        <div style="margin-top:28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+          <sc-for list="{{ savedProfiles }}" as="p">
+            <button onClick="{{ p.pick }}" style="text-align:left;padding:16px;border-radius:14px;border:1px solid {{ p.border }};background:{{ p.bg }};color:#eceeed;cursor:pointer;display:flex;flex-direction:column;gap:10px">
+              <span style="width:34px;height:34px;border-radius:10px;background:{{ p.swatch }};display:grid;place-items:center;font-weight:800;font-size:15px;color:#0c0d0f">{{ p.initial }}</span>
+              <span style="display:flex;flex-direction:column;gap:3px"><span style="font-size:16px;font-weight:700">{{ p.name }}</span><span style="font-size:13px;line-height:1.4;color:#9aa1a0">{{ p.meta }}</span></span>
+            </button>
+          </sc-for>
+          <button onClick="{{ newProfile }}" style="text-align:left;padding:16px;border-radius:14px;border:1px dashed {{ newBorder }};background:{{ newBg }};color:#eceeed;cursor:pointer;display:flex;flex-direction:column;gap:10px">
+            <span style="width:34px;height:34px;border-radius:10px;border:1px dashed #3a4043;display:grid;place-items:center;font-size:18px;color:#9aa1a0">+</span>
+            <span style="display:flex;flex-direction:column;gap:3px"><span style="font-size:16px;font-weight:700">New profile</span><span style="font-size:13px;line-height:1.4;color:#9aa1a0">Saved for future sessions</span></span>
+          </button>
+        </div>
+        <sc-if value="{{ showProfileForm }}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:16px;display:flex;flex-direction:column;gap:22px;padding:24px;border-radius:16px;border:1px solid #23272a;background:#131517">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+              <span style="font-size:13px;color:#9aa1a0">{{ formNote }}</span>
+              <sc-if value="{{ isSavedProfile }}" hint-placeholder-val="{{ false }}"><button onClick="{{ deleteProfile }}" style="border:0;background:none;color:#9aa1a0;font-size:13px;cursor:pointer;padding:0" style-hover="color:oklch(0.78 0.17 22)">Delete profile</button></sc-if>
+            </div>
+            <label style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:13px;font-weight:600;color:#9aa1a0">Profile name</span>
+              <input value="{{ pname }}" onChange="{{ onPname }}" placeholder="e.g. Kenneth · Startup pitches" style="background:#0c0d0f;border:1px solid #2a2f32;border-radius:10px;padding:12px 14px;color:#eceeed;font:500 15px Urbanist,sans-serif;outline:none">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:13px;font-weight:600;color:#9aa1a0">Role or occupation</span>
+              <input value="{{ role }}" onChange="{{ onRole }}" placeholder="e.g. Final-year CS student" style="background:#0c0d0f;border:1px solid #2a2f32;border-radius:10px;padding:12px 14px;color:#eceeed;font:500 15px Urbanist,sans-serif;outline:none">
+            </label>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:13px;font-weight:600;color:#9aa1a0">Presentation goal</span>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <sc-for list="{{ goals }}" as="g"><button onClick="{{ g.pick }}" style="padding:9px 14px;border-radius:999px;border:1px solid {{ g.border }};background:{{ g.bg }};color:{{ g.fg }};font-size:14px;font-weight:600;cursor:pointer">{{ g.label }}</button></sc-for>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:13px;font-weight:600;color:#9aa1a0">Experience level</span>
+              <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:#0c0d0f;border:1px solid #23272a">
+                <sc-for list="{{ levels }}" as="o"><button onClick="{{ o.pick }}" style="flex:1;padding:10px;border:0;border-radius:9px;background:{{ o.bg }};color:{{ o.fg }};font-size:14px;font-weight:600;cursor:pointer">{{ o.label }}</button></sc-for>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font-size:13px;font-weight:600;color:#9aa1a0">Feedback tone</span>
+              <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:#0c0d0f;border:1px solid #23272a">
+                <sc-for list="{{ tones }}" as="o"><button onClick="{{ o.pick }}" style="flex:1;padding:10px;border:0;border-radius:9px;background:{{ o.bg }};color:{{ o.fg }};font-size:14px;font-weight:600;cursor:pointer">{{ o.label }}</button></sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ isSlides }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;font-size:34px;font-weight:800;letter-spacing:-0.03em">Your slides</h1>
+        <p style="margin:8px 0 0;font-size:16px;line-height:1.5;color:#9aa1a0">Optional. Upload your deck and questions point at what's on screen. Without a deck, the room listens only.</p>
+        <input type="file" accept=".pdf,.ppt,.pptx,.pps,.ppsx,.pot,.potx,.key,.odp,.otp,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.apple.keynote,application/vnd.oasis.opendocument.presentation" ref="{{ fileRef }}" onChange="{{ onFile }}" style="display:none">
+        <div onClick="{{ pickFile }}" onDragOver="{{ onDragOver }}" onDragLeave="{{ onDragLeave }}" onDrop="{{ onDrop }}" style="margin-top:28px;padding:44px 24px;border-radius:18px;border:1.5px dashed {{ dropBorder }};background:{{ dropBg }};text-align:center;cursor:pointer;transition:all .2s">
+          <div style="width:48px;height:48px;margin:0 auto;border-radius:14px;background:#1a1d20;display:grid;place-items:center;font:500 12px 'JetBrains Mono',monospace;color:{{ dropIconFg }}">{{ dropIcon }}</div>
+          <div style="margin-top:16px;font-size:18px;font-weight:700">{{ dropTitle }}</div>
+          <div style="margin-top:6px;font-size:14px;color:{{ dropSubColor }}">{{ dropSub }}</div>
+          <div style="margin-top:16px;display:flex;flex-wrap:wrap;justify-content:center;gap:6px">
+            <sc-for list="{{ formats }}" as="f"><span style="padding:4px 9px;border-radius:999px;background:#1a1d20;border:1px solid #262a2d;font:500 11px 'JetBrains Mono',monospace;color:#c5cac9">{{ f }}</span></sc-for>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input value="{{ linkVal }}" onChange="{{ onLink }}" placeholder="Or paste a Google Slides, Canva or OneDrive link" style="flex:1;min-width:240px;background:#0c0d0f;border:1px solid #2a2f32;border-radius:10px;padding:12px 14px;color:#eceeed;font:500 15px Urbanist,sans-serif;outline:none">
+          <button onClick="{{ addLink }}" style="padding:12px 18px;border-radius:10px;border:1px solid #2a2f32;background:{{ linkBtnBg }};color:{{ linkBtnFg }};font-size:14px;font-weight:700;cursor:pointer">Import</button>
+        </div>
+        <sc-if value="{{ hasDeck }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px;padding:16px;border-radius:16px;border:1px solid #23272a;background:#131517">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+              <div style="font-size:15px;font-weight:600">{{ deckName }} <span style="color:#9aa1a0;font-weight:500">· {{ deckPages }} slides ready</span></div>
+              <button onClick="{{ removeDeck }}" style="border:0;background:none;color:#9aa1a0;font-size:14px;cursor:pointer">Remove</button>
+            </div>
+            <div style="margin-top:14px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px">
+              <sc-for list="{{ thumbs }}" as="t"><div style="aspect-ratio:16/9;border-radius:6px;background:#1a1d20;border:1px solid #262a2d;display:grid;place-items:center;font:400 10px 'JetBrains Mono',monospace;color:#6c7372">{{ t }}</div></sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noDeck }}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+            <button onClick="{{ useSample }}" style="padding:10px 16px;border-radius:999px;border:1px solid #2a2f32;background:transparent;color:#eceeed;font-size:14px;font-weight:600;cursor:pointer">Use the sample deck</button>
+            <span style="font-size:14px;color:#6c7372">or just press Continue to present without slides.</span>
+          </div>
+        </sc-if>
+        <input type="file" accept=".txt,.md,.pdf,.doc,.docx" multiple="multiple" ref="{{ ctxFileRef }}" onChange="{{ onCtxFile }}" style="display:none">
+        <div style="margin-top:28px;padding:22px;border-radius:16px;border:1px solid #23272a;background:#131517;display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div style="font-size:16px;font-weight:700">Presentation context</div>
+            <div style="margin-top:2px;font-size:13px;color:#9aa1a0">Optional. Background the audience should know: the occasion, your speaker notes, what's at stake.</div>
+          </div>
+          <textarea value="{{ ctxText }}" onChange="{{ onCtx }}" rows="5" placeholder="e.g. Seed pitch to a campus-focused fund. We're asking for $500k. Pilots ran at two universities this spring; the second one is still ongoing." style="resize:vertical;background:#0c0d0f;border:1px solid #2a2f32;border-radius:10px;padding:12px 14px;color:#eceeed;font:500 15px/1.5 Urbanist,sans-serif;outline:none"></textarea>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+            <button onClick="{{ attachCtx }}" style="padding:8px 14px;border-radius:999px;border:1px dashed #3a4043;background:transparent;color:#eceeed;font-size:13px;font-weight:600;cursor:pointer">Attach file</button>
+            <sc-for list="{{ ctxFiles }}" as="f">
+              <span style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:#1a1d20;font:400 12px 'JetBrains Mono',monospace;color:#c5cac9">{{ f.name }}<button onClick="{{ f.remove }}" style="border:0;background:none;color:#6c7372;cursor:pointer;font-size:14px;padding:0">×</button></span>
+            </sc-for>
+            <span style="font-size:12px;color:#6c7372">.txt .md .pdf .docx · speaker notes, script, brief</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isRoom }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;font-size:34px;font-weight:800;letter-spacing:-0.03em">Set the room</h1>
+        <p style="margin:8px 0 0;font-size:16px;line-height:1.5;color:#9aa1a0">Pick where you're presenting and how many people are in it.</p>
+        <div style="margin-top:14px;display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:#131517;border:1px solid #23272a;font-size:13px;color:#9aa1a0"><span style="width:7px;height:7px;border-radius:50%;background:{{ saveDot }}"></span>{{ saveNote }}</div>
+        <div style="margin-top:28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+          <sc-for list="{{ settings }}" as="r" hint-placeholder-count="5">
+            <button onClick="{{ r.pick }}" style="text-align:left;padding:12px;border-radius:14px;border:1px solid {{ r.border }};background:{{ r.bg }};color:#eceeed;cursor:pointer;transition:border-color .2s">
+              <div style="position:relative;aspect-ratio:16/9;border-radius:8px;background:#0c0d0f;overflow:hidden">
+                <sc-for list="{{ r.shapes }}" as="s"><div style="position:absolute;left:{{ s.x }}%;top:{{ s.y }}%;width:{{ s.w }}%;height:{{ s.h }}%;border-radius:{{ s.r }};background:{{ s.c }};border:{{ s.b }};display:grid;place-items:center;font:600 8px 'JetBrains Mono',monospace;letter-spacing:.05em;text-transform:uppercase;color:{{ s.lc }};overflow:hidden;white-space:nowrap">{{ s.label }}</div></sc-for>
+              </div>
+              <div style="margin-top:10px;font-size:15px;font-weight:700">{{ r.name }}</div>
+              <div style="margin-top:2px;font-size:13px;color:#9aa1a0">{{ r.sub }}</div>
+            </button>
+          </sc-for>
+        </div>
+        <div style="margin-top:22px;padding:22px;border-radius:16px;border:1px solid #23272a;background:#131517;display:flex;flex-direction:column;gap:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+            <div><div style="font-size:16px;font-weight:700">Guests</div><div style="margin-top:2px;font-size:13px;color:#9aa1a0">1 to 10 people in the room</div></div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button onClick="{{ guestsDown }}" style="width:40px;height:40px;border-radius:10px;border:1px solid #2a2f32;background:#0c0d0f;color:#eceeed;font-size:20px;cursor:pointer">−</button>
+              <div style="width:52px;text-align:center;font:500 22px 'JetBrains Mono',monospace">{{ guests }}</div>
+              <button onClick="{{ guestsUp }}" style="width:40px;height:40px;border-radius:10px;border:1px solid #2a2f32;background:#0c0d0f;color:#eceeed;font-size:20px;cursor:pointer">+</button>
+            </div>
+          </div>
+          <input type="range" min="1" max="10" value="{{ guests }}" onChange="{{ onGuests }}" style="width:100%">
+          <div style="height:1px;background:#23272a"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+            <div><div style="font-size:16px;font-weight:700">Microphone</div><div style="margin-top:2px;font-size:13px;color:#9aa1a0">We ask for access when the room opens</div></div>
+            <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:#0c0d0f;border:1px solid #23272a">
+              <sc-for list="{{ inputModes }}" as="o"><button onClick="{{ o.pick }}" style="padding:9px 14px;border:0;border-radius:9px;background:{{ o.bg }};color:{{ o.fg }};font-size:14px;font-weight:600;cursor:pointer">{{ o.label }}</button></sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isAudience }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;font-size:34px;font-weight:800;letter-spacing:-0.03em">Who's in the room?</h1>
+        <p style="margin:8px 0 0;font-size:16px;line-height:1.5;color:#9aa1a0">Start from a preset, pick from the roster, or add your own guest.</p>
+        <div style="margin-top:14px;display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:#131517;border:1px solid #23272a;font-size:13px;color:#9aa1a0"><span style="width:7px;height:7px;border-radius:50%;background:{{ saveDot }}"></span>{{ saveNote }}</div>
+        <div style="margin-top:24px;display:flex;flex-wrap:wrap;gap:8px">
+          <sc-for list="{{ presets }}" as="p"><button onClick="{{ p.pick }}" style="padding:9px 14px;border-radius:999px;border:1px solid {{ p.border }};background:{{ p.bg }};color:#eceeed;font-size:14px;font-weight:600;cursor:pointer">{{ p.name }}</button></sc-for>
+        </div>
+        <div style="margin-top:18px;display:flex;justify-content:space-between;align-items:baseline">
+          <span style="font-size:13px;font-weight:600;color:#9aa1a0">Roster</span>
+          <span style="font:400 13px 'JetBrains Mono',monospace;color:#9aa1a0">{{ guests }} / 10 selected</span>
+        </div>
+        <div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px">
+          <sc-for list="{{ roster }}" as="p" hint-placeholder-count="12">
+            <button onClick="{{ p.toggle }}" style="text-align:left;padding:12px 14px;border-radius:12px;border:1px solid {{ p.border }};background:{{ p.bg }};color:#eceeed;cursor:pointer;display:flex;gap:10px;align-items:flex-start">
+              <span style="flex:none;margin-top:2px;width:16px;height:16px;border-radius:5px;border:1.5px solid {{ p.checkBorder }};background:{{ p.checkBg }}"></span>
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:15px;font-weight:700">{{ p.name }}</span><span style="font-size:13px;color:#9aa1a0">{{ p.role }}</span></span>
+            </button>
+          </sc-for>
+          <sc-for list="{{ customRoster }}" as="p">
+            <div style="border-radius:12px;border:1px solid {{ p.border }};background:{{ p.bg }};display:flex;flex-direction:column;min-width:0">
+              <button onClick="{{ p.toggle }}" style="min-width:0;text-align:left;padding:12px 14px 6px;background:none;border:0;color:#eceeed;cursor:pointer;display:flex;gap:10px;align-items:flex-start">
+                <span style="flex:none;margin-top:2px;width:16px;height:16px;border-radius:5px;border:1.5px solid {{ p.checkBorder }};background:{{ p.checkBg }}"></span>
+                <span style="flex:none;width:32px;height:32px;border-radius:50%;background:{{ p.imgBg }}"></span>
+                <span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</span><span style="font-size:13px;color:#9aa1a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.role }}</span><span style="font:400 11px 'JetBrains Mono',monospace;color:#6c7372;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.voiceLabel }}</span></span>
+              </button>
+              <div style="display:flex;gap:2px;padding:0 8px 8px 34px">
+                <button onClick="{{ p.edit }}" title="Edit" style="padding:4px 8px;border-radius:7px;border:0;background:transparent;color:#9aa1a0;font-size:12px;font-weight:600;cursor:pointer" style-hover="background:#1c1f22;color:#eceeed">Edit</button>
+                <button onClick="{{ p.remove }}" title="Remove" style="padding:4px 8px;border-radius:7px;border:0;background:transparent;color:#9aa1a0;font-size:12px;font-weight:600;cursor:pointer" style-hover="background:#1c1f22;color:oklch(0.78 0.17 22)">Remove</button>
+              </div>
+            </div>
+          </sc-for>
+          <button onClick="{{ openCustom }}" style="text-align:left;padding:12px 14px;border-radius:12px;border:1.5px dashed #2f3538;background:transparent;color:#eceeed;cursor:pointer;display:flex;gap:10px;align-items:flex-start" style-hover="border-color:oklch(0.82 0.15 150 / .6);background:oklch(0.82 0.15 150 / .04)">
+            <span style="flex:none;width:18px;height:18px;border-radius:6px;background:oklch(0.82 0.15 150);color:#07120b;display:grid;place-items:center;font-size:15px;font-weight:800;line-height:1">+</span>
+            <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700">Custom guest</span><span style="font-size:13px;color:#9aa1a0">Your own photo and voice</span></span>
+          </button>
+        </div>
+
+        <sc-if value="{{ cgOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:12px;padding:22px;border-radius:16px;border:1px solid oklch(0.82 0.15 150 / .45);background:#131517;display:flex;flex-direction:column;gap:22px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+              <div>
+                <div style="font-size:18px;font-weight:800;letter-spacing:-0.01em">{{ cgTitle }}</div>
+                <div style="margin-top:4px;font-size:13px;line-height:1.5;color:#9aa1a0;max-width:560px;text-wrap:pretty">Powered by Boson AI. Higgs Avatar turns the photo into a talking face; Higgs TTS 3 gives them a voice.</div>
+              </div>
+              <button onClick="{{ closeCustom }}" style="flex:none;width:34px;height:34px;border-radius:9px;border:1px solid #2a2f32;background:#0c0d0f;color:#9aa1a0;font-size:18px;cursor:pointer">×</button>
+            </div>
+
+            <input type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" ref="{{ portraitRef }}" onChange="{{ onPortrait }}" style="display:none">
+            <input type="file" accept=".wav,.mp3,.opus,.pcm,.flac,audio/*" ref="{{ clipRef }}" onChange="{{ onClip }}" style="display:none">
+
+            <div style="display:flex;flex-wrap:wrap;gap:22px">
+              <div style="flex:none;width:168px;display:flex;flex-direction:column;gap:8px">
+                <span style="font:500 11px 'JetBrains Mono',monospace;letter-spacing:.06em;color:#9aa1a0">PORTRAIT · HIGGS AVATAR</span>
+                <div onClick="{{ pickPortrait }}" onDragOver="{{ portraitDragOver }}" onDrop="{{ portraitDrop }}" style="position:relative;width:168px;height:168px;border-radius:14px;border:1.5px dashed {{ cgImgBorder }};background:#0c0d0f;cursor:pointer;overflow:hidden;display:grid;place-items:center">
+                  <sc-if value="{{ cgHasImg }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;inset:0;background:{{ cgImgBg }}"></div>
+                    <span style="position:absolute;left:8px;bottom:8px;padding:4px 9px;border-radius:999px;background:rgba(12,13,15,.8);font-size:12px;font-weight:600;color:#eceeed">Replace</span>
+                  </sc-if>
+                  <sc-if value="{{ cgNoImg }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:0 14px;text-align:center">
+                      <span style="width:40px;height:40px;border-radius:50%;background:#1a1d20;display:grid;place-items:center;font-size:20px;color:oklch(0.82 0.15 150)">+</span>
+                      <span style="font-size:14px;font-weight:700">Upload photo</span>
+                      <span style="font-size:12px;color:#6c7372">or drop it here</span>
+                    </div>
+                  </sc-if>
+                </div>
+                <span style="font-size:12px;line-height:1.45;color:#6c7372">One clear, front-facing photo. PNG, JPEG or WebP.</span>
+                <span style="font-size:12px;color:oklch(0.78 0.17 22)">{{ cgImgErr }}</span>
+              </div>
+
+              <div style="flex:1;min-width:260px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;align-content:start">
+                <label style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font-size:13px;font-weight:600;color:#9aa1a0">Name</span>
+                  <input value="{{ cgName }}" onChange="{{ onCgName }}" placeholder="e.g. Priya" style="background:#0c0d0f;border:1px solid #2a2f32;border-radius:10px;padding:12px 14px;color:#eceeed;font:500 15px Urbanist,sans-serif;outline:none">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font-size:13px;font-weight:600;color:#9aa1a0">Role</span>
+                  <input value="{{ cgRole }}" onChange="{{ onCgRole }}" placeholder="e.g. Head of Procurement" style="background:#0c0d0f;border:1px solid #2a2f32;border-radius:10px;padding:12px 14px;color:#eceeed;font:500 15px Urbanist,sans-serif;outline:none">
+                </label>
+                <label style="grid-column:1 / -1;display:flex;flex-direction:column;gap:8px">
+                  <span style="font-size:13px;font-weight:600;color:#9aa1a0">What they push on <span style="font-weight:500;color:#6c7372">· optional</span></span>
+                  <input value="{{ cgFocus }}" onChange="{{ onCgFocus }}" placeholder="e.g. pricing and contract length" style="background:#0c0d0f;border:1px solid #2a2f32;border-radius:10px;padding:12px 14px;color:#eceeed;font:500 15px Urbanist,sans-serif;outline:none">
+                </label>
+              </div>
+            </div>
+
+            <div style="height:1px;background:#23272a"></div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+                <span style="font:500 11px 'JetBrains Mono',monospace;letter-spacing:.06em;color:#9aa1a0">VOICE · HIGGS TTS 3</span>
+                <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:#0c0d0f;border:1px solid #23272a">
+                  <sc-for list="{{ vModes }}" as="m"><button onClick="{{ m.pick }}" style="padding:8px 14px;border-radius:9px;border:0;background:{{ m.bg }};color:{{ m.fg }};font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">{{ m.label }}</button></sc-for>
+                </div>
+              </div>
+
+              <sc-if value="{{ isVPreset }}" hint-placeholder-val="{{ true }}">
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px">
+                  <sc-for list="{{ voicePresets }}" as="v" hint-placeholder-count="6">
+                    <button onClick="{{ v.pick }}" style="text-align:left;padding:11px 13px;border-radius:11px;border:1px solid {{ v.border }};background:{{ v.bg }};color:#eceeed;cursor:pointer;display:flex;flex-direction:column;gap:3px">
+                      <span style="font:500 14px 'JetBrains Mono',monospace">{{ v.id }}</span>
+                      <span style="font-size:12px;color:#9aa1a0">{{ v.style }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ isVId }}" hint-placeholder-val="{{ false }}">
+                <label style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font-size:13px;font-weight:600;color:#9aa1a0">Voice ID</span>
+                  <input value="{{ cgVoiceId }}" onChange="{{ onCgVoiceId }}" placeholder="voice_abc123…" style="background:#0c0d0f;border:1px solid #2a2f32;border-radius:10px;padding:12px 14px;color:#eceeed;font:400 14px 'JetBrains Mono',monospace;outline:none">
+                  <span style="font-size:12px;color:#6c7372">A custom voice saved in your Boson account.</span>
+                </label>
+              </sc-if>
+
+              <sc-if value="{{ isVClone }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                    <button onClick="{{ pickClip }}" style="padding:11px 16px;border-radius:10px;border:1px solid #2a2f32;background:#0c0d0f;color:#eceeed;font-size:14px;font-weight:600;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ cgClipLabel }}</button>
+                    <span style="font-size:12px;color:#6c7372">5–30 seconds of clean speech, no music. WAV, MP3, Opus, PCM or FLAC.</span>
+                  </div>
+                  <span style="font-size:12px;color:oklch(0.78 0.17 22)">{{ cgClipErr }}</span>
+                  <label style="display:flex;flex-direction:column;gap:8px">
+                    <span style="font-size:13px;font-weight:600;color:#9aa1a0">Transcript of the clip <span style="font-weight:500;color:#6c7372">· recommended</span></span>
+                    <textarea value="{{ cgRefText }}" onChange="{{ onCgRefText }}" rows="3" placeholder="Type exactly what's said in the clip, filler words included." style="background:#0c0d0f;border:1px solid #2a2f32;border-radius:10px;padding:12px 14px;color:#eceeed;font:500 14px/1.5 Urbanist,sans-serif;outline:none;resize:vertical"></textarea>
+                  </label>
+                  <button onClick="{{ toggleConsent }}" style="align-self:flex-start;display:flex;align-items:center;gap:10px;padding:0;border:0;background:none;color:#eceeed;font-size:14px;cursor:pointer;text-align:left">
+                    <span style="flex:none;width:18px;height:18px;border-radius:5px;border:1.5px solid {{ cgConsentBorder }};background:{{ cgConsentBg }};color:#07120b;display:grid;place-items:center;font-size:12px;font-weight:800">{{ cgConsentMark }}</span>
+                    I own the right to use this voice.
+                  </button>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap">
+              <span style="margin-right:auto;font-size:13px;color:#6c7372">{{ cgMissing }}</span>
+              <button onClick="{{ closeCustom }}" style="padding:11px 18px;border-radius:10px;border:1px solid #2a2f32;background:transparent;color:#eceeed;font-size:14px;font-weight:600;cursor:pointer">Cancel</button>
+              <button onClick="{{ saveCustom }}" style="padding:11px 20px;border-radius:10px;border:0;background:{{ cgSaveBg }};color:{{ cgSaveFg }};font-size:14px;font-weight:700;cursor:{{ cgSaveCursor }}">{{ cgSaveLabel }}</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <div style="margin-top:22px;padding:20px 22px;border-radius:16px;border:1px solid #23272a;background:#131517">
+          <div style="font-size:16px;font-weight:700">Skepticism</div>
+          <div style="margin-top:2px;font-size:13px;color:#9aa1a0">How hard each guest pushes back</div>
+          <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{ chosenList }}" as="p">
+              <div style="display:grid;grid-template-columns:150px 1fr 40px;gap:14px;align-items:center">
+                <span style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }} <span style="color:#6c7372;font-weight:500">{{ p.short }}</span></span>
+                <input type="range" min="0" max="100" value="{{ p.skep }}" onChange="{{ p.onSkep }}" style="width:100%">
+                <span style="font:400 13px 'JetBrains Mono',monospace;color:#9aa1a0;text-align:right">{{ p.skep }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isCurve }}" hint-placeholder-val="{{ false }}">
+        <h1 style="margin:0;font-size:34px;font-weight:800;letter-spacing:-0.03em">Curveballs &amp; pacing</h1>
+        <p style="margin:8px 0 0;font-size:16px;line-height:1.5;color:#9aa1a0">Curveballs challenge the idea, never the person. You can pause or skip any of them.</p>
+        <div style="margin-top:26px;display:flex;flex-direction:column;gap:8px">
+          <span style="font-size:13px;font-weight:600;color:#9aa1a0">Difficulty</span>
+          <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:#131517;border:1px solid #23272a">
+            <sc-for list="{{ difficulties }}" as="o"><button onClick="{{ o.pick }}" style="flex:1;padding:10px 8px;border:0;border-radius:9px;background:{{ o.bg }};color:{{ o.fg }};cursor:pointer;display:flex;flex-direction:column;gap:2px;align-items:center"><span style="font-size:14px;font-weight:700">{{ o.label }}</span><span style="font-size:12px;opacity:.7">{{ o.sub }}</span></button></sc-for>
+          </div>
+        </div>
+        <div style="margin-top:18px;padding:22px;border-radius:16px;border:1px solid #23272a;background:#131517;display:flex;flex-direction:column;gap:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+            <div><div style="font-size:16px;font-weight:700">Number of curveballs</div><div style="margin-top:2px;font-size:13px;color:#9aa1a0">Thrown during the talk</div></div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button onClick="{{ cbDown }}" style="width:40px;height:40px;border-radius:10px;border:1px solid #2a2f32;background:#0c0d0f;color:#eceeed;font-size:20px;cursor:pointer">−</button>
+              <div style="width:52px;text-align:center;font:500 22px 'JetBrains Mono',monospace;color:{{ cbCountColor }}">{{ cbCount }}</div>
+              <button onClick="{{ cbUp }}" style="width:40px;height:40px;border-radius:10px;border:1px solid #2a2f32;background:#0c0d0f;color:#eceeed;font-size:20px;cursor:pointer">+</button>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="font-size:16px;font-weight:700">Which ones</div>
+            <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:#0c0d0f;border:1px solid #23272a">
+              <sc-for list="{{ cbModes }}" as="o"><button onClick="{{ o.pick }}" style="padding:9px 14px;border:0;border-radius:9px;background:{{ o.bg }};color:{{ o.fg }};font-size:14px;font-weight:600;cursor:pointer">{{ o.label }}</button></sc-for>
+            </div>
+          </div>
+          <sc-if value="{{ cbChoose }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px">
+              <sc-for list="{{ kinds }}" as="k"><button onClick="{{ k.toggle }}" title="{{ k.what }}" style="text-align:left;padding:10px 12px;border-radius:10px;border:1px solid {{ k.border }};background:{{ k.bg }};color:#eceeed;cursor:pointer;display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;font-weight:700">{{ k.name }}</span><span style="font-size:12px;color:#9aa1a0">{{ k.tests }}</span></button></sc-for>
+            </div>
+          </sc-if>
+        </div>
+        <div style="margin-top:18px;padding:22px;border-radius:16px;border:1px solid #23272a;background:#131517;display:flex;flex-direction:column;gap:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="font-size:16px;font-weight:700">Interruptions</div>
+            <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:#0c0d0f;border:1px solid #23272a">
+              <sc-for list="{{ freqs }}" as="o"><button onClick="{{ o.pick }}" style="padding:9px 14px;border:0;border-radius:9px;background:{{ o.bg }};color:{{ o.fg }};font-size:14px;font-weight:600;cursor:pointer">{{ o.label }}</button></sc-for>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+            <div><div style="font-size:16px;font-weight:700">Talk length</div><div style="margin-top:2px;font-size:13px;color:#9aa1a0">Target, in minutes</div></div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button onClick="{{ lenDown }}" style="width:40px;height:40px;border-radius:10px;border:1px solid #2a2f32;background:#0c0d0f;color:#eceeed;font-size:20px;cursor:pointer">−</button>
+              <div style="width:52px;text-align:center;font:500 22px 'JetBrains Mono',monospace">{{ length }}</div>
+              <button onClick="{{ lenUp }}" style="width:40px;height:40px;border-radius:10px;border:1px solid #2a2f32;background:#0c0d0f;color:#eceeed;font-size:20px;cursor:pointer">+</button>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+            <div><div style="font-size:16px;font-weight:700">Q&amp;A at the end</div><div style="margin-top:2px;font-size:13px;color:#9aa1a0">Questions after you finish</div></div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button onClick="{{ qnaDown }}" style="width:40px;height:40px;border-radius:10px;border:1px solid #2a2f32;background:#0c0d0f;color:#eceeed;font-size:20px;cursor:pointer">−</button>
+              <div style="width:52px;text-align:center;font:500 22px 'JetBrains Mono',monospace">{{ qna }}</div>
+              <button onClick="{{ qnaUp }}" style="width:40px;height:40px;border-radius:10px;border:1px solid #2a2f32;background:#0c0d0f;color:#eceeed;font-size:20px;cursor:pointer">+</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="margin-top:32px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <button onClick="{{ back }}" style="padding:13px 20px;border-radius:999px;border:1px solid #2a2f32;background:transparent;color:{{ backColor }};font-size:15px;font-weight:600;cursor:pointer">Back</button>
+        <div style="display:flex;align-items:center;gap:10px">
+          <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ useDefault }}" title="Skip the profile and use the neutral default" style="display:flex;align-items:center;gap:8px;padding:9px 13px 9px 9px;border-radius:999px;border:1px solid #2a2f32;background:transparent;color:#c5cac9;font-size:13px;font-weight:600;cursor:pointer" style-hover="border-color:#3a4043;color:#eceeed">
+              <span style="width:22px;height:22px;border-radius:50%;background:#262a2e;display:grid;place-items:center"><span style="width:8px;height:8px;border-radius:50%;background:#9aa1a0"></span></span>Use default profile
+            </button>
+          </sc-if>
+          <button onClick="{{ next }}" style="padding:14px 26px;border-radius:999px;border:0;background:{{ nextBg }};color:#07120b;font-size:16px;font-weight:700;cursor:pointer;box-shadow:{{ nextShadow }}">{{ nextLabel }}</button>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{ showPreview }}" hint-placeholder-val="{{ true }}">
+    <aside style="position:sticky;top:96px;border-radius:20px;border:1px solid #23272a;background:#131517;padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 4px 12px">
+        <span style="font:500 12px 'JetBrains Mono',monospace;color:#9aa1a0;letter-spacing:.06em">LIVE PREVIEW</span>
+        <span style="font-size:14px;font-weight:600">{{ settingName }} · {{ guests }} {{ guestWord }}</span>
+      </div>
+      <div style="position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:{{ stageBg }};container-type:inline-size">
+        <sc-for list="{{ decor }}" as="d"><div style="position:absolute;left:{{ d.x }}%;top:{{ d.y }}%;width:{{ d.w }}%;height:{{ d.h }}%;border-radius:{{ d.r }};background:{{ d.c }};transition:all .35s"></div></sc-for>
+        <div style="position:absolute;left:{{ sl.x }}%;top:{{ sl.y }}%;width:{{ sl.w }}%;height:{{ sl.h }}%;border-radius:1.2cqw;background:#1d2124;border:1px solid #2c3134;display:grid;place-items:center;transition:all .35s">
+          <span style="font:500 max(8px,1.4cqw) 'JetBrains Mono',monospace;color:#6c7372">{{ previewSlideLabel }}</span>
+        </div>
+        <sc-for list="{{ previewTiles }}" as="t">
+          <div style="position:absolute;left:{{ t.x }}%;top:{{ t.y }}%;width:{{ t.w }}%;height:{{ t.h }}%;border-radius:0.9cqw;overflow:hidden;background:{{ t.bg }};border:1px solid #2a2f32;transition:all .35s">
+            <div style="position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.04) 0 5px,transparent 5px 10px)"></div>
+            <div style="position:absolute;left:6%;bottom:6%;font-weight:700;font-size:{{ t.fs }};white-space:nowrap">{{ t.name }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top:14px;display:flex;flex-direction:column">
+        <sc-for list="{{ summary }}" as="r" hint-placeholder-count="4">
+          <div style="display:flex;justify-content:space-between;gap:16px;padding:11px 4px;border-top:1px solid #1f2326;font-size:14px"><span style="color:#9aa1a0">{{ r.k }}</span><span style="font-weight:600;text-align:right">{{ r.v }}</span></div>
+        </sc-for>
+      </div>
+    </aside>
+    </sc-if>
+  </main>
+</sc-if>
+
+<sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
+  <header style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid #1c1f22">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="width:16px;height:16px;border-radius:5px;background:oklch(0.82 0.15 150)"></span>
+      <span style="font-size:15px;font-weight:700">{{ settingName }}</span>
+      <span style="font-size:14px;color:#9aa1a0;white-space:nowrap">{{ guests }} {{ guestWord }}</span>
+      <span style="padding:3px 10px;border-radius:999px;font:500 11px 'JetBrains Mono',monospace;letter-spacing:.04em;background:{{ phaseBg }};color:{{ phaseColor }}">{{ phase }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font:500 24px 'JetBrains Mono',monospace;color:{{ timerColor }};min-width:84px;text-align:right">{{ timer }}</div>
+      <div style="display:flex;gap:6px">
+        <sc-if value="{{ showRestore }}" hint-placeholder-val="{{ false }}"><button onClick="{{ restore }}" style="padding:9px 14px;border-radius:10px;border:0;background:oklch(0.78 0.17 22);color:#1a0705;font-size:14px;font-weight:700;cursor:pointer">Restore slides</button></sc-if>
+        <button onClick="{{ togglePause }}" title="P" style="padding:9px 14px;border-radius:10px;border:1px solid #2a2f32;background:#131517;color:#eceeed;font-size:14px;font-weight:600;cursor:pointer">{{ pauseLabel }}</button>
+        <button onClick="{{ skip }}" title="S" style="padding:9px 14px;border-radius:10px;border:1px solid #2a2f32;background:#131517;color:#eceeed;font-size:14px;font-weight:600;cursor:pointer">Skip</button>
+        <button onClick="{{ endTalk }}" style="padding:9px 16px;border-radius:10px;border:0;background:{{ endBg }};color:{{ endFg }};font-size:14px;font-weight:700;cursor:pointer">{{ endLabel }}</button>
+      </div>
+    </div>
+  </header>
+  <div style="flex:1;display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:0">
+    <section style="padding:20px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="position:relative;aspect-ratio:16/9;width:100%;max-height:calc(100vh - 170px);border-radius:16px;overflow:hidden;background:{{ stageBg }};border:1px solid #1f2326;container-type:inline-size">
+        <sc-for list="{{ decor }}" as="d"><div style="position:absolute;left:{{ d.x }}%;top:{{ d.y }}%;width:{{ d.w }}%;height:{{ d.h }}%;border-radius:{{ d.r }};background:{{ d.c }}"></div></sc-for>
+        <div style="position:absolute;left:{{ sl.x }}%;top:{{ sl.y }}%;width:{{ sl.w }}%;height:{{ sl.h }}%;border-radius:1cqw;overflow:hidden;background:#181b1e;border:1px solid #2c3134;opacity:{{ slideDim }};transition:opacity .4s">
+          <sc-if value="{{ hasDeck }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;inset:0;padding:8%;display:flex;flex-direction:column;justify-content:center">
+              <div style="font:500 {{ slideSmall }} 'JetBrains Mono',monospace;color:#6c7372;letter-spacing:.08em">{{ slideKicker }}</div>
+              <div style="margin-top:4%;font-size:{{ slideBig }};font-weight:800;letter-spacing:-0.03em;line-height:1.05;text-wrap:balance">{{ slideTitle }}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noDeck }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#6c7372;font-size:{{ slideSmall }}">Listening · no slides</div>
+          </sc-if>
+        </div>
+        <div style="position:absolute;left:{{ sl.x }}%;top:{{ sl.y }}%;width:{{ sl.w }}%;height:{{ sl.h }}%;border-radius:1cqw;background:#050606;display:grid;place-items:center;text-align:center;opacity:{{ blackOp }};pointer-events:none;transition:opacity .4s">
+          <div><div style="font-size:{{ slideMid }};font-weight:700">{{ overlayTitle }}</div><div style="margin-top:4%;color:#8a9190;font-size:{{ slideSmall }}">{{ overlaySub }}</div></div>
+        </div>
+        <sc-for list="{{ liveTiles }}" as="t">
+          <div style="position:absolute;left:{{ t.x }}%;top:{{ t.y }}%;width:{{ t.w }}%;height:{{ t.h }}%;border-radius:0.8cqw;overflow:hidden;background:{{ t.bg }};border:1px solid #2a2f32;box-shadow:{{ t.ring }};opacity:{{ t.op }};filter:{{ t.filter }};transform:translateY({{ t.lift }});transition:box-shadow .25s,opacity .4s,filter .4s,transform .25s">
+            <div style="position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 6px,transparent 6px 12px)"></div>
+            <div style="position:absolute;top:5%;right:5%;font:400 {{ t.fsSm }} 'JetBrains Mono',monospace;color:#6c7372">avatar video</div>
+            <sc-if value="{{ t.tag }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;top:5%;left:5%;padding:2px 7px;border-radius:999px;background:oklch(0.78 0.17 22);color:#1a0705;font:600 {{ t.fsSm }} 'JetBrains Mono',monospace">{{ t.tag }}</div></sc-if>
+            <div style="position:absolute;left:5%;right:5%;bottom:6%;display:flex;justify-content:space-between;align-items:flex-end;gap:6px">
+              <div style="min-width:0"><div style="font-size:{{ t.fs }};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.name }}</div><div style="font-size:{{ t.fsSm }};color:#9aa1a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.role }}</div></div>
+              <div style="display:flex;align-items:flex-end;gap:2px;height:1.2cqw;flex:none">
+                <sc-for list="{{ t.bars }}" as="h"><span style="width:0.25cqw;min-width:2px;border-radius:2px;background:oklch(0.82 0.15 150);height:{{ h }}%;transition:height .12s"></span></sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+        <div style="position:absolute;left:50%;top:3%;transform:translate(-50%,{{ cbY }});padding:0.6cqw 1.4cqw;border-radius:999px;background:oklch(0.78 0.17 22);color:#1a0705;font:600 max(10px,1.1cqw) 'JetBrains Mono',monospace;opacity:{{ cbOp }};transition:all .35s;white-space:nowrap">CURVEBALL · {{ cbName }}</div>
+        <sc-if value="{{ paused }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:rgba(8,9,10,.7);display:grid;place-items:center;font-size:max(18px,2.6cqw);font-weight:800">Paused</div></sc-if>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:14px;color:#9aa1a0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onClick="{{ prevSlide }}" style="width:34px;height:30px;border-radius:8px;border:1px solid #2a2f32;background:#131517;color:#eceeed;cursor:pointer">←</button>
+          <span style="min-width:96px;text-align:center">{{ slideNo }}</span>
+          <button onClick="{{ nextSlide }}" style="width:34px;height:30px;border-radius:8px;border:1px solid #2a2f32;background:#131517;color:#eceeed;cursor:pointer">→</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span>{{ micLabel }}</span>
+          <div style="width:128px;height:6px;border-radius:3px;background:#1f2326;overflow:hidden"><div style="height:100%;width:{{ micLevel }}%;background:oklch(0.82 0.15 150);transition:width .1s"></div></div>
+        </div>
+      </div>
+    </section>
+    <aside style="border-left:1px solid #1c1f22;display:flex;flex-direction:column;min-height:0;max-height:calc(100vh - 62px)">
+      <div style="padding:16px 18px;border-bottom:1px solid #1c1f22;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:15px;font-weight:700">Live captions</span>
+        <span style="font:400 12px 'JetBrains Mono',monospace;color:#9aa1a0">{{ cbLeft }}</span>
+      </div>
+      <div ref="{{ capRef }}" style="flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+        <sc-for list="{{ log }}" as="c">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:700;color:{{ c.color }}">{{ c.who }}</span><sc-if value="{{ c.tag }}" hint-placeholder-val="{{ false }}"><span style="padding:1px 7px;border-radius:999px;border:1px solid {{ c.tagColor }};color:{{ c.tagColor }};font:500 10px 'JetBrains Mono',monospace">{{ c.tag }}</span></sc-if></div>
+            <div style="font-size:15px;line-height:1.45;color:#d6dad9">{{ c.text }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid #1c1f22;font-size:12px;line-height:1.5;color:#6c7372">Personas are fictional · Pause and Skip are never scored against you · ←/→ slides, P pause, S skip</div>
+    </aside>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isReport }}" hint-placeholder-val="{{ false }}">
+  <header style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 28px;border-bottom:1px solid #1c1f22">
+    <a href="Home A - Premium Dark.dc.html" style="display:flex;align-items:center;gap:9px;font-weight:800;font-size:19px;letter-spacing:-0.02em"><span style="width:18px;height:18px;border-radius:6px;background:oklch(0.82 0.15 150)"></span>Pres AI</a>
+    <div style="display:flex;gap:8px">
+      <button onClick="{{ newSession }}" style="padding:10px 16px;border-radius:999px;border:1px solid #2a2f32;background:transparent;color:#eceeed;font-size:14px;font-weight:600;cursor:pointer">New session</button>
+      <button onClick="{{ again }}" style="padding:10px 18px;border-radius:999px;border:0;background:oklch(0.82 0.15 150);color:#07120b;font-size:14px;font-weight:700;cursor:pointer">Run it again</button>
+    </div>
+  </header>
+  <main style="width:100%;max-width:960px;margin:0 auto;padding:44px 28px 72px">
+    <div style="font:500 12px 'JetBrains Mono',monospace;color:#9aa1a0;letter-spacing:.06em">{{ reportMeta }}</div>
+    <h1 style="margin:10px 0 0;font-size:40px;font-weight:800;letter-spacing:-0.03em">Report card</h1>
+    <p style="margin:10px 0 0;font-size:13px;line-height:1.5;color:#6c7372;max-width:680px">Filler count depends on recognition accuracy; treat as approximate. Content dimensions are scored by the orchestrator's rubric pass; shown as — until it runs.</p>
+
+    <section style="margin-top:32px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+      <sc-for list="{{ dims }}" as="d" hint-placeholder-count="5">
+        <div style="padding:18px;border-radius:14px;border:1px solid #23272a;background:#131517">
+          <div style="font-size:13px;color:#9aa1a0">{{ d.label }}</div>
+          <div style="margin-top:10px;font:500 34px 'JetBrains Mono',monospace;color:{{ d.color }}">{{ d.v }}</div>
+        </div>
+      </sc-for>
+    </section>
+    <section style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
+      <sc-for list="{{ metrics }}" as="m"><span style="padding:8px 12px;border-radius:10px;background:#131517;border:1px solid #23272a;font-size:14px;white-space:nowrap"><span style="font-family:'JetBrains Mono',monospace">{{ m.v }}</span> <span style="color:#9aa1a0">{{ m.k }}</span></span></sc-for>
+    </section>
+
+    <h2 style="margin:48px 0 14px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9aa1a0">Recovery</h2>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <sc-for list="{{ recov }}" as="r">
+        <div style="padding:20px;border-radius:16px;border:1px solid #23272a;background:#131517;display:grid;grid-template-columns:1fr auto;gap:8px 20px">
+          <div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="font-size:17px;font-weight:700">{{ r.name }}</span><span style="font:400 12px 'JetBrains Mono',monospace;color:#9aa1a0">at {{ r.at }} · {{ r.resolution }}</span></div>
+            <div style="margin-top:6px;font-size:14px;color:#9aa1a0">{{ r.resume }}</div>
+          </div>
+          <div style="font:500 30px 'JetBrains Mono',monospace;color:{{ r.scoreColor }}">{{ r.score }}</div>
+          <sc-if value="{{ r.evidence }}" hint-placeholder-val="{{ false }}">
+            <div style="grid-column:1 / -1;margin-top:6px;padding:12px 14px;border-radius:10px;background:#0c0d0f;font-size:15px">“{{ r.evidence }}”</div>
+            <div style="grid-column:1 / -1;font-size:14px;color:#c5cac9">{{ r.suggestion }}</div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <h2 style="margin:48px 0 14px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9aa1a0">Key moments</h2>
+    <ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column">
+      <sc-for list="{{ moments }}" as="m">
+        <li style="display:grid;grid-template-columns:64px 100px 1fr;gap:12px;align-items:center;padding:12px 0;border-top:1px solid #1f2326;font-size:15px">
+          <span style="font:400 13px 'JetBrains Mono',monospace;color:#9aa1a0">{{ m.t }}</span>
+          <span style="justify-self:start;padding:2px 8px;border-radius:999px;font:500 11px 'JetBrains Mono',monospace;border:1px solid {{ m.color }};color:{{ m.color }}">{{ m.type }}</span>
+          <span>{{ m.summary }}</span>
+        </li>
+      </sc-for>
+    </ol>
+
+    <h2 style="margin:48px 0 14px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9aa1a0">What to fix next time</h2>
+    <div style="padding:20px;border-radius:16px;border:1px solid #23272a;background:#131517">
+      <div style="font-size:17px;font-weight:700">Growth claim lacked supporting evidence</div>
+      <div style="margin-top:10px;padding:12px 14px;border-radius:10px;background:#0c0d0f;font-size:15px">“We can get 100,000 customers in six months”</div>
+      <div style="margin-top:10px;font-size:14px;color:#c5cac9">Add acquisition assumptions and early traction.</div>
+    </div>
+
+    <h2 style="margin:48px 0 14px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9aa1a0">From the audience</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
+      <sc-for list="{{ feedback }}" as="f">
+        <div style="padding:16px;border-radius:14px;border:1px solid #23272a;background:#131517">
+          <div style="font-size:14px;font-weight:700">{{ f.name }} <span style="color:#9aa1a0;font-weight:500">· {{ f.role }}</span></div>
+          <div style="margin-top:6px;font-size:15px;line-height:1.45;color:#d6dad9">{{ f.comment }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </main>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startStep&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;profile&quot;,&quot;slides&quot;,&quot;room&quot;,&quot;audience&quot;,&quot;curveballs&quot;,&quot;live&quot;,&quot;report&quot;],&quot;default&quot;:&quot;profile&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showPreview&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const MINT = 'oklch(0.82 0.15 150)', CORAL = 'oklch(0.78 0.17 22)';
+const ROSTER = [
+  ['vc','Dana','Skeptical VC',0.85,['What evidence supports reaching 100,000 users?','What does it cost you to acquire one customer?'],'Market argument needs proof.'],
+  ['student','Sam','Confused Student',0.3,["Wait — what does 'weekly actives' mean?",'Can you give a real example of someone using it?'],'Listened; had no question this time.'],
+  ['professor','Prof. Okafor','Picky Professor',0.75,['What assumption is that six-month number resting on?','How would you know the pilots weren\'t a fluke?'],'State your assumptions before the number.'],
+  ['methods','Dr. Lind','Methods Skeptic',0.8,['How many users were in each pilot?','What did you compare the pilots against?'],'Pilot sizes were never stated.'],
+  ['mentor','Alex','Friendly Mentor',0.2,["What's the one sentence you want us to remember?",'Could you restate the structure before moving on?'],'Good recovery. Lead with your takeaway next time.'],
+  ['classmate','Jordan','Bored Classmate',0.4,['Why should I care about this?','How long is this part going to be?'],'The campus example was the part I remember.'],
+  ['hiring_manager','Priya','Hiring Manager',0.6,['Which part of this did you own personally?','What would you do differently next time?'],'Say more about the trade-offs you made.'],
+  ['senior_eng','Marcus','Senior Engineer',0.7,['What breaks first at 100,000 users?','How are you testing that?'],'Failure modes were missing.'],
+  ['recruiter','Casey','Recruiter',0.3,['Give me the elevator version?',"What's your timeline?"],'Clear enough to repeat to my team.'],
+  ['customer','Riley','Potential Customer',0.6,['What does this cost me?','How painful is switching from what I use now?'],'I still don\'t know the price.'],
+  ['journalist','Morgan','Journalist',0.7,["What's the headline here?",'Where can I source that number?'],'Numbers need a source I can cite.'],
+  ['exec','The Sponsor','Executive Sponsor',0.5,['What exactly are you asking for?','Why now?'],'Put the ask on the first slide.'],
+].map(([id,name,role,sk,lines,fb]) => ({ id, name, role, sk: Math.round(sk*100), lines, fb }));
+const BY = Object.fromEntries(ROSTER.map(p => [p.id, p]));
+const PRESETS = [
+  { id: 'startup_pitch', name: 'Startup Pitch', personas: ['vc','student','professor'], setting: 'video' },
+  { id: 'class_presentation', name: 'Class Presentation', personas: ['professor','student','classmate'], setting: 'classroom' },
+  { id: 'research_defense', name: 'Research Defense', personas: ['professor','methods','mentor'], setting: 'lecture' },
+  { id: 'job_interview', name: 'Job Interview Talk', personas: ['hiring_manager','senior_eng','recruiter'], setting: 'interview' },
+];
+const SETTINGS = [
+  { id: 'video', name: 'Video call', sub: 'Shared screen, gallery' },
+  { id: 'classroom', name: 'Classroom', sub: 'Board up front, desks' },
+  { id: 'boardroom', name: 'Boardroom', sub: 'Long table' },
+  { id: 'lecture', name: 'Lecture hall', sub: 'Stage, tiered seats' },
+  { id: 'interview', name: 'Interview panel', sub: 'Panel across a table' },
+];
+const KINDS = [
+  ['time_crunch','Time crunch','Prioritising',"“We're running behind — 60 seconds.”"],
+  ['slides_down','Slides down','No crutch','Viewer goes black until restored.'],
+  ['heckler','Heckler','Composure','A guest challenges the core idea bluntly.'],
+  ['latecomer','Latecomer','Summarising','“Give me the 20-second version?”'],
+  ['bait','Bait','Honesty','A question just outside what you covered.'],
+  ['distraction','Distraction','Focus','Phone, door or cough mid-sentence.'],
+  ['vip_arrives','VIP arrives','Shifting','The decision-maker joins for two minutes.'],
+  ['crosstalk','Crosstalk','Control','Two guests disagree.'],
+  ['fact_check','Fact check','Evidence','A guest cites a contradicting number.'],
+  ['elevator','Elevator','Compression','“30 seconds, no slides.”'],
+  ['plain_language','Plain language','Jargon','“Explain it with no background.”'],
+  ['dead_room','Dead room','Confidence','Blank faces for 45 seconds.'],
+].map(([kind,name,tests,what]) => ({ kind, name, tests, what }));
+const KBY = Object.fromEntries(KINDS.map(k => [k.kind, k]));
+const SLIDES = ['Campus onboarding, solved.','The problem: onboarding takes weeks.','Growth plan: 100,000 customers in six months.','Two campus pilots.','How it works','Who pays','Competition','Go-to-market','Team','Roadmap','The ask','Thank you'];
+const STEP_NAMES = ['profile','slides','room','audience','curveballs','live','report'];
+const LS_KEY = 'presai.profiles', LS_ACTIVE = 'presai.activeProfile';
+const loadProfiles = () => { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { return []; } };
+const DEFAULT_ROOM = { setting: 'video', chosen: ['vc', 'student', 'professor'], skep: {}, input: 'Live mic', preset: 'startup_pitch', customs: [] };
+const VOICES = [['chloe', 'Friendly, clear'], ['eleanor', 'Calm, professional'], ['jake', 'Energetic, dramatic'], ['marcus', 'Confident, professorial'], ['nora', 'Calm, narrative'], ['oliver', 'Thoughtful, reflective']];
+const BLANK_CG = { id: null, name: '', role: '', focus: '', img: '', imgErr: '', vmode: 'preset', preset: 'marcus', voiceId: '', clipName: '', clipErr: '', refText: '', consent: false };
+const cgValid = c => !!(c && c.name.trim() && c.img && (c.vmode === 'preset' ? c.preset : c.vmode === 'id' ? c.voiceId.trim() : c.clipName && c.consent));
+const persona = c => ({ id: c.id, name: c.name, role: c.role || 'Custom guest', sk: c.sk ?? 50, img: c.img, custom: true,
+  voiceLabel: c.vmode === 'preset' ? `voice · ${c.preset}` : c.vmode === 'id' ? `voice · ${c.voiceId}` : 'voice · cloned',
+  lines: c.focus ? [`On ${c.focus}: what's that based on?`, `What happens to ${c.focus} if your main assumption is wrong?`] : ['How did you arrive at that number?', 'What happens if your main assumption is wrong?'],
+  fb: c.focus ? `Wanted more on ${c.focus}.` : 'Wanted more detail on the key assumption.' });
+const DEFAULT_ME = { pname: '', role: '', goal: 'Pitch an idea', level: 'Some practice', tone: 'Balanced' };
+const PROFILE_KEYS = ['pname', 'role', 'goal', 'level', 'tone', 'setting', 'chosen', 'skep', 'input', 'customs'];
+const YOU_AT = { video: { x: 2, y: 85, w: 14, h: 11 }, classroom: { x: 9, y: 22, w: 14, h: 11 }, boardroom: { x: 43, y: 46, w: 14, h: 11 }, lecture: { x: 13, y: 17, w: 14, h: 11 }, interview: { x: 16, y: 62, w: 14, h: 11 } };
+const pad = n => String(n).padStart(2, '0');
+const fmt = s => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+const hueBg = i => `linear-gradient(160deg, oklch(0.27 0.025 ${(i * 47 + 150) % 360}), oklch(0.19 0.012 ${(i * 47 + 150) % 360}))`;
+
+function rows(counts, y0, w, gap, rowGap) {
+  const out = [];
+  counts.forEach((c, r) => { const tot = c * w + (c - 1) * gap, x0 = (100 - tot) / 2; for (let i = 0; i < c; i++) out.push({ x: x0 + i * (w + gap), y: y0 + r * (w + rowGap), w, h: w }); });
+  return out;
+}
+function split(n, cap) { const r = Math.ceil(n / cap), base = Math.floor(n / r), ex = n % r; return Array.from({ length: r }, (_, i) => base + (i < ex ? 1 : 0)); }
+function fill(n, caps) { const out = []; let left = n; for (const c of caps) { if (left <= 0) break; out.push(Math.min(c, left)); left -= c; } return out; }
+function layout(setting, n) {
+  if (setting === 'video') {
+    if (n <= 2) { const w = 31, tot = n * w + (n - 1) * 2; return { bg: '#101214', slide: { x: 2, y: 17, w: 64, h: 64 }, decor: [], seats: Array.from({ length: n }, (_, i) => ({ x: 67.5, y: (100 - tot) / 2 + i * (w + 2), w, h: w })) }; }
+    const w = 15.25, gap = 1.5, rs = Math.ceil(n / 2), tot = rs * w + (rs - 1) * gap, y0 = (100 - tot) / 2;
+    return { bg: '#101214', slide: { x: 1.5, y: 18, w: 64, h: 64 }, decor: [], seats: Array.from({ length: n }, (_, i) => ({ x: 67 + (i % 2) * (w + gap), y: y0 + Math.floor(i / 2) * (w + gap), w, h: w })) };
+  }
+  if (setting === 'classroom') {
+    const w = n <= 3 ? 18 : 14;
+    return { bg: '#111315', slide: { x: 27, y: 4, w: 46, h: 46 }, decor: [{ x: 24, y: 2.5, w: 52, h: 49, c: '#1a1d20', r: '1cqw' }, { x: 0, y: 54, w: 100, h: 46, c: '#0e1012', r: '0' }], seats: rows(split(n, 5), 57, w, 2.5, 3) };
+  }
+  if (setting === 'boardroom') {
+    const pos = [[16, 44], [72, 44], [16, 57.5], [72, 57.5], [16, 71], [72, 71], [16, 84.5], [72, 84.5], [16, 12], [72, 12]];
+    return { bg: '#101214', slide: { x: 32, y: 3, w: 36, h: 36 }, decor: [{ x: 31, y: 43, w: 38, h: 54, c: '#191c1f', r: '1.4cqw' }], seats: pos.slice(0, n).map(([x, y]) => ({ x, y, w: 12, h: 12 })) };
+  }
+  if (setting === 'lecture') {
+    const cs = fill(n, [3, 3, 4]);
+    return { bg: '#0f1113', slide: { x: 30, y: 3, w: 40, h: 40 }, decor: cs.map((_, r) => ({ x: 4 + r * 0, y: 46.5 + r * 15.5, w: 92, h: 14.5, c: `rgba(255,255,255,${0.02 + r * 0.012})`, r: '0.6cqw' })), seats: rows(cs, 47.25, 13, 2.5, 2.5) };
+  }
+  if (n <= 3) return { bg: '#101214', slide: { x: 33, y: 46, w: 34, h: 34 }, decor: [{ x: 6, y: 40, w: 88, h: 0.6, c: '#2a2f32', r: '0' }], seats: rows([n], 5, 29, 2.5, 0) };
+  return { bg: '#101214', slide: { x: 33, y: 50, w: 34, h: 34 }, decor: [{ x: 6, y: 44.5, w: 88, h: 0.6, c: '#2a2f32', r: '0' }], seats: rows(split(n, 5), 3, 17, 2, 2) };
+}
+const CB_LINE = (kind, P) => {
+  const a = P[0], b = P[1] || P[0], z = P[P.length - 1];
+  return ({
+    time_crunch: { who: 'Moderator', text: "Sorry — we're running behind. You've got sixty seconds.", crunch: 60 },
+    slides_down: { who: 'Moderator', text: 'Sorry — the projector just disconnected. Can you keep going?', black: true },
+    heckler: { who: a.name, speak: a.id, flash: a.id, text: "Honestly, I don't buy that anyone needs this." },
+    latecomer: { who: z.name, speak: z.id, flash: z.id, text: "Sorry I'm late — give me the 20-second version?" },
+    bait: { who: b.name, speak: b.id, flash: b.id, text: 'How does that compare on cost to what universities already pay for?' },
+    distraction: { who: 'Moderator', text: '(A phone rings at the back of the room.)' },
+    vip_arrives: { who: 'Moderator', text: 'The decision-maker just joined for two minutes.', vip: true },
+    crosstalk: { who: b.name, speak: b.id, flash: b.id, text: `I actually disagree with ${a.name} — the market is the easy part.` },
+    fact_check: { who: a.name, speak: a.id, flash: a.id, text: 'Last I read, campus apps keep under 10% of users. That contradicts your number.' },
+    elevator: { who: 'Moderator', text: '30 seconds, no slides. Go.', dim: true, crunch: 30 },
+    plain_language: { who: b.name, speak: b.id, flash: b.id, text: 'Can you explain that to someone with no background?' },
+    dead_room: { who: 'Moderator', text: '(The room goes quiet. No reactions.)', blank: true },
+  })[kind];
+};
+
+class Component extends DCLogic {
+  state = {
+    step: Math.max(0, STEP_NAMES.indexOf(this.props.startStep ?? 'profile')),
+    profiles: loadProfiles(), profileId: null, ...DEFAULT_ME,
+    deck: null, drag: false, uploading: false, deckErr: null, link: '', ctx: '', ctxFiles: [],
+    setting: 'video', input: 'Live mic', chosen: ['vc', 'student', 'professor'], skep: {}, preset: 'startup_pitch', customs: [], cg: null,
+    difficulty: 'normal', cbCount: 1, cbMode: 'surprise', kinds: ['time_crunch', 'slides_down', 'heckler'], freq: 'Normal', length: 3, qna: 2,
+    beat: 0, log: [], t: 0, crunch: null, paused: false, restored: false, done: false, slide: 1, tick: 0,
+  };
+  fileRef = React.createRef(); capRef = React.createRef(); ctxFileRef = React.createRef(); portraitRef = React.createRef(); clipRef = React.createRef();
+  componentDidMount() {
+    this.iv = setInterval(() => { if (this.state.step === 5) this.setState(s => ({ tick: s.tick + 1 })); }, 150);
+    this.sec = setInterval(() => { const s = this.state; if (s.step !== 5 || s.paused || s.done) return; this.setState(s.crunch != null ? { crunch: Math.max(0, s.crunch - 1), t: s.t + 1 } : { t: s.t + 1 }); }, 1000);
+    this.onKey = e => {
+      if (this.state.step !== 5 || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+      if (e.key === 'ArrowRight') this.moveSlide(1); else if (e.key === 'ArrowLeft') this.moveSlide(-1);
+      else if (e.key === 'p' || e.key === 'P') this.togglePause(); else if (e.key === 's' || e.key === 'S') this.skip();
+    };
+    window.addEventListener('keydown', this.onKey);
+    const ps = this.state.profiles, act = ps.find(p => p.id === localStorage.getItem(LS_ACTIVE));
+    if (act) this.loadProfile(act); else if (!ps.length) this.setState({ profileId: 'new' });
+    if (this.state.step === 5) this.startLive();
+    if (this.state.step === 6) this.setState({ deck: { name: 'pitch-deck.pdf', pages: 12 } });
+  }
+  componentWillUnmount() { clearInterval(this.iv); clearInterval(this.sec); clearTimeout(this.to); window.removeEventListener('keydown', this.onKey); }
+  snap() { const s = this.state, o = {}; PROFILE_KEYS.forEach(k => o[k] = s[k]); return o; }
+  persist(profiles) { try { localStorage.setItem(LS_KEY, JSON.stringify(profiles)); } catch (e) {} }
+  loadProfile(p) { this._snapStr = null; this.setState({ profileId: p.id, ...DEFAULT_ME, ...DEFAULT_ROOM, ...p, preset: null }); try { localStorage.setItem(LS_ACTIVE, p.id); } catch (e) {} }
+  createProfile() {
+    const s = this.state, id = 'p' + Date.now();
+    const rec = { id, ...this.snap(), pname: s.pname.trim() || s.role.trim() || `Profile ${s.profiles.length + 1}` };
+    const profiles = s.profiles.concat(rec); this.persist(profiles);
+    try { localStorage.setItem(LS_ACTIVE, id); } catch (e) {}
+    this.setState({ profiles, profileId: id, pname: rec.pname });
+  }
+  goStep(i) { if (this.state.step === 0 && this.state.profileId === 'new') this.createProfile(); this.setState({ step: i }); }
+  componentDidUpdate() {
+    const s = this.state;
+    if (s.profileId && s.profileId !== 'new') {
+      const str = JSON.stringify(this.snap());
+      if (this._snapStr !== str) {
+        const first = this._snapStr == null; this._snapStr = str;
+        if (!first) { const profiles = s.profiles.map(p => p.id === s.profileId ? { ...p, ...JSON.parse(str) } : p); this.persist(profiles); this.setState({ profiles }); }
+      }
+    } else this._snapStr = null;
+    if (this._lastLog !== this.state.log) { this._lastLog = this.state.log; const el = this.capRef.current; if (el) el.scrollTop = el.scrollHeight; } }
+
+  byId(id) { if (BY[id]) return BY[id]; const c = (this.state.customs || []).find(x => x.id === id); return c ? persona(c) : null; }
+  people() { return this.state.chosen.map(id => this.byId(id)).filter(Boolean); }
+  upCg(o) { this.setState(s => ({ cg: { ...s.cg, ...o } })); }
+  readPortrait(f) {
+    if (!f) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(f.type)) { this.upCg({ imgErr: 'Use a PNG, JPEG or WebP image.' }); return; }
+    const r = new FileReader();
+    r.onload = () => { const im = new Image(); im.onload = () => {
+      const S = 320, c = document.createElement('canvas'); c.width = c.height = S; const k = Math.min(im.width, im.height);
+      c.getContext('2d').drawImage(im, (im.width - k) / 2, (im.height - k) / 2, k, k, 0, 0, S, S);
+      this.upCg({ img: c.toDataURL('image/jpeg', 0.85), imgErr: '' });
+    }; im.src = r.result; };
+    r.readAsDataURL(f);
+  }
+  saveCustom() {
+    const s = this.state, c = s.cg; if (!cgValid(c)) return;
+    const id = c.id || 'c' + Date.now(), rec = { ...c, id, name: c.name.trim(), role: c.role.trim(), focus: c.focus.trim(), imgErr: '', clipErr: '' };
+    const customs = c.id ? s.customs.map(x => x.id === id ? rec : x) : s.customs.concat(rec);
+    const chosen = c.id || s.chosen.length >= 10 ? s.chosen : s.chosen.concat(id);
+    this.setState({ customs, chosen, cg: null, preset: c.id ? s.preset : null });
+  }
+  removeCustom(id) {
+    this.setState(s => { const chosen = s.chosen.filter(i => i !== id), skep = { ...s.skep }; delete skep[id];
+      return { customs: s.customs.filter(x => x.id !== id), chosen: chosen.length ? chosen : ['vc'], skep, cg: s.cg && s.cg.id === id ? null : s.cg }; });
+  }
+  buildBeats() {
+    const P = this.people(), a = P[0], b = P[1] || P[0], s = this.state;
+    const kinds = (s.cbMode === 'choose' && s.kinds.length ? s.kinds : ['slides_down', 'time_crunch', 'heckler', 'latecomer', 'plain_language']).slice();
+    const picks = Array.from({ length: s.cbCount }, (_, i) => kinds[i % kinds.length]);
+    const cb = k => { const l = CB_LINE(k, P); return [{ d: 3400, phase: 'curveball', tag: KBY[k].name, cbName: KBY[k].name.toUpperCase(), ...l, recovering: false }, { d: 2800, phase: 'recovering', who: 'You', text: 'So, the problem again is onboarding.', black: l.black, dim: l.dim, blank: l.blank, cbName: KBY[k].name.toUpperCase(), keepCrunch: true }]; };
+    const B = [
+      { d: 1800, phase: 'presenting', who: 'Moderator', text: `Welcome. ${P.length} ${P.length === 1 ? 'guest is' : 'guests are'} here. Whenever you're ready.` },
+      { d: 2800, phase: 'presenting', who: 'You', text: 'We can get 100,000 customers in six months.', slide: 3 },
+      { d: 3200, phase: 'interruption', who: a.name, speak: a.id, text: a.lines[0], tag: 'question' },
+      { d: 3000, phase: 'answering', who: 'You', text: 'Two campus pilots, three hundred weekly actives and growing.', slide: 4 },
+    ];
+    if (picks[0]) B.push(...cb(picks[0]));
+    B.push({ d: 3000, phase: 'interruption', who: b.name, speak: b.id, text: b.lines[0], tag: 'question' });
+    B.push({ d: 2800, phase: 'answering', who: 'You', text: "In plain terms: people who open it at least once a week.", slide: 5 });
+    picks.slice(1).forEach(k => B.push(...cb(k)));
+    this.qnaAt = B.length;
+    B.push({ d: 2200, phase: 'qna', who: 'Moderator', text: "That's time. Let's take questions.", clearCrunch: true });
+    P.slice(0, Math.max(0, s.qna)).forEach((p, i) => B.push({ d: 3000, phase: 'qna', who: p.name, speak: p.id, text: p.lines[1], tag: 'Q&A' }, { d: 2400, phase: 'qna', who: 'You', text: i === 0 ? 'Good question. Short answer: we measure it weekly.' : "I don't have that number yet. I'll follow up." }));
+    B.push({ d: 1500, phase: 'ended', who: 'Moderator', text: 'Thanks, everyone. Your report card is ready.', clearCrunch: true, end: true });
+    return B;
+  }
+  startLive() { clearTimeout(this.to); this.beats = this.buildBeats(); this.setState({ step: 5, beat: 0, log: [], t: 0, crunch: null, paused: false, done: false, slide: 1, restored: false }, () => this.apply(0)); }
+  apply(i) {
+    const b = this.beats[i]; if (!b) return;
+    this.setState(s => ({
+      beat: i, restored: false, done: !!b.end, slide: b.slide || s.slide,
+      crunch: b.clearCrunch ? null : b.crunch ?? s.crunch,
+      log: s.log.concat([{ who: b.who, text: b.text, tag: b.tag || null }]),
+    }));
+    clearTimeout(this.to);
+    if (!b.end) this.to = setTimeout(() => this.apply(i + 1), b.d);
+  }
+  togglePause = () => { if (this.state.done) return; if (this.state.paused) { this.setState({ paused: false }); this.to = setTimeout(() => this.apply(this.state.beat + 1), 1200); } else { clearTimeout(this.to); this.setState({ paused: true }); } };
+  skip = () => { if (this.state.done) return; this.setState({ paused: false, log: this.state.log.concat([{ who: 'Moderator', text: 'Skipped — carry on.' }]) }); this.apply(this.state.beat + 1); };
+  moveSlide(d) { const max = this.state.deck ? this.state.deck.pages : 99; this.setState(s => ({ slide: Math.min(max, Math.max(1, s.slide + d)) })); }
+  tryDeck(name) {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    if (!['pdf', 'ppt', 'pptx', 'pps', 'ppsx', 'pot', 'potx', 'key', 'odp', 'otp'].includes(ext)) { this.setState({ deckErr: `.${ext} isn't a slide format. Try PDF, PowerPoint, Keynote or ODP.` }); return; }
+    this.setState({ deckErr: null }); this.setDeck(name);
+  }
+  setDeck(name) { this.setState({ uploading: true }); setTimeout(() => this.setState({ uploading: false, deck: { name, pages: 12 } }), 900); }
+
+  seg(list, cur, key) { return list.map(l => ({ label: l, bg: l === cur ? '#262a2e' : 'transparent', fg: l === cur ? '#eceeed' : '#9aa1a0', pick: () => this.setState({ [key]: l }) })); }
+  stepper(key, min, max, d) { return () => this.setState(s => ({ [key]: Math.min(max, Math.max(min, s[key] + d)) })); }
+  setGuests(n) {
+    this.setState(s => { let c = s.chosen.slice(0, n); for (const p of ROSTER) { if (c.length >= n) break; if (!c.includes(p.id)) c.push(p.id); } return { chosen: c, preset: null }; });
+  }
+
+  renderVals() {
+    const s = this.state, P = this.people(), n = P.length;
+    const set = SETTINGS.find(x => x.id === s.setting);
+    const live = s.step === 5, b = live && this.beats ? this.beats[s.beat] : {};
+    const L = layout(s.setting, Math.min(10, n + (b.vip && n < 10 ? 1 : 0)));
+    const tilesP = P.concat(b.vip && n < 10 && !s.chosen.includes('exec') ? [BY.exec] : []);
+    const black = live && b.black && !s.restored, dim = live && b.dim && !s.restored;
+    const hot = b.phase === 'curveball' || b.phase === 'recovering';
+    const cq = (w, k, min) => `max(${min}px, ${(w * k).toFixed(2)}cqw)`;
+    const tileBg = p => p && p.img ? `url("${p.img}") center / cover no-repeat` : hueBg(Math.max(0, ROSTER.indexOf(p)));
+    const cg = s.cg, cgOk = cgValid(cg);
+    const cgMissing = !cg || cgOk ? '' : [!cg.img && 'a photo', !cg.name.trim() && 'a name', cg.vmode === 'id' && !cg.voiceId.trim() && 'a voice ID', cg.vmode === 'clone' && !cg.clipName && 'a voice clip', cg.vmode === 'clone' && cg.clipName && !cg.consent && 'voice consent'].filter(Boolean);
+    const onCls = (on) => ({ border: on ? 'oklch(0.82 0.15 150 / .7)' : '#23272a', bg: on ? 'oklch(0.82 0.15 150 / .07)' : '#131517' });
+    const usedKinds = this.beats ? this.beats.filter(x => x.phase === 'curveball').length : 0;
+    const firedKinds = this.beats ? this.beats.slice(0, s.beat + 1).filter(x => x.phase === 'curveball').length : 0;
+    const rep = (live || s.step === 6) && this.beats ? this.beats.filter(x => x.phase === 'curveball') : [CB_LINE('slides_down', P), CB_LINE('time_crunch', P)].map((l, i) => ({ ...l, tag: i ? 'Time crunch' : 'Slides down' }));
+    const deckName = s.deck ? s.deck.name : '';
+    return {
+      inWizard: s.step <= 4, isLive: live, isReport: s.step === 6,
+      isProfile: s.step === 0, isSlides: s.step === 1, isRoom: s.step === 2, isAudience: s.step === 3, isCurve: s.step === 4,
+      showPreview: this.props.showPreview ?? true,
+      steps: ['Profile', 'Slides', 'Room', 'Audience', 'Curveballs'].map((label, i) => ({ label, mark: i < s.step ? '✓' : String(i + 1),
+        bg: i === s.step ? '#1c1f22' : 'transparent', fg: i <= s.step ? '#eceeed' : '#6c7372',
+        dotBg: i < s.step ? MINT : i === s.step ? '#eceeed' : '#1c1f22', dotFg: i <= s.step ? '#0c0d0f' : '#6c7372', go: () => this.goStep(i) })),
+      back: () => this.setState(x => ({ step: Math.max(0, x.step - 1) })), backColor: s.step === 0 ? '#4a5052' : '#eceeed',
+      next: () => s.step === 4 ? this.startLive() : this.goStep(s.step + 1),
+      nextLabel: s.step === 4 ? 'Start presenting' : s.step === 1 && !s.deck ? 'Continue without slides' : 'Continue',
+      nextBg: MINT, nextShadow: s.step === 4 ? '0 8px 30px oklch(0.82 0.15 150 / .35)' : 'none',
+      // profile
+      savedProfiles: s.profiles.map((p, i) => { const on = p.id === s.profileId, cnt = (p.chosen || []).length;
+        return { name: p.pname, initial: (p.pname || '?').trim().charAt(0).toUpperCase(), swatch: `oklch(0.82 0.12 ${(i * 67 + 150) % 360})`,
+          meta: `${p.role || p.goal} · ${(SETTINGS.find(x => x.id === p.setting) || SETTINGS[0]).name} · ${cnt} ${cnt === 1 ? 'guest' : 'guests'}`,
+          ...onCls(on), pick: () => this.loadProfile(p) }; }),
+      newProfile: () => this.setState({ profileId: 'new', ...DEFAULT_ME, ...DEFAULT_ROOM }),
+      newBorder: s.profileId === 'new' ? 'oklch(0.82 0.15 150 / .7)' : '#3a4043', newBg: s.profileId === 'new' ? 'oklch(0.82 0.15 150 / .07)' : 'transparent',
+      showProfileForm: s.profileId !== null, isSavedProfile: !!s.profileId && s.profileId !== 'new',
+      formNote: s.profileId === 'new' ? 'New profile · saved when you continue' : 'Changes save automatically',
+      deleteProfile: () => { const profiles = s.profiles.filter(p => p.id !== s.profileId); this.persist(profiles); try { localStorage.removeItem(LS_ACTIVE); } catch (e) {} this.setState({ profiles, profileId: profiles.length ? null : 'new', ...DEFAULT_ME, ...DEFAULT_ROOM }); },
+      useDefault: () => { try { localStorage.removeItem(LS_ACTIVE); } catch (e) {} this.setState({ profileId: null, ...DEFAULT_ME, ...DEFAULT_ROOM, step: 1 }); },
+      pname: s.pname, onPname: e => this.setState({ pname: e.target.value }),
+      saveNote: s.profileId && s.profileId !== 'new' ? `Saved to ${s.pname}` : 'Default profile · applies to this session only',
+      saveDot: s.profileId && s.profileId !== 'new' ? MINT : '#4a5052',
+      role: s.role, onRole: e => this.setState({ role: e.target.value }),
+      goals: ['Pitch an idea', 'Teach a class', 'Defend research', 'Job interview', 'Team update', 'Conference talk'].map(g => ({ label: g, ...onCls(g === s.goal), fg: '#eceeed', pick: () => this.setState({ goal: g }) })),
+      levels: this.seg(['First time', 'Some practice', 'Seasoned'], s.level, 'level'),
+      tones: this.seg(['Encouraging', 'Balanced', 'Blunt'], s.tone, 'tone'),
+      // slides
+      fileRef: this.fileRef, pickFile: () => this.fileRef.current && this.fileRef.current.click(),
+      onFile: e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) this.tryDeck(f.name); },
+      formats: ['PDF', 'PPTX', 'PPT', 'KEY', 'ODP', 'PPSX'],
+      dropIcon: s.deck ? (s.deck.name.includes('.') ? s.deck.name.split('.').pop().toUpperCase().slice(0, 5) : 'LINK') : 'DECK', dropIconFg: s.deck ? MINT : '#9aa1a0',
+      dropSubColor: s.deckErr ? CORAL : '#9aa1a0',
+      linkVal: s.link, onLink: e => this.setState({ link: e.target.value, deckErr: null }),
+      linkBtnBg: s.link.trim() ? MINT : '#131517', linkBtnFg: s.link.trim() ? '#07120b' : '#6c7372',
+      addLink: () => { const u = s.link.trim(); if (!u) return; const m = /docs\.google\.com\/presentation/i.test(u) ? 'Google Slides' : /canva\.com/i.test(u) ? 'Canva' : /(onedrive|sharepoint|1drv)\./i.test(u) ? 'PowerPoint Online' : 'Linked deck'; this.setDeck(m + ' deck'); this.setState({ link: '' }); },
+      onDragOver: e => { e.preventDefault(); if (!s.drag) this.setState({ drag: true }); }, onDragLeave: () => this.setState({ drag: false }),
+      onDrop: e => { e.preventDefault(); const f = e.dataTransfer.files[0]; this.setState({ drag: false }); if (f) this.tryDeck(f.name); },
+      dropBorder: s.drag ? MINT : '#2f3437', dropBg: s.drag ? 'oklch(0.82 0.15 150 / .06)' : '#101214',
+      dropTitle: s.uploading ? 'Uploading…' : s.deck ? 'Replace deck' : 'Drop your slides here', dropSub: s.deckErr || (s.uploading ? 'Reading your slides' : 'or click to browse'),
+      hasDeck: !!s.deck, noDeck: !s.deck, deckName, deckPages: s.deck ? s.deck.pages : 0,
+      ctxFileRef: this.ctxFileRef, ctxText: s.ctx, onCtx: e => this.setState({ ctx: e.target.value }),
+      attachCtx: () => this.ctxFileRef.current && this.ctxFileRef.current.click(),
+      onCtxFile: e => { const names = Array.from(e.target.files || []).map(f => f.name); e.target.value = ''; if (names.length) this.setState(x => ({ ctxFiles: x.ctxFiles.concat(names) })); },
+      ctxFiles: s.ctxFiles.map((name, i) => ({ name, remove: () => this.setState(x => ({ ctxFiles: x.ctxFiles.filter((_, j) => j !== i) })) })),
+      thumbs: Array.from({ length: 12 }, (_, i) => String(i + 1)), removeDeck: () => this.setState({ deck: null }), useSample: () => this.setDeck('pitch-deck.pdf'),
+      // room
+      settings: SETTINGS.map(r => { const l = layout(r.id, 4); const on = r.id === s.setting;
+        return { ...r, border: on ? 'oklch(0.82 0.15 150 / .7)' : '#23272a', bg: on ? 'oklch(0.82 0.15 150 / .07)' : '#131517', pick: () => this.setState({ setting: r.id }),
+          shapes: [
+            ...l.decor.map(d => ({ ...d, c: d.c === '#191c1f' || d.c === '#2a2f32' ? '#2f2a24' : d.c, b: '0', r: d.r === '0' ? '1px' : '3px', label: '', lc: 'transparent' })),
+            { ...l.slide, c: 'oklch(0.82 0.15 150 / .16)', b: '1px solid oklch(0.82 0.15 150 / .6)', r: '3px', label: r.id === 'interview' ? 'Laptop' : r.id === 'classroom' ? 'Board' : 'Screen', lc: MINT },
+            ...l.seats.map((t, j) => ({ ...t, c: `oklch(0.74 0.1 ${[25, 75, 200, 255, 310, 160, 45, 230, 285, 120][j]})`, b: '0', r: '3px', label: '', lc: 'transparent' })),
+            { ...YOU_AT[r.id], c: CORAL, b: '0', r: '999px', label: 'You', lc: '#1a0705' },
+          ] }; }),
+      guests: n, guestWord: n === 1 ? 'guest' : 'guests',
+      guestsDown: () => this.setGuests(Math.max(1, n - 1)), guestsUp: () => this.setGuests(Math.min(10, n + 1)), onGuests: e => this.setGuests(Number(e.target.value)),
+      inputModes: this.seg(['Live mic', 'Push to talk'], s.input, 'input'),
+      // audience
+      presets: PRESETS.map(p => ({ name: p.name, ...onCls(s.preset === p.id), pick: () => this.setState({ chosen: p.personas.slice(), preset: p.id, setting: p.setting }) })),
+      roster: ROSTER.map(p => { const on = s.chosen.includes(p.id);
+        return { name: p.name, role: p.role, ...onCls(on), checkBorder: on ? MINT : '#3a4043', checkBg: on ? MINT : 'transparent',
+          toggle: () => this.setState(x => on ? (x.chosen.length > 1 ? { chosen: x.chosen.filter(i => i !== p.id), preset: null } : null) : (x.chosen.length < 10 ? { chosen: x.chosen.concat(p.id), preset: null } : null)) }; }),
+      customRoster: s.customs.map(c => { const on = s.chosen.includes(c.id), p = persona(c);
+        return { name: p.name, role: p.role, imgBg: `#1a1d20 url("${c.img}") center / cover no-repeat`, voiceLabel: p.voiceLabel, ...onCls(on), checkBorder: on ? MINT : '#3a4043', checkBg: on ? MINT : 'transparent',
+          toggle: () => this.setState(x => on ? (x.chosen.length > 1 ? { chosen: x.chosen.filter(i => i !== c.id), preset: null } : null) : (x.chosen.length < 10 ? { chosen: x.chosen.concat(c.id), preset: null } : null)),
+          edit: () => this.setState({ cg: { ...BLANK_CG, ...c, imgErr: '', clipErr: '' } }), remove: () => this.removeCustom(c.id) }; }),
+      openCustom: () => this.setState({ cg: { ...BLANK_CG } }), closeCustom: () => this.setState({ cg: null }),
+      cgOpen: !!cg, cgTitle: cg && cg.id ? 'Edit custom guest' : 'New custom guest',
+      cgName: cg ? cg.name : '', cgRole: cg ? cg.role : '', cgFocus: cg ? cg.focus : '', cgVoiceId: cg ? cg.voiceId : '', cgRefText: cg ? cg.refText : '',
+      onCgName: e => this.upCg({ name: e.target.value }), onCgRole: e => this.upCg({ role: e.target.value }), onCgFocus: e => this.upCg({ focus: e.target.value }),
+      onCgVoiceId: e => this.upCg({ voiceId: e.target.value }), onCgRefText: e => this.upCg({ refText: e.target.value }),
+      portraitRef: this.portraitRef, clipRef: this.clipRef,
+      cgImgBg: cg && cg.img ? `url("${cg.img}") center / cover no-repeat` : 'transparent', cgHasImg: !!(cg && cg.img), cgNoImg: !(cg && cg.img), cgImgErr: cg ? cg.imgErr : '', cgImgBorder: cg && cg.img ? 'transparent' : '#2f3538',
+      pickPortrait: () => this.portraitRef.current && this.portraitRef.current.click(),
+      onPortrait: e => { this.readPortrait(e.target.files[0]); e.target.value = ''; },
+      portraitDragOver: e => e.preventDefault(), portraitDrop: e => { e.preventDefault(); this.readPortrait(e.dataTransfer.files[0]); },
+      vModes: [['preset', 'Preset voice'], ['id', 'Voice ID'], ['clone', 'Clone from clip']].map(([id, label]) => ({ label, bg: cg && cg.vmode === id ? '#262a2e' : 'transparent', fg: cg && cg.vmode === id ? '#eceeed' : '#9aa1a0', pick: () => this.upCg({ vmode: id }) })),
+      isVPreset: !!cg && cg.vmode === 'preset', isVId: !!cg && cg.vmode === 'id', isVClone: !!cg && cg.vmode === 'clone',
+      voicePresets: VOICES.map(([id, style]) => ({ id, style, ...onCls(cg && cg.preset === id), pick: () => this.upCg({ preset: id }) })),
+      pickClip: () => this.clipRef.current && this.clipRef.current.click(),
+      onClip: e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const ext = (f.name.split('.').pop() || '').toLowerCase();
+        this.upCg(['wav', 'mp3', 'opus', 'pcm', 'flac'].includes(ext) ? { clipName: f.name, clipErr: '' } : { clipErr: `.${ext} isn't supported. Use WAV, MP3, Opus, PCM or FLAC.` }); },
+      cgClipLabel: cg && cg.clipName ? cg.clipName : 'Upload voice clip', cgClipErr: cg ? cg.clipErr : '',
+      toggleConsent: () => this.upCg({ consent: !cg.consent }),
+      cgConsentBorder: cg && cg.consent ? MINT : '#3a4043', cgConsentBg: cg && cg.consent ? MINT : 'transparent', cgConsentMark: cg && cg.consent ? '✓' : '',
+      cgMissing: cgMissing.length ? `Still needs ${cgMissing.join(', ')}.` : '',
+      cgSaveLabel: cg && cg.id ? 'Save changes' : 'Add to roster', saveCustom: () => this.saveCustom(),
+      cgSaveBg: cgOk ? MINT : '#262a2e', cgSaveFg: cgOk ? '#07120b' : '#6c7372', cgSaveCursor: cgOk ? 'pointer' : 'not-allowed',
+      chosenList: P.map(p => ({ name: p.name, short: p.role, skep: s.skep[p.id] ?? p.sk, onSkep: e => this.setState(x => ({ skep: { ...x.skep, [p.id]: Number(e.target.value) } })) })),
+      // curveballs
+      difficulties: [['friendly', 'Friendly', 'No curveballs', 0], ['normal', 'Normal', '1 curveball', 1], ['brutal', 'Brutal', '2 curveballs', 2]].map(([id, label, sub, c]) => ({ label, sub, bg: s.difficulty === id ? '#262a2e' : 'transparent', fg: s.difficulty === id ? '#eceeed' : '#9aa1a0', pick: () => this.setState({ difficulty: id, cbCount: c }) })),
+      cbCount: s.cbCount, cbCountColor: s.cbCount ? CORAL : '#eceeed', cbDown: this.stepper('cbCount', 0, 5, -1), cbUp: this.stepper('cbCount', 0, 5, 1),
+      cbModes: [['surprise', 'Surprise me'], ['choose', 'Let me choose']].map(([id, label]) => ({ label, bg: s.cbMode === id ? '#262a2e' : 'transparent', fg: s.cbMode === id ? '#eceeed' : '#9aa1a0', pick: () => this.setState({ cbMode: id }) })),
+      cbChoose: s.cbMode === 'choose',
+      kinds: KINDS.map(k => { const on = s.kinds.includes(k.kind); return { ...k, border: on ? 'oklch(0.78 0.17 22 / .7)' : '#23272a', bg: on ? 'oklch(0.78 0.17 22 / .08)' : '#0c0d0f', toggle: () => this.setState(x => ({ kinds: on ? x.kinds.filter(i => i !== k.kind) : x.kinds.concat(k.kind) })) }; }),
+      freqs: this.seg(['Rare', 'Normal', 'Often'], s.freq, 'freq'),
+      length: s.length, lenDown: this.stepper('length', 1, 20, -1), lenUp: this.stepper('length', 1, 20, 1),
+      qna: s.qna, qnaDown: this.stepper('qna', 0, 3, -1), qnaUp: this.stepper('qna', 0, 3, 1),
+      // preview
+      settingName: set.name, stageBg: L.bg, decor: L.decor, sl: L.slide,
+      previewSlideLabel: s.deck ? deckName : 'no slides',
+      previewTiles: L.seats.map((t, i) => ({ ...t, name: P[i] ? P[i].name : '', bg: tileBg(P[i] || ROSTER[0]), fs: cq(t.w, 0.075, 7) })),
+      summary: [
+        { k: 'Profile', v: s.profileId === null ? 'Default (neutral)' : s.profileId === 'new' ? (s.pname.trim() || 'New profile') : s.pname },
+        { k: 'Slides', v: s.deck ? `${deckName} · ${s.deck.pages}` : 'None — listening only' },
+        { k: 'Context', v: s.ctx.trim() || s.ctxFiles.length ? [s.ctx.trim() ? 'Notes' : null, s.ctxFiles.length ? `${s.ctxFiles.length} ${s.ctxFiles.length === 1 ? 'file' : 'files'}` : null].filter(Boolean).join(' · ') : 'None' },
+        { k: 'Curveballs', v: s.cbCount ? `${s.cbCount} · ${s.cbMode === 'choose' ? `${s.kinds.length} types` : 'surprise'}` : 'Off' },
+        { k: 'Length', v: `${s.length} min · ${s.qna} Q&A` },
+      ],
+      // live
+      phase: b.phase || 'setup', phaseBg: hot ? 'oklch(0.78 0.17 22 / .15)' : b.phase === 'presenting' ? '#1c1f22' : 'oklch(0.82 0.15 150 / .14)', phaseColor: hot ? CORAL : b.phase === 'presenting' ? '#9aa1a0' : MINT,
+      timer: s.crunch != null ? fmt(s.crunch) : fmt(s.t), timerColor: s.crunch != null ? CORAL : '#eceeed',
+      showRestore: !!black, restore: () => this.setState({ restored: true, log: s.log.concat([{ who: 'Moderator', text: 'Slides restored.' }]) }),
+      paused: s.paused, pauseLabel: s.paused ? 'Resume' : 'Pause', togglePause: this.togglePause, skip: this.skip,
+      endLabel: s.done ? 'View report →' : b.phase === 'qna' ? 'End Q&A' : 'End → Q&A', endBg: s.done ? MINT : '#262a2e', endFg: s.done ? '#07120b' : '#eceeed',
+      endTalk: () => { if (s.done || b.phase === 'qna') { clearTimeout(this.to); this.setState({ step: 6 }); } else this.apply(this.qnaAt); },
+      slideDim: dim ? 0.15 : 1, blackOp: black ? 1 : dim ? 0.0 : 0,
+      overlayTitle: 'Projector disconnected', overlaySub: 'Keep going.',
+      slideKicker: `SLIDE ${s.slide}`, slideTitle: SLIDES[(s.slide - 1) % SLIDES.length],
+      slideBig: cq(L.slide.w, 0.07, 14), slideMid: cq(L.slide.w, 0.05, 13), slideSmall: cq(L.slide.w, 0.022, 10),
+      slideNo: s.deck ? `Slide ${s.slide} / ${s.deck.pages}` : `Slide ${s.slide}`,
+      prevSlide: () => this.moveSlide(-1), nextSlide: () => this.moveSlide(1),
+      micLabel: s.input === 'Push to talk' ? 'hold Space to talk' : 'mic', micLevel: live && b.who === 'You' && !s.paused ? 25 + ((s.tick * 37) % 60) : 4,
+      cbName: b.cbName || '', cbOp: hot ? 1 : 0, cbY: hot ? '0' : '-12px',
+      cbLeft: `${firedKinds} / ${usedKinds} curveballs`,
+      liveTiles: L.seats.map((t, i) => { const p = tilesP[i]; if (!p) return null; const on = b.speak === p.id, fl = b.flash === p.id;
+        return { ...t, name: p.name, role: p.role, bg: tileBg(p),
+          ring: on ? `0 0 0 2px ${MINT}, 0 0 28px oklch(0.82 0.15 150 / .35)` : fl ? `0 0 0 2px ${CORAL}` : 'none',
+          op: b.blank ? 0.35 : 1, filter: b.blank ? 'grayscale(1)' : 'none', lift: on ? '-2px' : '0',
+          tag: (fl && b.tag) || (b.vip && p.id === 'exec' ? 'VIP' : null),
+          fs: cq(t.w, 0.075, 9), fsSm: cq(t.w, 0.055, 8),
+          bars: [0, 1, 2, 3].map(j => on && !s.paused ? 30 + ((s.tick * 7 + j * 23 + i * 11) % 70) : 20) }; }).filter(Boolean),
+      log: s.log.map(c => ({ ...c, color: c.who === 'You' ? '#eceeed' : c.who === 'Moderator' ? CORAL : MINT, tagColor: c.tag === 'question' || c.tag === 'Q&A' ? '#6c7372' : CORAL })),
+      capRef: this.capRef,
+      // report
+      newSession: () => this.setState({ step: 0 }), again: () => this.startLive(),
+      reportMeta: `${set.name.toUpperCase()} · ${n} ${n === 1 ? 'GUEST' : 'GUESTS'} · ${fmt(s.t || 55)}`,
+      dims: [['Clarity', null], ['Evidence', null], ['Structure', null], ['Question handling', null], ['Recovery', rep.length ? 71 : null]].map(([label, v]) => ({ label, v: v == null ? '—' : v, color: v == null ? '#4a5052' : MINT })),
+      metrics: [['143', 'words per minute'], ['4', 'filler words'], ['0', 'unanswered questions'], [String(rep.length), 'curveballs faced'], ['0', 'skipped']].map(([v, k]) => ({ v, k })),
+      recov: rep.length ? rep.map((r, i) => ({ name: r.tag, at: ['00:22', '00:36', '00:48', '00:57', '01:05'][i] || '01:10', resolution: r.black ? 'auto restored' : r.crunch ? 'timed out' : 'answered',
+        score: i === 0 ? '71' : '—', scoreColor: i === 0 ? MINT : '#4a5052', resume: i === 0 ? 'Resumed after 3.4 s' : 'Timing not measured',
+        evidence: i === 0 ? 'So, the problem again is onboarding.' : null, suggestion: i === 0 ? 'Memorise a 3-point outline so you can present without slides.' : null })) : [{ name: 'No curveball fired this session.', at: '—', resolution: '—', score: '', scoreColor: '#4a5052', resume: '', evidence: null }],
+      moments: [{ t: '00:04', type: 'question', summary: `${P[0].name} asked for evidence on growth claim`, color: MINT }, ...rep.slice(0, 2).flatMap((r, i) => i ? [{ t: '00:36', type: 'curveball', summary: r.tag, color: CORAL }] : [{ t: '00:22', type: 'curveball', summary: r.tag, color: CORAL }, { t: '00:32', type: 'recovery', summary: 'Resumed after 3.4 s', color: '#9aa1a0' }])],
+      feedback: P.map(p => ({ name: p.name, role: p.role, comment: p.fb })),
+    };
+  }
+}
+</script>
+</body>
+</html>

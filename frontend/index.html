@@ -3,53 +3,188 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PresAI</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Pres AI · Practice in front of a room that talks back</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <link rel="stylesheet" href="/css/app.css" />
+  <style>
+    html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+    body { background: var(--bg-home); }
+    .h-muted { color: #a3aaa8; }
+    .navwrap { position: fixed; top: 0; left: 0; right: 0; z-index: 20; border-bottom: 1px solid transparent; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: transform .45s var(--ease), background .35s ease, border-color .35s ease; }
+    .navwrap.solid { background: rgba(10,11,13,.78); border-color: #1c2022; }
+    .navwrap.hide { transform: translateY(-100%); }
+    .navwrap nav { max-width: 1200px; margin: 0 auto; padding: 22px 28px; display: flex; align-items: center; justify-content: space-between; gap: 24px; transition: padding .35s ease; }
+    .navwrap.solid nav { padding: 14px 28px; }
+    .navlinks { display: flex; gap: 28px; font-size: 15px; }
+    .navlinks a { color: #a3aaa8; }
+    @media (max-width: 760px) { .navlinks { display: none; } .demo-grid { grid-template-columns: 1fr !important; } .demo-tiles { grid-template-rows: none !important; grid-template-columns: repeat(3, minmax(0, 1fr)); } .demo-tiles > div { aspect-ratio: 4/3; } }
+    .sec { max-width: 1200px; margin: 140px auto 0; padding: 0 28px; }
+    .kick { font: 500 13px var(--mono); letter-spacing: .08em; color: var(--mint); }
+    .h2 { margin: 14px 0 0; font-size: clamp(34px, 4.4vw, 56px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; }
+    .card-h { padding: 24px; border-radius: 18px; border: 1px solid #1f2426; background: var(--surface-2); display: flex; flex-direction: column; transition: border-color .3s ease, transform .45s var(--ease), box-shadow .45s ease; }
+    .card-h:hover { border-color: #2c3436; transform: translateY(-4px); box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+    .well { margin-top: 16px; height: 132px; border-radius: 12px; background: #131617; border: 1px solid #1c2022; padding: 14px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+    .card-title { margin-top: 22px; font-size: 23px; font-weight: 700; letter-spacing: -0.02em; }
+    .card-copy { margin: 8px 0 0; color: #a3aaa8; font-size: 16px; line-height: 1.55; }
+    .pill-cta { padding: 16px 28px; border-radius: 999px; background: var(--mint); color: var(--mint-ink); font-weight: 700; font-size: 17px; box-shadow: 0 10px 40px oklch(0.82 0.15 150 / .35); }
+    .pill-cta:hover { color: var(--mint-ink); }
+    .ctl { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 13px; border-radius: 999px; border: 1px solid #2a3032; background: #151819; color: var(--text); font: 600 13px Urbanist, sans-serif; cursor: pointer; transition: all .25s; }
+    .ctl.on { border-color: oklch(0.82 0.15 150 / .6); background: oklch(0.82 0.15 150 / .1); color: var(--mint); }
+    .room-card { padding: 16px; border-radius: 18px; border: 1px solid #1f2426; background: var(--surface-2); transition: border-color .2s, transform .2s; }
+    .room-card:hover { border-color: oklch(0.82 0.15 150 / .6); transform: translateY(-4px); }
+    .cb-cell { padding: 22px; background: #0d0f11; min-height: 132px; }
+    .cb-cell:hover { background: #131618; }
+  </style>
 </head>
-<body class="min-h-screen">
-  <main class="mx-auto max-w-5xl px-4 py-12">
-    <header class="mb-10">
-      <h1 class="text-4xl font-semibold tracking-tight">PresAI</h1>
-      <p class="mt-2 text-lg text-slate-300">
-        Practise in front of an audience that talks back — and throws curveballs.
-      </p>
-      <p class="mt-1 text-sm text-slate-500">Three clicks to a live room: pick a preset, drop your slides, press Start.</p>
-    </header>
+<body>
+<div style="min-height:100vh;overflow:hidden;position:relative">
+  <div style="position:absolute;top:-260px;left:50%;transform:translateX(-50%);width:1400px;height:900px;background:radial-gradient(closest-side,oklch(0.78 0.15 150 / .16),transparent 70%);pointer-events:none"></div>
 
-    <section>
-      <h2 class="mb-3 text-sm uppercase tracking-wide text-slate-400">1 · Who is in the room?</h2>
-      <div id="presets" class="grid gap-4 sm:grid-cols-2">
-        <p class="text-slate-500">Loading presets…</p>
-      </div>
-    </section>
+  <div id="nav" class="navwrap">
+    <nav>
+      <a href="#" style="display:flex;align-items:center;gap:10px;font-weight:800;font-size:21px;letter-spacing:-0.02em">
+        <span style="width:22px;height:22px;border-radius:7px;background:var(--mint);box-shadow:0 0 24px oklch(0.82 0.15 150 / .6)"></span>Pres AI
+      </a>
+      <div class="navlinks"><a href="#how">How it works</a><a href="#rooms">Rooms</a><a href="#curveballs">Curveballs</a><a href="#report">Report card</a></div>
+      <a href="/setup.html" style="padding:10px 18px;border-radius:999px;background:var(--text);color:var(--bg-home);font-weight:700;font-size:15px">Start practicing</a>
+    </nav>
+  </div>
 
-    <footer class="mt-12 text-xs text-slate-600">
-      Personas are fictional. Curveballs challenge the idea, never the person. You can pause or skip at any time.
-      · <a class="underline" href="/room.html?mock=1">Watch a mocked session</a>
-    </footer>
-  </main>
+  <header style="position:relative;max-width:1200px;margin:0 auto;padding:150px 28px 0;text-align:center">
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid #23282a;background:#111416;font:500 12px var(--mono);color:#a3aaa8;letter-spacing:.04em">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--coral)"></span>LIVE AI AUDIENCE · UP TO 3 GUESTS
+    </div>
+    <h1 style="margin:26px auto 0;max-width:980px;font-size:clamp(48px,7.4vw,96px);line-height:.98;font-weight:800;letter-spacing:-0.045em;text-wrap:balance">Practice in front of a room that <span style="color:var(--mint);text-shadow:0 0 40px oklch(0.82 0.15 150 / .45)">talks back.</span></h1>
+    <p style="margin:26px auto 0;max-width:640px;font-size:20px;line-height:1.5;color:#a3aaa8;text-wrap:pretty">An AI audience that listens to your presentation, interrupts with grounded questions, throws realistic curveballs, and ends with a report card that quotes what you actually said.</p>
+    <div style="margin-top:34px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap">
+      <a href="/setup.html" class="pill-cta">Start a session</a>
+      <a href="#demo" style="padding:16px 28px;border-radius:999px;border:1px solid #2a3032;font-weight:600;font-size:17px">Watch the demo room</a>
+    </div>
+  </header>
 
-  <script type="module">
-    import { getPresets } from '/js/api.js';
-    const el = document.getElementById('presets');
-    const { presets, personas } = await getPresets();
-    const byId = Object.fromEntries(personas.map(p => [p.id, p]));
-    el.innerHTML = presets.map(p => `
-      <a href="/setup.html?preset=${p.id}"
-         class="block rounded-xl border border-slate-800 bg-slate-900/60 p-5 hover:border-cyan-400">
-        <div class="text-xl font-medium">${p.name}</div>
-        <div class="mt-1 text-sm text-slate-400">${p.tagline ?? ''}</div>
-        <div class="mt-3 flex flex-wrap gap-2 text-xs">
-          ${p.personas.map(id => `<span class="rounded-full bg-slate-800 px-2 py-1">${byId[id]?.role ?? id}</span>`).join('')}
+  <section id="demo" style="position:relative;max-width:1120px;margin:72px auto 0;padding:0 28px">
+    <div style="position:absolute;inset:40px 80px -40px;background:radial-gradient(closest-side,oklch(0.78 0.15 150 / .22),transparent);filter:blur(40px);pointer-events:none"></div>
+    <div style="position:relative;border-radius:22px;border:1px solid #23282a;background:var(--surface-2);box-shadow:0 40px 120px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.04);overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid #1c2022">
+        <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:#a3aaa8">
+          <span style="font-weight:700;color:var(--text)">Startup Pitch</span><span id="d-phase" class="phase-pill">presenting</span>
         </div>
-        <div class="mt-3 text-xs text-slate-500">${p.curveballs_allowed.length} curveball kinds · ${Math.round(p.duration_target_s/60)} min</div>
-      </a>`).join('') + `
-      <a href="/setup.html?preset=custom"
-         class="block rounded-xl border border-dashed border-slate-700 p-5 hover:border-cyan-400">
-        <div class="text-xl font-medium">Custom audience</div>
-        <div class="mt-1 text-sm text-slate-400">Pick anyone from the roster, or describe your own.</div>
-      </a>`;
-  </script>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div id="d-timer" class="mono" style="font-size:20px;font-weight:500;transition:color .3s;margin-right:6px">01:12</div>
+          <button id="d-sound" class="ctl" title="Hear the room"><span id="d-sbars" style="display:flex;align-items:flex-end;gap:2px;height:12px"></span><span id="d-slabel">Sound off</span></button>
+          <button id="d-play" class="ctl" title="Pause the demo"></button>
+        </div>
+      </div>
+      <div style="height:2px;background:#15181a"><div id="d-progress" style="height:100%;width:0;background:oklch(0.82 0.15 150 / .7);transition:width .6s var(--ease)"></div></div>
+      <div class="demo-grid" style="position:relative;display:grid;grid-template-columns:minmax(0,2.1fr) minmax(0,1fr);gap:14px;padding:14px">
+        <div id="d-veil" style="position:absolute;inset:0;z-index:2;display:grid;place-items:center;background:rgba(10,11,13,0);pointer-events:none;transition:background .35s ease"><span id="d-veil-pill" style="padding:8px 16px;border-radius:999px;background:#151819;border:1px solid #2a3032;font:600 13px Urbanist,sans-serif;opacity:0;transform:scale(.92);transition:all .35s var(--ease)">Paused</span></div>
+        <div style="position:relative;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#15181a;border:1px solid #1f2426">
+          <div id="d-slide" style="position:absolute;inset:0;padding:8% 9%;display:flex;flex-direction:column;justify-content:center;transition:opacity .4s">
+            <div class="mono" style="font-size:12px;color:#6f7775;letter-spacing:.08em">SLIDE 3 · GROWTH PLAN</div>
+            <div style="margin-top:14px;font-size:clamp(22px,3.4vw,40px);font-weight:800;letter-spacing:-0.03em;line-height:1.05">100,000 customers<br>in six months.</div>
+            <div style="margin-top:22px;display:flex;gap:10px"><div style="height:8px;width:38%;border-radius:4px;background:oklch(0.82 0.15 150 / .8)"></div><div style="height:8px;width:22%;border-radius:4px;background:#2a3032"></div></div>
+          </div>
+          <div id="d-black" style="position:absolute;inset:0;display:grid;place-items:center;text-align:center;background:#050606;opacity:0;transition:opacity .4s">
+            <div><div style="font-size:clamp(20px,2.6vw,30px);font-weight:700">Projector disconnected</div><div style="margin-top:6px;color:#8a9190;font-size:16px">Keep going.</div></div>
+          </div>
+          <div id="d-cb" class="mono" style="position:absolute;left:14px;top:14px;padding:6px 12px;border-radius:999px;background:var(--coral);color:var(--coral-ink);font-size:12px;font-weight:600;opacity:0;transform:translateY(-8px);transition:all .35s"></div>
+        </div>
+        <div id="d-tiles" class="demo-tiles" style="display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:10px"></div>
+      </div>
+      <div id="d-captions" style="border-top:1px solid #1c2022;padding:14px 18px;min-height:112px;display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+  </section>
+
+  <section data-reveal class="sec" id="how">
+    <div class="kick">HOW IT WORKS</div>
+    <h2 class="h2" style="max-width:760px">Three clicks to a live room.</h2>
+    <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
+      <div data-reveal class="card-h">
+        <div class="mono" style="font-size:13px;color:#6f7775">01</div>
+        <div class="well">
+          <div id="hw-profiles" class="seg" style="background:var(--bg-home);border-color:#1f2426;padding:4px;border-radius:10px"></div>
+          <div id="hw-note" style="font-size:13px;line-height:1.45;color:#a3aaa8;min-height:38px"></div>
+        </div>
+        <div class="card-title">Set your profile</div>
+        <p class="card-copy">Tell the room your role, goal and how blunt you want the feedback. Or skip it and use the neutral default.</p>
+      </div>
+      <div data-reveal class="card-h">
+        <div class="mono" style="font-size:13px;color:#6f7775">02</div>
+        <div class="well">
+          <button id="hw-deck" style="padding:14px;border-radius:10px;border:1.5px dashed #2f3437;background:transparent;font:600 14px Urbanist,sans-serif;cursor:pointer;text-align:center;transition:all .3s ease"></button>
+          <div id="hw-deck-note" style="font-size:13px;color:#a3aaa8;text-align:center"></div>
+        </div>
+        <div class="card-title">Drop your slides</div>
+        <p class="card-copy">Upload a PDF of your deck and questions get grounded in what's on screen. Without a deck, the room listens only.</p>
+      </div>
+      <div data-reveal class="card-h">
+        <div class="mono" style="font-size:13px;color:#6f7775">03</div>
+        <div class="well">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 10px">
+            <div style="display:flex;align-items:center;gap:6px;min-width:0">
+              <button id="hw-down" style="width:30px;height:30px;border-radius:8px;border:1px solid #2a3032;background:var(--bg-home);font-size:16px;cursor:pointer">−</button>
+              <span id="hw-guests" class="mono" style="width:34px;text-align:center;font-size:17px;font-weight:500"></span>
+              <button id="hw-up" style="width:30px;height:30px;border-radius:8px;border:1px solid #2a3032;background:var(--bg-home);font-size:16px;cursor:pointer">+</button>
+              <span style="font-size:13px;color:#a3aaa8">guests</span>
+            </div>
+            <a href="/setup.html" style="padding:8px 14px;border-radius:999px;background:var(--mint);color:var(--mint-ink);font-weight:700;font-size:13px">Start</a>
+          </div>
+          <div id="hw-seats" style="display:flex;flex-wrap:wrap;gap:5px;min-height:34px;align-content:flex-start"></div>
+        </div>
+        <div class="card-title">Build the room, press Start</div>
+        <p class="card-copy">Pick a setting, two or three guests, and how many curveballs they throw. Then present.</p>
+      </div>
+    </div>
+  </section>
+
+  <section data-reveal class="sec" id="rooms">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap">
+      <div><div class="kick">ROOMS</div><h2 class="h2">Present where you'll actually present.</h2></div>
+      <p style="margin:0;max-width:340px;color:#a3aaa8;font-size:16px;line-height:1.55">Five settings. Each one changes where the audience sits and how the room feels.</p>
+    </div>
+    <div id="rooms-grid" style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px"></div>
+  </section>
+
+  <section data-reveal class="sec" id="curveballs">
+    <div class="kick" style="color:var(--coral)">CURVEBALLS</div>
+    <h2 class="h2" style="max-width:820px">The projector dies. Someone heckles. You've got sixty seconds.</h2>
+    <p style="margin:18px 0 0;max-width:560px;color:#a3aaa8;font-size:17px;line-height:1.55">Choose how many, and which. Curveballs challenge the idea, never the person.</p>
+    <div id="cb-grid" style="margin-top:44px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1px;background:#1c2022;border:1px solid #1c2022;border-radius:18px;overflow:hidden"></div>
+  </section>
+
+  <section data-reveal class="sec" id="report" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:48px;align-items:center">
+    <div>
+      <div class="kick">REPORT CARD</div>
+      <h2 class="h2">Feedback that quotes you.</h2>
+      <p style="margin:18px 0 0;max-width:460px;color:#a3aaa8;font-size:17px;line-height:1.55">Every note points at a line you said, how fast you recovered from each curveball, and what to fix next time.</p>
+    </div>
+    <div style="border-radius:20px;border:1px solid #1f2426;background:var(--surface-2);padding:24px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700;font-size:17px">Recovery · Projector died</span><span class="mono" style="font-size:28px;font-weight:500;color:var(--mint)">71</span></div>
+      <div class="mono" style="font-size:13px;color:#8a9190">Resumed after 3.4 s</div>
+      <div style="padding:14px 16px;border-radius:12px;background:#15181a;font-size:16px;line-height:1.5">“So, the problem again is onboarding.”</div>
+      <div style="font-size:15px;color:#a3aaa8;line-height:1.5">Memorise a 3-point outline so you can present without slides.</div>
+      <div style="height:1px;background:#1f2426"></div>
+      <div class="mono" style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px;color:#c4c9c8"><span style="padding:6px 10px;border-radius:8px;background:#15181a">143 wpm</span><span style="padding:6px 10px;border-radius:8px;background:#15181a">4 filler words</span><span style="padding:6px 10px;border-radius:8px;background:#15181a">2 curveballs faced</span></div>
+      <div style="font-size:12px;color:#6f7775">Example report.</div>
+    </div>
+  </section>
+
+  <section data-reveal style="max-width:1200px;margin:160px auto 0;padding:0 28px">
+    <div style="position:relative;border-radius:28px;border:1px solid #23282a;padding:80px 32px;text-align:center;overflow:hidden;background:var(--surface-2)">
+      <div style="position:absolute;left:50%;bottom:-300px;transform:translateX(-50%);width:900px;height:500px;background:radial-gradient(closest-side,oklch(0.78 0.15 150 / .28),transparent);pointer-events:none"></div>
+      <h2 style="position:relative;margin:0;font-size:clamp(36px,5vw,64px);font-weight:800;letter-spacing:-0.04em;line-height:1">Your room is ready.</h2>
+      <p style="position:relative;margin:16px auto 0;max-width:480px;color:#a3aaa8;font-size:18px">No sign-up needed. Start with the neutral profile and change it later.</p>
+      <a href="/setup.html" class="pill-cta" style="position:relative;display:inline-block;margin-top:30px;padding:16px 30px">Start a session</a>
+    </div>
+  </section>
+
+  <footer style="max-width:1200px;margin:0 auto;padding:48px 28px 56px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:14px;color:#6f7775">
+    <span style="font-weight:800;color:#a3aaa8">Pres AI</span>
+    <span>Personas are fictional. You can pause or skip at any time. · <a href="/room.html?mock=1" style="color:#a3aaa8">Watch a mocked session</a></span>
+  </footer>
+</div>
+<script type="module" src="/js/home.js"></script>
 </body>
 </html>

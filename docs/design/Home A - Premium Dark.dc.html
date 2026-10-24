@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{margin:0;background:#0a0b0d;color:#eceeed;font-family:Urbanist,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#eceeed;text-decoration:none}a:hover{color:oklch(0.82 0.15 150)}
+*{box-sizing:border-box}
+</style>
+</helmet>
+<div style="min-height:100vh;overflow:hidden;position:relative">
+  <div style="position:absolute;top:-260px;left:50%;transform:translateX(-50%);width:1400px;height:900px;background:radial-gradient(closest-side,oklch(0.78 0.15 150 / .16),transparent 70%);pointer-events:none"></div>
+
+  <div style="position:fixed;top:0;left:0;right:0;z-index:20;transform:translateY({{ navY }});background:{{ navBg }};border-bottom:1px solid {{ navBorder }};backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);transition:transform .45s cubic-bezier(.22,.8,.24,1),background .35s ease,border-color .35s ease">
+  <nav style="max-width:1200px;margin:0 auto;padding:{{ navPad }} 28px;display:flex;align-items:center;justify-content:space-between;gap:24px;transition:padding .35s ease">
+    <a href="#" style="display:flex;align-items:center;gap:10px;font-weight:800;font-size:21px;letter-spacing:-0.02em">
+      <span style="width:22px;height:22px;border-radius:7px;background:oklch(0.82 0.15 150);box-shadow:0 0 24px oklch(0.82 0.15 150 / .6)"></span>Pres AI
+    </a>
+    <div style="display:flex;gap:28px;font-size:15px;color:#a3aaa8">
+      <a href="#how" style="color:#a3aaa8">How it works</a><a href="#rooms" style="color:#a3aaa8">Rooms</a><a href="#curveballs" style="color:#a3aaa8">Curveballs</a><a href="#report" style="color:#a3aaa8">Report card</a>
+    </div>
+    <a href="Pres AI App.dc.html" style="padding:10px 18px;border-radius:999px;background:#eceeed;color:#0a0b0d;font-weight:700;font-size:15px">Start practicing</a>
+  </nav>
+  </div>
+
+  <header style="position:relative;max-width:1200px;margin:0 auto;padding:150px 28px 0;text-align:center">
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid #23282a;background:#111416;font:500 12px 'JetBrains Mono',monospace;color:#a3aaa8;letter-spacing:.04em">
+      <span style="width:7px;height:7px;border-radius:50%;background:oklch(0.78 0.17 22)"></span>LIVE AI AUDIENCE · UP TO 10 GUESTS
+    </div>
+    <h1 style="margin:26px auto 0;max-width:980px;font-size:clamp(48px,7.4vw,96px);line-height:.98;font-weight:800;letter-spacing:-0.045em;text-wrap:balance">Practice in front of a room that <span style="color:oklch(0.82 0.15 150);text-shadow:0 0 40px oklch(0.82 0.15 150 / .45)">talks back.</span></h1>
+    <p style="margin:26px auto 0;max-width:640px;font-size:20px;line-height:1.5;color:#a3aaa8;text-wrap:pretty">An AI audience that listens to your presentation, interrupts with grounded questions, throws realistic curveballs, and ends with a report card that quotes what you actually said.</p>
+    <div style="margin-top:34px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap">
+      <a href="Pres AI App.dc.html" style="padding:16px 28px;border-radius:999px;background:oklch(0.82 0.15 150);color:#07120b;font-weight:700;font-size:17px;box-shadow:0 10px 40px oklch(0.82 0.15 150 / .35)">Start a session</a>
+      <a href="#demo" style="padding:16px 28px;border-radius:999px;border:1px solid #2a3032;color:#eceeed;font-weight:600;font-size:17px">Watch the demo room</a>
+    </div>
+  </header>
+
+  <section id="demo" style="position:relative;max-width:1120px;margin:72px auto 0;padding:0 28px">
+    <div style="position:absolute;inset:40px 80px -40px;background:radial-gradient(closest-side,oklch(0.78 0.15 150 / .22),transparent);filter:blur(40px);pointer-events:none"></div>
+    <div style="position:relative;border-radius:22px;border:1px solid #23282a;background:#0f1113;box-shadow:0 40px 120px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.04);overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #1c2022">
+        <div style="display:flex;align-items:center;gap:10px;font-size:14px;color:#a3aaa8">
+          <span style="font-weight:700;color:#eceeed">Startup Pitch</span>
+          <span style="padding:3px 10px;border-radius:999px;font:500 11px 'JetBrains Mono',monospace;letter-spacing:.04em;background:{{ phaseBg }};color:{{ phaseColor }};transition:all .3s">{{ phase }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font:500 20px 'JetBrains Mono',monospace;color:{{ timerColor }};transition:color .3s;margin-right:6px">{{ timer }}</div>
+          <button onClick="{{ toggleSound }}" title="{{ soundTitle }}" style="display:flex;align-items:center;gap:8px;height:34px;padding:0 13px;border-radius:999px;border:1px solid {{ soundBorder }};background:{{ soundBg }};color:{{ soundFg }};font:600 13px Urbanist,sans-serif;cursor:pointer;transition:all .25s">
+            <span style="display:flex;align-items:flex-end;gap:2px;height:12px"><sc-for list="{{ soundBars }}" as="h"><span style="width:2px;border-radius:1px;background:currentColor;height:{{ h }}px;transition:height .15s"></span></sc-for></span>{{ soundLabel }}
+          </button>
+          <button onClick="{{ togglePlay }}" title="{{ playTitle }}" style="display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:999px;border:1px solid #2a3032;background:#151819;color:#eceeed;font:600 13px Urbanist,sans-serif;cursor:pointer;transition:all .25s" style-hover="border-color:#3a4244">
+            <sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}"><span style="display:flex;gap:3px"><span style="width:3px;height:11px;border-radius:1px;background:currentColor"></span><span style="width:3px;height:11px;border-radius:1px;background:currentColor"></span></span></sc-if>
+            <sc-if value="{{ notPlaying }}" hint-placeholder-val="{{ false }}"><span style="width:0;height:0;border-top:6px solid transparent;border-bottom:6px solid transparent;border-left:9px solid currentColor"></span></sc-if>
+            {{ playLabel }}
+          </button>
+        </div>
+      </div>
+      <div style="height:2px;background:#15181a"><div style="height:100%;width:{{ progress }}%;background:oklch(0.82 0.15 150 / .7);transition:width .6s cubic-bezier(.22,.8,.24,1)"></div></div>
+      <div style="position:relative;display:grid;grid-template-columns:minmax(0,2.1fr) minmax(0,1fr);gap:14px;padding:14px">
+        <div style="position:absolute;inset:0;z-index:2;display:grid;place-items:center;background:rgba(10,11,13,{{ pauseVeil }});pointer-events:none;transition:background .35s ease"><span style="padding:8px 16px;border-radius:999px;background:#151819;border:1px solid #2a3032;font:600 13px Urbanist,sans-serif;opacity:{{ pauseOp }};transform:scale({{ pauseScale }});transition:all .35s cubic-bezier(.22,.8,.24,1)">Paused</span></div>
+        <div style="position:relative;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#15181a;border:1px solid #1f2426">
+          <div style="position:absolute;inset:0;padding:8% 9%;display:flex;flex-direction:column;justify-content:center;opacity:{{ slideOpacity }};transition:opacity .4s">
+            <div style="font:500 12px 'JetBrains Mono',monospace;color:#6f7775;letter-spacing:.08em">SLIDE 3 · GROWTH PLAN</div>
+            <div style="margin-top:14px;font-size:clamp(22px,3.4vw,40px);font-weight:800;letter-spacing:-0.03em;line-height:1.05">100,000 customers<br>in six months.</div>
+            <div style="margin-top:22px;display:flex;gap:10px">
+              <div style="height:8px;width:38%;border-radius:4px;background:oklch(0.82 0.15 150 / .8)"></div>
+              <div style="height:8px;width:22%;border-radius:4px;background:#2a3032"></div>
+            </div>
+          </div>
+          <div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center;background:#050606;opacity:{{ blackOpacity }};transition:opacity .4s">
+            <div>
+              <div style="font-size:clamp(20px,2.6vw,30px);font-weight:700">Projector disconnected</div>
+              <div style="margin-top:6px;color:#8a9190;font-size:16px">Keep going.</div>
+            </div>
+          </div>
+          <div style="position:absolute;left:14px;top:14px;display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:oklch(0.78 0.17 22);color:#1a0705;font:600 12px 'JetBrains Mono',monospace;opacity:{{ cbOpacity }};transform:translateY({{ cbY }}px);transition:all .35s">CURVEBALL · {{ cbName }}</div>
+        </div>
+        <div style="display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:10px">
+          <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="3">
+            <div style="position:relative;border-radius:12px;overflow:hidden;background:{{ t.bg }};border:1px solid #1f2426;box-shadow:{{ t.ring }};transition:box-shadow .25s">
+              <div style="position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 8px,transparent 8px 16px)"></div>
+              <div style="position:absolute;top:8px;right:10px;font:400 10px 'JetBrains Mono',monospace;color:#6f7775">avatar video</div>
+              <div style="position:absolute;left:10px;bottom:8px;display:flex;align-items:center;gap:8px;font-size:13px">
+                <span style="font-weight:700">{{ t.name }}</span><span style="color:#8a9190">{{ t.role }}</span>
+              </div>
+              <div style="position:absolute;right:10px;bottom:10px;display:flex;align-items:flex-end;gap:2px;height:14px">
+                <sc-for list="{{ t.bars }}" as="h"><span style="width:3px;border-radius:2px;background:oklch(0.82 0.15 150);height:{{ h }}px;transition:height .12s"></span></sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="border-top:1px solid #1c2022;padding:14px 18px;min-height:112px;display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ captions }}" as="c" hint-placeholder-count="2">
+          <div style="display:flex;gap:12px;font-size:15px;line-height:1.4;opacity:{{ c.op }}">
+            <span style="flex:none;width:92px;font-weight:700;color:{{ c.color }}">{{ c.who }}</span><span style="color:#d2d6d5">{{ c.text }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section data-reveal="1" id="how" style="max-width:1200px;margin:140px auto 0;padding:0 28px">
+    <div style="font:500 13px 'JetBrains Mono',monospace;color:oklch(0.82 0.15 150);letter-spacing:.08em">HOW IT WORKS</div>
+    <h2 style="margin:14px 0 0;font-size:clamp(34px,4.4vw,56px);font-weight:800;letter-spacing:-0.035em;line-height:1.02;max-width:760px">Three clicks to a live room.</h2>
+    <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
+      <div data-reveal="1" style="padding:24px;border-radius:18px;border:1px solid #1f2426;background:#0f1113;display:flex;flex-direction:column;transition:border-color .3s ease,transform .45s cubic-bezier(.22,.8,.24,1),box-shadow .45s ease" style-hover="border-color:#2c3436;transform:translateY(-4px);box-shadow:0 18px 50px rgba(0,0,0,.35)">
+        <div style="font:500 13px 'JetBrains Mono',monospace;color:#6f7775">01</div>
+        <div style="margin-top:16px;height:132px;border-radius:12px;background:#131617;border:1px solid #1c2022;padding:14px;display:flex;flex-direction:column;justify-content:center;gap:8px">
+          <div style="display:flex;gap:4px;padding:4px;border-radius:10px;background:#0a0b0d;border:1px solid #1f2426">
+            <sc-for list="{{ hwProfiles }}" as="o"><button onClick="{{ o.pick }}" style="flex:1;padding:8px;border:0;border-radius:7px;background:{{ o.bg }};color:{{ o.fg }};font:600 13px Urbanist,sans-serif;cursor:pointer;transition:all .25s ease">{{ o.label }}</button></sc-for>
+          </div>
+          <div style="font-size:13px;line-height:1.45;color:#a3aaa8;min-height:38px">{{ hwProfileNote }}</div>
+        </div>
+        <div style="margin-top:22px;font-size:23px;font-weight:700;letter-spacing:-0.02em">Set your profile</div>
+        <p style="margin:8px 0 0;color:#a3aaa8;font-size:16px;line-height:1.55">Tell the room your role, goal and how blunt you want the feedback. Or skip it and use the neutral default.</p>
+      </div>
+      <div data-reveal="1" style="padding:24px;border-radius:18px;border:1px solid #1f2426;background:#0f1113;display:flex;flex-direction:column;transition:border-color .3s ease,transform .45s cubic-bezier(.22,.8,.24,1),box-shadow .45s ease" style-hover="border-color:#2c3436;transform:translateY(-4px);box-shadow:0 18px 50px rgba(0,0,0,.35)">
+        <div style="font:500 13px 'JetBrains Mono',monospace;color:#6f7775">02</div>
+        <div style="margin-top:16px;height:132px;border-radius:12px;background:#131617;border:1px solid #1c2022;padding:14px;display:flex;flex-direction:column;justify-content:center;gap:8px">
+          <button onClick="{{ hwToggleDeck }}" style="padding:14px;border-radius:10px;border:1.5px dashed {{ hwDeckBorder }};background:{{ hwDeckBg }};color:#eceeed;font:600 14px Urbanist,sans-serif;cursor:pointer;text-align:center;transition:all .3s ease">{{ hwDeckLabel }}</button>
+          <div style="font-size:13px;color:#a3aaa8;text-align:center">{{ hwDeckNote }}</div>
+        </div>
+        <div style="margin-top:22px;font-size:23px;font-weight:700;letter-spacing:-0.02em">Drop your slides</div>
+        <p style="margin:8px 0 0;color:#a3aaa8;font-size:16px;line-height:1.55">Upload a PDF, PowerPoint or Keynote deck and questions get grounded in what's on screen. Without a deck, the room listens only.</p>
+      </div>
+      <div data-reveal="1" style="padding:24px;border-radius:18px;border:1px solid #1f2426;background:#0f1113;display:flex;flex-direction:column;transition:border-color .3s ease,transform .45s cubic-bezier(.22,.8,.24,1),box-shadow .45s ease" style-hover="border-color:#2c3436;transform:translateY(-4px);box-shadow:0 18px 50px rgba(0,0,0,.35)">
+        <div style="font:500 13px 'JetBrains Mono',monospace;color:#6f7775">03</div>
+        <div style="margin-top:16px;height:132px;border-radius:12px;background:#131617;border:1px solid #1c2022;padding:14px;display:flex;flex-direction:column;justify-content:center;gap:8px">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 10px">
+            <div style="display:flex;align-items:center;gap:6px;min-width:0">
+              <button onClick="{{ hwDown }}" style="width:30px;height:30px;border-radius:8px;border:1px solid #2a3032;background:#0a0b0d;color:#eceeed;font-size:16px;cursor:pointer">−</button>
+              <span style="width:34px;text-align:center;font:500 17px 'JetBrains Mono',monospace">{{ hwGuests }}</span>
+              <button onClick="{{ hwUp }}" style="width:30px;height:30px;border-radius:8px;border:1px solid #2a3032;background:#0a0b0d;color:#eceeed;font-size:16px;cursor:pointer">+</button>
+              <span style="font-size:13px;color:#a3aaa8">guests</span>
+            </div>
+            <a href="Pres AI App.dc.html" style="padding:8px 14px;border-radius:999px;background:oklch(0.82 0.15 150);color:#07120b;font-weight:700;font-size:13px">Start</a>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;min-height:34px;align-content:flex-start"><sc-for list="{{ hwSeats }}" as="s"><span style="width:28px;height:16px;border-radius:4px;background:{{ s.c }};transition:background .3s ease"></span></sc-for></div>
+        </div>
+        <div style="margin-top:22px;font-size:23px;font-weight:700;letter-spacing:-0.02em">Build the room, press Start</div>
+        <p style="margin:8px 0 0;color:#a3aaa8;font-size:16px;line-height:1.55">Pick a setting, up to 10 guests, and how many curveballs they throw. Then present.</p>
+      </div>
+    </div>
+  </section>
+
+  <section data-reveal="1" id="rooms" style="max-width:1200px;margin:140px auto 0;padding:0 28px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap">
+      <div>
+        <div style="font:500 13px 'JetBrains Mono',monospace;color:oklch(0.82 0.15 150);letter-spacing:.08em">ROOMS</div>
+        <h2 style="margin:14px 0 0;font-size:clamp(34px,4.4vw,56px);font-weight:800;letter-spacing:-0.035em;line-height:1.02">Present where you'll actually present.</h2>
+      </div>
+      <p style="margin:0;max-width:340px;color:#a3aaa8;font-size:16px;line-height:1.55">Five settings. Each one changes where the audience sits and how the room feels.</p>
+    </div>
+    <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+      <sc-for list="{{ rooms }}" as="r" hint-placeholder-count="5">
+        <div onMouseEnter="{{ r.enter }}" style="padding:16px;border-radius:18px;border:1px solid {{ r.border }};background:#0f1113;transition:border-color .2s,transform .2s;transform:translateY({{ r.lift }}px);cursor:default">
+          <div style="position:relative;aspect-ratio:16/10;border-radius:10px;background:#131617;border:1px solid #1c2022;overflow:hidden">
+            <sc-for list="{{ r.shapes }}" as="s">
+              <div style="position:absolute;left:{{ s.x }}%;top:{{ s.y }}%;width:{{ s.w }}%;height:{{ s.h }}%;border-radius:{{ s.r }};background:{{ s.c }};border:{{ s.b }};display:grid;place-items:center;font:600 9px 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:{{ s.lc }};overflow:hidden;white-space:nowrap">{{ s.label }}</div>
+            </sc-for>
+          </div>
+          <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:#8a9190">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:8px;border-radius:2px;background:oklch(0.82 0.15 150 / .16);border:1px solid oklch(0.82 0.15 150 / .6)"></span>Screen</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:8px;border-radius:2px;background:oklch(0.74 0.1 75)"></span>Guests</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.78 0.17 22)"></span>You</span>
+          </div>
+          <div style="margin-top:14px;font-size:18px;font-weight:700">{{ r.name }}</div>
+          <div style="margin-top:4px;font-size:14px;color:#8a9190">{{ r.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section data-reveal="1" id="curveballs" style="max-width:1200px;margin:140px auto 0;padding:0 28px">
+    <div style="font:500 13px 'JetBrains Mono',monospace;color:oklch(0.78 0.17 22);letter-spacing:.08em">CURVEBALLS</div>
+    <h2 style="margin:14px 0 0;font-size:clamp(34px,4.4vw,56px);font-weight:800;letter-spacing:-0.035em;line-height:1.02;max-width:820px">The projector dies. Someone heckles. You've got sixty seconds.</h2>
+    <p style="margin:18px 0 0;max-width:560px;color:#a3aaa8;font-size:17px;line-height:1.55">Choose how many, and which. Curveballs challenge the idea, never the person.</p>
+    <div style="margin-top:44px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1px;background:#1c2022;border:1px solid #1c2022;border-radius:18px;overflow:hidden">
+      <sc-for list="{{ curveballs }}" as="c" hint-placeholder-count="12">
+        <div style="padding:22px;background:#0d0f11;min-height:132px" style-hover="background:#131618">
+          <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:17px;font-weight:700">{{ c.name }}</span><span style="font:400 11px 'JetBrains Mono',monospace;color:#6f7775">{{ c.tests }}</span></div>
+          <div style="margin-top:10px;font-size:15px;line-height:1.5;color:#a3aaa8">{{ c.what }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section data-reveal="1" id="report" style="max-width:1200px;margin:140px auto 0;padding:0 28px;display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:48px;align-items:center">
+    <div>
+      <div style="font:500 13px 'JetBrains Mono',monospace;color:oklch(0.82 0.15 150);letter-spacing:.08em">REPORT CARD</div>
+      <h2 style="margin:14px 0 0;font-size:clamp(34px,4.4vw,56px);font-weight:800;letter-spacing:-0.035em;line-height:1.02">Feedback that quotes you.</h2>
+      <p style="margin:18px 0 0;max-width:460px;color:#a3aaa8;font-size:17px;line-height:1.55">Every note points at a line you said, how fast you recovered from each curveball, and what to fix next time.</p>
+    </div>
+    <div style="border-radius:20px;border:1px solid #1f2426;background:#0f1113;padding:24px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:700;font-size:17px">Recovery · Projector died</span>
+        <span style="font:500 28px 'JetBrains Mono',monospace;color:oklch(0.82 0.15 150)">71</span>
+      </div>
+      <div style="font:400 13px 'JetBrains Mono',monospace;color:#8a9190">Resumed after 3.4 s</div>
+      <div style="padding:14px 16px;border-radius:12px;background:#15181a;font-size:16px;line-height:1.5">“So, the problem again is onboarding.”</div>
+      <div style="font-size:15px;color:#a3aaa8;line-height:1.5">Memorise a 3-point outline so you can present without slides.</div>
+      <div style="height:1px;background:#1f2426"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;font:400 13px 'JetBrains Mono',monospace;color:#c4c9c8">
+        <span style="padding:6px 10px;border-radius:8px;background:#15181a">143 wpm</span><span style="padding:6px 10px;border-radius:8px;background:#15181a">4 filler words</span><span style="padding:6px 10px;border-radius:8px;background:#15181a">2 curveballs faced</span>
+      </div>
+    </div>
+  </section>
+
+  <section data-reveal="1" style="max-width:1200px;margin:160px auto 0;padding:0 28px">
+    <div style="position:relative;border-radius:28px;border:1px solid #23282a;padding:80px 32px;text-align:center;overflow:hidden;background:#0f1113">
+      <div style="position:absolute;left:50%;bottom:-300px;transform:translateX(-50%);width:900px;height:500px;background:radial-gradient(closest-side,oklch(0.78 0.15 150 / .28),transparent);pointer-events:none"></div>
+      <h2 style="position:relative;margin:0;font-size:clamp(36px,5vw,64px);font-weight:800;letter-spacing:-0.04em;line-height:1">Your room is ready.</h2>
+      <p style="position:relative;margin:16px auto 0;max-width:480px;color:#a3aaa8;font-size:18px">No sign-up needed. Start with the neutral profile and change it later.</p>
+      <a href="Pres AI App.dc.html" style="position:relative;display:inline-block;margin-top:30px;padding:16px 30px;border-radius:999px;background:oklch(0.82 0.15 150);color:#07120b;font-weight:700;font-size:17px">Start a session</a>
+    </div>
+  </section>
+
+  <footer style="max-width:1200px;margin:0 auto;padding:48px 28px 56px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:14px;color:#6f7775">
+    <span style="font-weight:800;color:#a3aaa8">Pres AI</span>
+    <span>Personas are fictional. You can pause or skip at any time.</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const MINT = 'oklch(0.82 0.15 150)', CORAL = 'oklch(0.78 0.17 22)';
+const PEOPLE = [
+  { id: 'vc', name: 'Dana', role: 'Skeptical VC', bg: 'linear-gradient(160deg,#1a2220,#121615)' },
+  { id: 'student', name: 'Sam', role: 'Confused Student', bg: 'linear-gradient(160deg,#1b1d24,#121418)' },
+  { id: 'professor', name: 'Prof. Okafor', role: 'Picky Professor', bg: 'linear-gradient(160deg,#221d1b,#161312)' },
+];
+const BEATS = [
+  { d: 2600, phase: 'presenting', who: 'You', text: 'We can get 100,000 customers in six months.' },
+  { d: 3000, phase: 'interruption', speak: 'vc', who: 'Dana', text: 'What evidence supports reaching 100,000 users?' },
+  { d: 2800, phase: 'answering', who: 'You', text: 'Two campus pilots, three hundred weekly actives and growing.' },
+  { d: 1800, phase: 'answering', speak: 'vc', who: 'Dana', text: 'Fair enough, go on.' },
+  { d: 3200, phase: 'curveball', cb: 'SLIDES DOWN', black: true, who: 'Moderator', text: 'Sorry — the projector just disconnected. Can you keep going?' },
+  { d: 2600, phase: 'recovering', cb: 'SLIDES DOWN', black: true, who: 'You', text: 'So, the problem again is onboarding.' },
+  { d: 2000, phase: 'presenting', who: 'Moderator', text: 'Back on track after 3.4 s.' },
+  { d: 3000, phase: 'presenting', speak: 'student', who: 'Sam', text: "Wait — what does 'weekly actives' mean?" },
+  { d: 3800, phase: 'curveball', cb: 'TIME CRUNCH', crunch: true, who: 'Moderator', text: "Sorry — we're running behind. You've got sixty seconds." },
+];
+const HUES = [25, 75, 200, 255, 310, 160, 45, 230, 285, 120];
+const SCR = (x, y, w, h, label = 'Screen') => ({ x, y, w, h, c: 'oklch(0.82 0.15 150 / .16)', b: '1px solid oklch(0.82 0.15 150 / .6)', r: '4px', label, lc: 'oklch(0.82 0.15 150)' });
+const SEAT = (x, y, w, h, i) => ({ x, y, w, h, c: `oklch(0.74 0.1 ${HUES[i % HUES.length]})`, b: '0', r: '4px', label: '', lc: 'transparent' });
+const FURN = (x, y, w, h, r = '6px') => ({ x, y, w, h, c: '#2a2621', b: '1px solid #38322a', r, label: '', lc: 'transparent' });
+const YOU = (x, y, w = 13, h = 10) => ({ x, y, w, h, c: 'oklch(0.78 0.17 22)', b: '0', r: '999px', label: 'You', lc: '#1a0705' });
+const ROOMS = [
+  { name: 'Video call', sub: 'Grid of faces, shared screen', shapes: [SCR(5, 8, 58, 62, 'Shared screen'), { ...YOU(5, 76, 18, 16), r: '4px' }, ...[0, 1, 2].map(i => SEAT(68, 8 + i * 29, 27, 25, i))] },
+  { name: 'Classroom', sub: 'Board up front, desks in rows', shapes: [FURN(8, 65, 84, 4, '2px'), FURN(8, 88, 84, 4, '2px'), SCR(22, 6, 56, 26, 'Board'), YOU(43.5, 36), ...[0, 1, 2, 3, 0, 1, 2, 3].map((c, i) => SEAT(14 + c * 20, i < 4 ? 50 : 73, 12, 14, i))] },
+  { name: 'Boardroom', sub: 'Long table, decision makers', shapes: [FURN(30, 36, 40, 58, '10px'), SCR(32, 5, 36, 18), YOU(43.5, 25), ...[0, 1, 2].flatMap(i => [SEAT(17, 40 + i * 18, 10, 12, i * 2), SEAT(73, 40 + i * 18, 10, 12, i * 2 + 1)])] },
+  { name: 'Lecture hall', sub: 'Stage, tiered seating', shapes: [FURN(18, 3, 64, 36, '6px'), ...[0, 1, 2].map(r => FURN(6, 44 + r * 18, 88, 15, '4px')), SCR(27, 6, 46, 20), YOU(43.5, 28), ...[0, 1, 2].flatMap(r => Array.from({ length: 4 + r }, (_, i) => SEAT(50 - (4 + r) * 6 + i * 12 + 1.5, 46 + r * 18, 9, 11, r * 4 + i)))] },
+  { name: 'Interview panel', sub: 'Three across the table', shapes: [FURN(6, 46, 88, 10, '6px'), ...[0, 1, 2].map(i => SEAT(12 + i * 28, 10, 20, 32, i)), SCR(36, 60, 28, 18, 'Laptop'), YOU(43.5, 83)] },
+];
+const CURVEBALLS = [
+  ['Time crunch','Prioritising',"“We're running behind — 60 seconds.” The timer turns red."],
+  ['Slides down','No crutch','The screen goes black. Keep going until it comes back.'],
+  ['Heckler','Composure','A guest challenges the core idea, bluntly.'],
+  ['Latecomer','Summarising','“Give me the 20-second version?”'],
+  ['Bait','Honesty','A plausible question just outside what you covered.'],
+  ['Distraction','Focus','A phone, a door, a cough mid-sentence.'],
+  ['VIP arrives','Shifting','The decision-maker joins for two minutes.'],
+  ['Crosstalk','Control','Two guests disagree. Take the room back.'],
+  ['Fact check','Evidence','A guest cites a number that contradicts yours.'],
+  ['Elevator','Compression','“30 seconds, no slides.” The slides dim.'],
+  ['Plain language','Jargon','“Explain it to someone with no background.”'],
+  ['Dead room','Confidence','Blank faces for 45 seconds. No feedback.'],
+].map(([name,tests,what])=>({name,tests,what}));
+const pad = n => String(n).padStart(2,'0');
+
+const VOICE = { You: { pitch: 1, rate: 1.05, vi: 0 }, Dana: { pitch: 0.82, rate: 1.12, vi: 1 }, Sam: { pitch: 1.35, rate: 1.05, vi: 2 }, Moderator: { pitch: 1, rate: 0.98, vi: 3 } };
+const EASE = 'cubic-bezier(.22,.8,.24,1)';
+
+class Component extends DCLogic {
+  state = { beat: 0, t: 72, crunch: 60, tick: 0, hover: 0, log: [], playing: true, sound: false, navHidden: false, navSolid: false, hwProfile: 'default', hwDeck: false, hwGuests: 3 };
+  componentDidMount() {
+    this.synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+    if (this.synth) { this.loadVoices(); this.synth.onvoiceschanged = () => this.loadVoices(); }
+    this.advance(0);
+    this.iv = setInterval(() => { if (this.state.playing) this.setState(s => ({ tick: s.tick + 1 })); }, 140);
+    this.sec = setInterval(() => { if (this.state.playing) this.setState(s => ({ t: s.t + 1, crunch: BEATS[s.beat].crunch ? Math.max(0, s.crunch - 1) : 60 })); }, 1000);
+    this.lastY = window.scrollY;
+    this.onScroll = () => {
+      if (this.raf) return;
+      this.raf = requestAnimationFrame(() => {
+        this.raf = null;
+        const y = window.scrollY, dy = y - this.lastY;
+        const next = { navSolid: y > 24 };
+        if (Math.abs(dy) > 6) { next.navHidden = dy > 0 && y > 140; this.lastY = y; }
+        if (y < 140) next.navHidden = false;
+        if (next.navSolid !== this.state.navSolid || (next.navHidden !== undefined && next.navHidden !== this.state.navHidden)) this.setState(next);
+      });
+    };
+    window.addEventListener('scroll', this.onScroll, { passive: true });
+    const els = Array.from(document.querySelectorAll('[data-reveal]'));
+    els.forEach(el => { el.style.opacity = '0'; });
+    this.io = new IntersectionObserver(entries => {
+      let n = 0;
+      entries.forEach(e => {
+        if (!e.isIntersecting) return;
+        const el = e.target; this.io.unobserve(el);
+        el.style.opacity = '';
+        el.animate([{ opacity: 0, translate: '0 32px' }, { opacity: 1, translate: '0 0' }], { duration: 900, delay: (n++) * 90, easing: EASE, fill: 'backwards' });
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    els.forEach(el => this.io.observe(el));
+  }
+  componentWillUnmount() {
+    clearInterval(this.iv); clearInterval(this.sec); clearTimeout(this.to);
+    window.removeEventListener('scroll', this.onScroll); this.io && this.io.disconnect(); this.synth && this.synth.cancel();
+  }
+  loadVoices() { const v = this.synth.getVoices(); const en = v.filter(x => /^en/i.test(x.lang)); this.voices = en.length ? en : v; }
+  schedule(ms, i) { clearTimeout(this.to); this.to = setTimeout(() => { if (this.state.playing && this.state.beat === i) this.advance((i + 1) % BEATS.length); }, ms); }
+  speak(i) {
+    const b = BEATS[i]; if (!this.synth) return false;
+    this.synth.cancel();
+    const u = new SpeechSynthesisUtterance(b.text.replace(/[()]/g, '')), cfg = VOICE[b.who] || VOICE.You;
+    if (this.voices && this.voices.length) u.voice = this.voices[cfg.vi % this.voices.length];
+    u.pitch = cfg.pitch; u.rate = cfg.rate;
+    u.onend = () => { if (this.state.sound) this.schedule(380, i); };
+    this.synth.speak(u);
+    return true;
+  }
+  advance(i) {
+    const b = BEATS[i];
+    this.setState(s => ({ beat: i, t: i === 0 ? 72 : s.t, log: (i === 0 ? [] : s.log).concat([{ who: b.who, text: b.text }]).slice(-3) }));
+    if (this.state.sound && this.speak(i)) this.schedule(b.d + 9000, i); else this.schedule(b.d, i);
+  }
+  togglePlay = () => {
+    if (this.state.playing) { clearTimeout(this.to); this.synth && this.synth.cancel(); this.setState({ playing: false }); }
+    else this.setState({ playing: true }, () => this.advance((this.state.beat + 1) % BEATS.length));
+  };
+  toggleSound = () => {
+    if (!this.synth) return;
+    const on = !this.state.sound;
+    this.setState({ sound: on }, () => {
+      if (!this.state.playing) return;
+      if (on) { this.speak(this.state.beat); this.schedule(BEATS[this.state.beat].d + 9000, this.state.beat); }
+      else { this.synth.cancel(); this.schedule(1200, this.state.beat); }
+    });
+  };
+  renderVals() {
+    const b = BEATS[this.state.beat], k = this.state.tick;
+    const colorFor = w => w === 'You' ? '#eceeed' : w === 'Moderator' ? CORAL : MINT;
+    const phaseHot = b.phase === 'curveball' || b.phase === 'recovering';
+    const s = this.state, hasAudio = typeof window !== 'undefined' && !!window.speechSynthesis;
+    return {
+      navY: s.navHidden ? '-100%' : '0', navBg: s.navSolid ? 'rgba(10,11,13,.78)' : 'rgba(10,11,13,0)', navBorder: s.navSolid ? '#1c2022' : 'transparent', navPad: s.navSolid ? '14px' : '22px',
+      playing: s.playing, notPlaying: !s.playing, playLabel: s.playing ? 'Pause' : 'Play', playTitle: s.playing ? 'Pause the demo' : 'Resume the demo', togglePlay: this.togglePlay,
+      toggleSound: this.toggleSound, soundLabel: !hasAudio ? 'No audio' : s.sound ? 'Sound on' : 'Sound off', soundTitle: s.sound ? 'Mute the room' : 'Hear the room',
+      soundBorder: s.sound ? 'oklch(0.82 0.15 150 / .6)' : '#2a3032', soundBg: s.sound ? 'oklch(0.82 0.15 150 / .1)' : '#151819', soundFg: s.sound ? MINT : '#a3aaa8',
+      soundBars: [0, 1, 2].map(j => s.sound && s.playing ? 3 + ((k * 5 + j * 7) % 9) : 3),
+      progress: ((s.beat + 1) / BEATS.length) * 100,
+      pauseVeil: s.playing ? 0 : 0.45, pauseOp: s.playing ? 0 : 1, pauseScale: s.playing ? 0.92 : 1,
+      hwProfiles: [['default', 'Default'], ['mine', 'My profile']].map(([id, label]) => ({ label, bg: s.hwProfile === id ? '#22272a' : 'transparent', fg: s.hwProfile === id ? '#eceeed' : '#8a9190', pick: () => this.setState({ hwProfile: id }) })),
+      hwProfileNote: s.hwProfile === 'default' ? 'Neutral questions and balanced feedback. Nothing to fill in.' : 'Founder · Pitch an idea · Blunt feedback. Reused with every deck.',
+      hwToggleDeck: () => this.setState(x => ({ hwDeck: !x.hwDeck })),
+      hwDeckLabel: s.hwDeck ? 'pitch-deck.pdf · 12 slides ready' : 'Click to drop your deck',
+      hwDeckBorder: s.hwDeck ? 'oklch(0.82 0.15 150 / .7)' : '#2f3437', hwDeckBg: s.hwDeck ? 'oklch(0.82 0.15 150 / .07)' : 'transparent',
+      hwDeckNote: s.hwDeck ? 'Questions will point at your slides.' : 'Optional. No deck? The room listens only.',
+      hwGuests: s.hwGuests, hwDown: () => this.setState(x => ({ hwGuests: Math.max(1, x.hwGuests - 1) })), hwUp: () => this.setState(x => ({ hwGuests: Math.min(10, x.hwGuests + 1) })),
+      hwSeats: Array.from({ length: 10 }, (_, i) => ({ c: i < s.hwGuests ? 'oklch(0.82 0.15 150 / .75)' : '#1f2426' })),
+      phase: b.phase,
+      phaseBg: phaseHot ? 'oklch(0.78 0.17 22 / .15)' : b.phase === 'presenting' ? '#1a1e20' : 'oklch(0.82 0.15 150 / .14)',
+      phaseColor: phaseHot ? CORAL : b.phase === 'presenting' ? '#a3aaa8' : MINT,
+      timer: b.crunch ? `00:${pad(this.state.crunch)}` : `${pad(Math.floor(this.state.t/60))}:${pad(this.state.t%60)}`,
+      timerColor: b.crunch ? CORAL : '#eceeed',
+      slideOpacity: b.black ? 0 : 1, blackOpacity: b.black ? 1 : 0,
+      cbOpacity: b.cb ? 1 : 0, cbY: b.cb ? 0 : -8, cbName: b.cb || '',
+      tiles: PEOPLE.map((p, i) => {
+        const on = b.speak === p.id;
+        return { ...p, ring: on ? `0 0 0 2px ${MINT}, 0 0 32px oklch(0.82 0.15 150 / .35)` : '0 0 0 0 transparent',
+          bars: [0,1,2,3].map(j => on ? 4 + ((k * 7 + j * 5 + i * 3) % 11) : 3) };
+      }),
+      captions: this.state.log.map((c, i, a) => ({ ...c, color: colorFor(c.who), op: i === a.length - 1 ? 1 : 0.45 })),
+      rooms: ROOMS.map((r, i) => ({ ...r, border: this.state.hover === i ? 'oklch(0.82 0.15 150 / .6)' : '#1f2426', lift: this.state.hover === i ? -4 : 0, enter: () => this.setState({ hover: i }),
+        shapes: r.shapes })),
+      curveballs: CURVEBALLS,
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,24 +1,104 @@
-/* Small additions on top of Tailwind (CDN). Keep it tiny; Tailwind does the rest. */
-:root { color-scheme: dark; }
-body { background: #0b0d12; color: #e7e9ee; }
+/* Design tokens and shared components (docs/design/README.md). Tailwind (CDN) covers the rest. */
+:root {
+  color-scheme: dark;
+  --bg: #0c0d0f;
+  --bg-home: #0a0b0d;
+  --surface: #131517;
+  --surface-2: #0f1113;
+  --raised: #1a1d20;
+  --raised-2: #1c1f22;
+  --raised-3: #262a2e;
+  --border: #23272a;
+  --border-input: #2a2f32;
+  --border-dashed: #2f3538;
+  --text: #eceeed;
+  --muted: #9aa1a0;
+  --faint: #6c7372;
+  --off: #4a5052;
+  --mint: oklch(0.82 0.15 150);
+  --mint-ink: #07120b;
+  --mint-tint: oklch(0.82 0.15 150 / .07);
+  --mint-line: oklch(0.82 0.15 150 / .7);
+  --coral: oklch(0.78 0.17 22);
+  --coral-ink: #1a0705;
+  --coral-tint: oklch(0.78 0.17 22 / .08);
+  --coral-line: oklch(0.78 0.17 22 / .7);
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --ease: cubic-bezier(.22, .8, .24, 1);
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: Urbanist, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: var(--text); text-decoration: none; }
+a:hover { color: var(--mint); }
+button { font-family: inherit; color: inherit; }
+input[type=range] { accent-color: var(--mint); width: 100%; }
+.mono { font-family: var(--mono); }
+.hidden { display: none !important; }
 
-.tile { transition: box-shadow .2s, transform .2s, opacity .3s; }
-.tile.speaking { box-shadow: 0 0 0 3px #22d3ee, 0 0 30px #22d3ee55; transform: translateY(-2px); }
-.tile.flash { animation: flash .6s ease-in-out 3; }
+/* ---- brand ---- */
+.logo { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 19px; letter-spacing: -0.02em; }
+.logo-mark { width: 18px; height: 18px; border-radius: 6px; background: var(--mint); }
+
+/* ---- buttons ---- */
+.btn-mint { padding: 14px 26px; border-radius: 999px; border: 0; background: var(--mint); color: var(--mint-ink); font-size: 16px; font-weight: 700; cursor: pointer; }
+.btn-mint:hover { color: var(--mint-ink); }
+.btn-mint:disabled { opacity: .6; cursor: progress; }
+.btn-ghost { padding: 13px 20px; border-radius: 999px; border: 1px solid var(--border-input); background: transparent; font-size: 15px; font-weight: 600; cursor: pointer; }
+.btn-sq { padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border-input); background: var(--surface); font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn-text { border: 0; background: none; color: var(--muted); font-size: 13px; cursor: pointer; padding: 0; }
+.btn-text:hover { color: var(--text); }
+.btn-text.danger:hover { color: var(--coral); }
+.step-btn { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border-input); background: var(--bg); font-size: 20px; cursor: pointer; }
+.step-val { width: 52px; text-align: center; font: 500 22px var(--mono); }
+
+/* ---- panels, fields, segments ---- */
+.panel { padding: 22px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 18px; }
+.panel-title { font-size: 16px; font-weight: 700; }
+.hint { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.divider { height: 1px; background: var(--border); }
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field > span, .label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.kicker { font: 500 11px var(--mono); letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.input { background: var(--bg); border: 1px solid var(--border-input); border-radius: 10px; padding: 12px 14px; color: var(--text); font: 500 15px Urbanist, sans-serif; outline: none; width: 100%; }
+.input:focus { border-color: var(--mint-line); }
+textarea.input { resize: vertical; line-height: 1.5; }
+.seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); }
+.seg > button { flex: 1; padding: 9px 14px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.seg > button.on { background: var(--raised-3); color: var(--text); }
+.seg.fit > button { flex: none; }
+.pill { padding: 9px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 14px; font-weight: 600; cursor: pointer; }
+.pick { border: 1px solid var(--border); background: var(--surface); cursor: pointer; text-align: left; transition: border-color .2s; }
+.pick.on, .pill.on { border-color: var(--mint-line); background: var(--mint-tint); }
+.pick.coral-on { border-color: var(--coral-line); background: var(--coral-tint); }
+.check { flex: none; margin-top: 2px; width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid #3a4043; }
+.on > .check, .on .check { border-color: var(--mint); background: var(--mint); }
+.err { font-size: 12px; color: var(--coral); }
+.chip { padding: 4px 9px; border-radius: 999px; background: var(--raised); border: 1px solid #262a2d; font: 500 11px var(--mono); color: #c5cac9; }
+.save-note { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--off); }
+.dot.mint { background: var(--mint); }
+
+/* ---- stage (setup preview + live room) ---- */
+.stage { position: relative; aspect-ratio: 16/9; width: 100%; border-radius: 12px; overflow: hidden; container-type: inline-size; }
+.stage > * { position: absolute; transition: all .35s; }
+.tile { overflow: hidden; border: 1px solid var(--border-input); transition: box-shadow .25s, opacity .4s, filter .4s, transform .25s; }
+.tile::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, rgba(255,255,255,.035) 0 6px, transparent 6px 12px); }
+.tile.photo::before { display: none; }
+.tile.speaking { box-shadow: 0 0 0 2px var(--mint), 0 0 28px oklch(0.82 0.15 150 / .35); transform: translateY(-2px); }
+.tile.flash { box-shadow: 0 0 0 2px var(--coral); }
 .tile.blank { opacity: .35; filter: grayscale(1); }
-@keyframes flash { 0%,100% { box-shadow: none } 50% { box-shadow: 0 0 0 3px #f59e0b } }
+.tile.vip-in { animation: vip-in .5s var(--ease); }
+@keyframes vip-in { from { opacity: 0; transform: translateY(12px) scale(.94); } }
+.tile-tag { position: absolute; top: 5%; left: 5%; padding: 2px 7px; border-radius: 999px; background: var(--coral); color: var(--coral-ink); font-family: var(--mono); font-weight: 600; z-index: 1; }
+.bars { display: flex; align-items: flex-end; gap: 2px; flex: none; }
+.bars > span { width: 3px; min-width: 2px; border-radius: 2px; background: var(--mint); transition: height .12s; }
 
-.slide-viewer { position: relative; aspect-ratio: 16/9; background: #111; }
-.slide-viewer.black img, .slide-viewer.black .slide-text { visibility: hidden; }
-.slide-viewer.dim img, .slide-viewer.dim .slide-text { opacity: .15; }
-.overlay { position: absolute; inset: 0; display: none; place-items: center; text-align: center; }
-.slide-viewer.black .overlay, .slide-viewer.dim .overlay { display: grid; }
-
-.timer.urgent { color: #ef4444; animation: pulse 1s infinite; }
-@keyframes pulse { 50% { opacity: .5 } }
+.phase-pill { padding: 3px 10px; border-radius: 999px; font: 500 11px var(--mono); letter-spacing: .04em; background: var(--raised-2); color: var(--muted); transition: all .3s; }
+.phase-pill.hot { background: oklch(0.78 0.17 22 / .15); color: var(--coral); }
+.phase-pill.mint { background: oklch(0.82 0.15 150 / .14); color: var(--mint); }
 
 .caption { animation: rise .25s ease-out; }
 @keyframes rise { from { transform: translateY(6px); opacity: 0 } }
-
-.meter { height: 6px; background: #1f2937; border-radius: 3px; overflow: hidden; }
-.meter > div { height: 100%; width: 0; background: #22d3ee; transition: width .08s; }
+.meter { width: 128px; height: 6px; border-radius: 3px; background: #1f2326; overflow: hidden; }
+.meter > div { height: 100%; width: 0; background: var(--mint); transition: width .1s; }

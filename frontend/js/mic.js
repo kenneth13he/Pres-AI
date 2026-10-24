@@ -10,7 +10,25 @@ export async function startMic({ onLevel, onSegment, pushToTalk = false, pttKey 
     audio: { echoCancellation: true, noiseSuppression: true },
   });
 
-  // TODO(A): AudioContext + AnalyserNode → call onLevel(0..1) every animation frame.
+  // Level meter: RMS of the time-domain signal, eased, once per animation frame.
+  const ctx = new AudioContext();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  const buf = new Float32Array(analyser.fftSize);
+  let level = 0;
+  let running = true;
+  const meter = () => {
+    if (!running) return;
+    analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (const v of buf) sum += v * v;
+    level = Math.max(Math.min(1, Math.sqrt(sum / buf.length) * 4), level * 0.85);
+    onLevel?.(level);
+    requestAnimationFrame(meter);
+  };
+  requestAnimationFrame(meter);
+
   // TODO(B): Shape 1 → stream PCM16 @ 24 kHz to the Realtime WebSocket (ephemeral key from
   //          POST /api/.../client_secret, to be added by B); forward
   //          conversation.item.input_audio_transcription.completed as a segment.
@@ -21,6 +39,6 @@ export async function startMic({ onLevel, onSegment, pushToTalk = false, pttKey 
   return {
     hasSTT: false,
     stream,
-    stop() { stream.getTracks().forEach((t) => t.stop()); },
+    stop() { running = false; stream.getTracks().forEach((t) => t.stop()); ctx.close(); },
   };
 }
