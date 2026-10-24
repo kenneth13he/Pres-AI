@@ -35,7 +35,7 @@ from .services import slides
 from .services.audience import ClaudeOrchestrator, MockOrchestrator, Orchestrator
 from .services.curveballs import CATALOG
 from .services.voice_base import VoiceAdapter
-from .services.voice_higgs import HiggsVoice, SpendCounter
+from .services.voice_higgs import HiggsVoice, SpendCounter, seat_characters
 from .services.voice_mock import MockVoice
 
 load_dotenv()
@@ -121,10 +121,6 @@ async def lifespan(_: FastAPI):
     for room in ROOMS.values():
         if room.ticker:
             room.ticker.cancel()
-        # Live avatars bill per minute: release them on shutdown, not at their 20-min cap.
-        live = getattr(room.session.voice, "_live", None)
-        if live is not None:
-            await live.close()
 
 
 app = FastAPI(title="PresAI", lifespan=lifespan)
@@ -201,9 +197,11 @@ async def create_session(body: CreateSession) -> dict[str, Any]:
         session_id, config, preset, orchestrator, make_voice(),
         deck=slides.get_deck(config.deck_id),
         curveballs_enabled=os.environ.get("CURVEBALLS_ENABLED", "true") == "true",
+        background=True,  # the brain thinks beside the room; the mic is never blocked
     )
     room = Room(session)
-    # Clips rendered in the background reach the browser as soon as they exist.
+    session.clock = room.now_ms
+    # Lines and clips produced in the background reach the browser as soon as they exist.
     session.on_append = lambda: room.schedule_flush()
     ROOMS[session_id] = room
     return {"session_id": session_id, "config": config.model_dump(), "preset": preset.model_dump()}
@@ -225,6 +223,8 @@ def get_session(session_id: str) -> dict[str, Any]:
         "elapsed_ms": (s.elapsed_ms(_room(session_id).now_ms())
                        if s.start_ms is not None else 0),
         "deck": s.deck.model_dump() if s.deck else None,
+        "faces": {p.id: f"/demo/faces/higgs/{seat_characters(s.config)[p.id][0]}.png"
+                  for p in s.config.personas},
         "events": [e.model_dump() for e in s.events],
     }
 

@@ -34,13 +34,15 @@ class MockVoice:
 
     async def request_persona_turn(
         self, persona_id: str, text: str, style: str | None = None
-    ) -> None:
+    ) -> float | None:
         self.calls.append(("persona", {"persona_id": persona_id, "text": text, "style": style}))
         await self._emit_audio_status(f"spoke:{persona_id}")
+        return 0.0  # instantly finished, so tests never wait out an echo window
 
-    async def play_moderator_line(self, text: str) -> None:
+    async def play_moderator_line(self, text: str) -> float | None:
         self.calls.append(("moderator", {"text": text}))
         await self._emit_audio_status("spoke:moderator")
+        return 0.0
 
     async def play_sfx(self, sfx_id: str) -> None:
         self.calls.append(("sfx", {"sfx_id": sfx_id}))

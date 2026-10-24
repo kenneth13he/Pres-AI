@@ -124,40 +124,6 @@
       "title": "Deck",
       "type": "object"
     },
-    "FollowUpVerdict": {
-      "properties": {
-        "line": {
-          "title": "Line",
-          "type": "string"
-        },
-        "missing_detail": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Missing Detail"
-        },
-        "verdict": {
-          "enum": [
-            "satisfied",
-            "follow_up"
-          ],
-          "title": "Verdict",
-          "type": "string"
-        }
-      },
-      "required": [
-        "verdict",
-        "line"
-      ],
-      "title": "FollowUpVerdict",
-      "type": "object"
-    },
     "Improvement": {
       "properties": {
         "evidence": {
@@ -248,12 +214,13 @@
       "title": "KeyMoment",
       "type": "object"
     },
-    "OrchestratorDecision": {
+    "PanelTurn": {
+      "description": "The one decision the brain makes each time the presenter speaks (or goes quiet):\nstay quiet, or one panelist says one thing \u2014 a reply, a reaction, a question, a\nfollow-up, or a curveball.",
       "properties": {
         "action": {
           "enum": [
-            "none",
-            "question",
+            "wait",
+            "speak",
             "curveball"
           ],
           "title": "Action",
@@ -297,6 +264,11 @@
           "default": null,
           "title": "Curveball Kind"
         },
+        "is_question": {
+          "default": false,
+          "title": "Is Question",
+          "type": "boolean"
+        },
         "line": {
           "anyOf": [
             {
@@ -308,6 +280,19 @@
           ],
           "default": null,
           "title": "Line"
+        },
+        "mood": {
+          "default": "neutral",
+          "enum": [
+            "neutral",
+            "warm",
+            "confused",
+            "thoughtful",
+            "pressing",
+            "impatient"
+          ],
+          "title": "Mood",
+          "type": "string"
         },
         "persona_id": {
           "anyOf": [
@@ -324,44 +309,13 @@
         "reason": {
           "title": "Reason",
           "type": "string"
-        },
-        "slide_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Slide Number"
         }
       },
       "required": [
         "action",
         "reason"
       ],
-      "title": "OrchestratorDecision",
-      "type": "object"
-    },
-    "PanelReply": {
-      "description": "A conversational turn: the presenter spoke to the panel, one panelist answers.",
-      "properties": {
-        "line": {
-          "title": "Line",
-          "type": "string"
-        },
-        "persona_id": {
-          "title": "Persona Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "persona_id",
-        "line"
-      ],
-      "title": "PanelReply",
+      "title": "PanelTurn",
       "type": "object"
     },
     "Persona": {

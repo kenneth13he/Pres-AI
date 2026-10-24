@@ -142,27 +142,19 @@ class Recovery(BaseModel):
 # ---- Orchestrator outputs (structured outputs from Claude; see CLAUDE.md §9) ----
 
 
-class OrchestratorDecision(BaseModel):
-    action: Literal["none", "question", "curveball"]
+class PanelTurn(BaseModel):
+    """The one decision the brain makes each time the presenter speaks (or goes quiet):
+    stay quiet, or one panelist says one thing — a reply, a reaction, a question, a
+    follow-up, or a curveball."""
+
+    action: Literal["wait", "speak", "curveball"]
     persona_id: str | None = None
-    curveball_kind: CurveballKind | None = None
     line: str | None = None
-    reason: str
+    is_question: bool = False  # the presenter is expected to answer it
+    curveball_kind: CurveballKind | None = None
     cited_transcript_excerpt: str | None = None
-    slide_number: int | None = None
-
-
-class PanelReply(BaseModel):
-    """A conversational turn: the presenter spoke to the panel, one panelist answers."""
-
-    persona_id: str
-    line: str
-
-
-class FollowUpVerdict(BaseModel):
-    verdict: Literal["satisfied", "follow_up"]
-    line: str
-    missing_detail: str | None = None
+    mood: Literal["neutral", "warm", "confused", "thoughtful", "pressing", "impatient"] = "neutral"
+    reason: str
 
 
 class RecoveryAssessment(BaseModel):
@@ -224,9 +216,7 @@ SCHEMA_MODELS: list[type[BaseModel]] = [
     Preset,
     Deck,
     TranscriptSegment,
-    OrchestratorDecision,
-    FollowUpVerdict,
-    PanelReply,
+    PanelTurn,
     RecoveryAssessment,
     Report,
 ]

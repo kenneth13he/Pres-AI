@@ -6,10 +6,9 @@
   <title>PresAI · Call</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/css/app.css?v=call1" />
-  <link rel="stylesheet" href="/css/call.css?v=live1" />
+  <link rel="stylesheet" href="/css/call.css?v=lean1" />
 </head>
 <body class="call gallery">
-  <!-- top bar -->
   <header class="call-top">
     <div class="flex items-center gap-3">
       <span class="rec-dot"></span>
@@ -21,23 +20,6 @@
   </header>
 
   <main class="call-main">
-    <!-- the shared screen: your slides -->
-    <section class="stage">
-      <div class="stage-label">You are presenting</div>
-      <div id="slide-viewer" class="slide-viewer">
-        <img id="slide-img" alt="" class="hidden h-full w-full object-contain" />
-        <div id="slide-text" class="slide-text absolute inset-0 hidden place-items-center p-8 text-center text-slate-400"></div>
-        <div class="overlay">
-          <div>
-            <div class="text-3xl font-semibold" id="overlay-title">Screen share stopped</div>
-            <div class="mt-2 text-slate-300" id="overlay-sub">Keep going.</div>
-          </div>
-        </div>
-      </div>
-      <div id="live-caption" class="live-caption"><b id="lc-who"></b> <span id="lc-text"></span></div>
-    </section>
-
-    <!-- participants: the panel, then you -->
     <aside class="people">
       <div id="tiles" class="tiles"></div>
       <div class="tile-call you">
@@ -48,7 +30,6 @@
       </div>
     </aside>
 
-    <!-- transcript drawer -->
     <aside id="drawer" class="drawer hidden">
       <div class="mb-2 flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
         <span>Transcript</span>
@@ -58,13 +39,11 @@
     </aside>
   </main>
 
-  <!-- call controls -->
+  <div id="live-caption" class="live-caption gallery-caption"><b id="lc-who"></b> <span id="lc-text"></span></div>
+
   <footer class="call-bar">
     <div class="flex items-center gap-2 text-xs text-slate-400">
-      <button id="prev" class="cb-small">←</button>
-      <span id="slide-no">Slide 1</span>
-      <button id="next" class="cb-small">→</button>
-      <span id="mic-label" class="ml-3 hidden sm:inline">mic</span>
+      <span id="mic-label">mic</span>
       <span id="ptt-hint" class="hidden">hold Space to talk</span>
     </div>
     <div class="flex items-center gap-2">
@@ -72,17 +51,13 @@
       <button id="btn-cam" class="cb" title="Camera">Camera</button>
       <button id="btn-pause" class="cb" title="P">Pause</button>
       <button id="btn-skip" class="cb" title="S">Skip</button>
-      <button id="btn-restore" class="cb hidden">Share again</button>
-      <button id="btn-view" class="cb hidden" title="Switch view">Gallery</button>
       <button id="btn-drawer" class="cb" title="Transcript">Transcript</button>
       <button id="btn-end" class="cb cb-end">End → Q&amp;A</button>
     </div>
     <div id="conn" class="text-xs text-slate-500">connecting…</div>
   </footer>
 
-  <div id="host" class="hidden"></div>
-  <div id="plates" class="hidden"></div>
   <audio id="sfx" preload="auto"></audio>
-  <script type="module" src="/js/room.js?v=live3"></script>
+  <script type="module" src="/js/room.js?v=lean2"></script>
 </body>
 </html>

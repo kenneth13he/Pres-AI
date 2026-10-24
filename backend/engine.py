@@ -1,23 +1,23 @@
-"""The session: state machine, scheduler, orchestrator, curveballs and report, wired together.
+"""The session: one conversation between the presenter and the panel.
 
-Owner: Person C (P0-5, P0-6, P0-8, P0-9). Spec: CLAUDE.md §8. Tests: test_e2e_mock.py.
+Owner: Person C. Spec: CLAUDE.md §8. Tests: test_e2e_mock.py.
 
-Why: one place owns the phase transitions so the WebSocket layer in main.py stays thin and
-the whole thing runs deterministically in tests with a fake clock. Every public method takes
-`now_ms` instead of reading the wall clock.
+How it works: every presenter sentence (and every long silence) asks the brain one thing:
+"what does the panel do now?" (`Orchestrator.turn`). The answer is to wait, or one panelist
+says one line: a reply, a reaction, a question, a follow-up or a curveball. While a panelist
+is talking the room ignores the mic, so the panel never hears itself.
 
-Timebase: every `now_ms`, event `timestamp_ms` and transcript `start_ms`/`end_ms` is
-**milliseconds since the presentation started** (the session clock). main.py converts the
-wall clock; the browser's segments are relative to its own Start click, which is the same
-instant give or take network latency.
+Timebase: every `now_ms`, event `timestamp_ms` and transcript time is milliseconds since the
+presentation started (the session clock). `clock` (set by main.py) reads it for work that
+finishes later than it started, like a brain call.
 
-Pause: paused time never counts. On resume every stored timestamp is shifted forward by the
-paused duration, so cooldowns, the time_crunch deadline, auto-resolve and the measured
-resume gap all behave as if the pause had not happened (CLAUDE.md §2, §5.4).
+Pause: paused time never counts. On resume, deadline-like timestamps move forward by the
+paused duration (CLAUDE.md §2, §5.4).
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import Callable
@@ -26,6 +26,7 @@ from typing import Any
 from spec.contracts import (
     CurveballKind,
     Deck,
+    PanelTurn,
     Persona,
     Preset,
     Report,
@@ -37,47 +38,33 @@ from spec.contracts import (
 )
 
 from .services import slides
-from .services.audience import Orchestrator, OrchestratorContext
+from .services.audience import Line, Orchestrator, OrchestratorContext, Trigger
 from .services.curveballs import CATALOG, CurveballEngine, CurveballRecord, paused_between
 from .services.report import build_report
 from .services.scheduler import Scheduler, SchedulerSnapshot
 from .services.voice_base import VoiceAdapter
 
 log = logging.getLogger(__name__)
+_WORD = re.compile(r"[a-z0-9']+")
+
+
+def _words(text: str) -> list[str]:
+    return _WORD.findall(text.lower())
 
 TIME_CRUNCH_MS = 60_000
-RECENT_TRANSCRIPT_MS = 30_000
 RECOVERY_WINDOW_MS = 60_000
+CONVERSATION_LINES = 24     # what the brain sees: the last ~two minutes of a call
+SILENCE_MS = 5_000          # the presenter has gone quiet: the panel may fill the gap
+ECHO_GUARD_MS = 500         # after a panelist stops, before the mic counts again
+ECHO_OVERLAP = 0.6          # this share of the words were the panelist's own: it's echo
+WORD_MS = 350               # speech-length estimate when the voice can't say
 SLIDE_CURVEBALLS: set[CurveballKind] = {"slides_down", "elevator"}
-
-# ---- the social layer: how a real panel behaves on a call, beyond questions -------------
-HEARING_CHECK = re.compile(
-    r"\b(can|could|do) (you|y'?all)( guys| all| everyone)? (hear|see) me\b"
-    r"|\bam i (audible|on mute|muted|coming through)\b"
-    r"|\bare you( guys| all)? (there|with me)\b|\bis (this|my mic) (working|on)\b",
-    re.I)
-GREETING = re.compile(r"^\W*(hi|hello|hey|good (morning|afternoon|evening))\b", re.I)
-INVITATION = re.compile(
-    r"\b(any (questions|thoughts)|questions so far|does (that|this) make sense|what do you (guys )?"
-    r"think|happy to take questions|open (it )?(up )?(to|for) questions)\b", re.I)
-# Said to the panel (not to the pitch): a question, or addressing them directly.
-ADDRESSED = re.compile(
-    r"\?\s*$"                                                       # a question
-    r"|^\W*(can|could|would|will|do|does|did|is|are|what|why|how|who|when|where|should"
-    r"|shall)\b"                                                     # phrased as one
-    r"|\b(you guys|y'?all|everyone|panel|tell me|talk to me|give me|please|let'?s (talk|chat))\b",
-    re.I)
-REPLY_COOLDOWN_MS = 4_000
-SOCIAL_COOLDOWN_MS = 15_000
-DECIDE_BACKOFF_MS = 5_000  # the brain said "nothing to ask": give the talk 5 s before asking again
-# Curveballs that are a question in disguise: the presenter answers, then we resolve "answered".
+# Curveballs that are a question in disguise: the presenter's next words answer them.
 ANSWERABLE: set[CurveballKind] = {
     "heckler", "latecomer", "bait", "fact_check", "plain_language", "vip_arrives", "crosstalk",
 }
 PERSONA_STYLE: dict[CurveballKind, str] = {"heckler": "impatient", "fact_check": "impatient"}
-LIVE_PHASES: set[SessionPhase] = {
-    "presenting", "interruption", "answering", "curveball", "recovering", "qna",
-}
+LIVE_PHASES: set[SessionPhase] = {"presenting", "qna"}
 
 
 class Session:
@@ -90,6 +77,7 @@ class Session:
         voice: VoiceAdapter,
         deck: Deck | None = None,
         curveballs_enabled: bool = True,
+        background: bool = False,
     ) -> None:
         self.session_id = session_id
         self.config = config
@@ -97,49 +85,48 @@ class Session:
         self.orchestrator = orchestrator
         self.voice = voice
         self.deck = deck
+        # True in the server: brain calls run beside the room, so the mic is never blocked.
+        # False in tests: every call finishes before the method returns (deterministic).
+        self.background = background
         self.phase: SessionPhase = "setup"
         self.events: list[SessionEvent] = []
         self.transcript: list[TranscriptSegment] = []
+        self.lines: list[Line] = []  # the conversation, presenter and panel
         # question dicts: question_id, persona_id, question, reason, cited_excerpt,
         # slide_number, follow_up_of, curveball_id, answer, skipped, asked_at_ms
         self.questions: list[dict[str, Any]] = []
+        self.open_question: dict[str, Any] | None = None
+        self.followups_used = 0
         self.curveballs = CurveballEngine(session_id)
-        # Without a deck there is no screen to lose: drop the curveballs that need slides.
         allowed: list[CurveballKind] = [k for k in preset.curveballs_allowed
-                   if deck is not None or k not in SLIDE_CURVEBALLS]
-        self.scheduler = Scheduler(
-            config.difficulty, config.interruption_frequency, config.curveballs,
-            allowed, curveballs_enabled,
-        )
+                                        if deck is not None or k not in SLIDE_CURVEBALLS]
+        self.scheduler = Scheduler(config.difficulty, config.interruption_frequency,
+                                   config.curveballs, allowed, curveballs_enabled)
         self.start_ms: int | None = None
         self.slide_number = 1
         self.slide_changed_at_ms: int | None = None
-        self.last_event_end_ms: int | None = None
         self.last_presenter_speech_ms: int | None = None
+        self.last_panel_ms: int | None = None
+        self.speaking_until_ms = 0
         self.paused_phase: SessionPhase | None = None
         self.paused_at_ms: int | None = None
-        self.pauses: list[tuple[int, int]] = []  # closed pause intervals, session clock
+        self.pauses: list[tuple[int, int]] = []
         self.time_crunch_deadline_ms: int | None = None
-        self.pending_question: dict[str, Any] | None = None
-        self.followups_used = 0
         self.in_qna = False
         self.qna_asked = 0
         self.report: Report | None = None
-        self._question_counter = 0
-        self._clock_ms = 0  # last session-clock time seen, stamps adapter events
-        self._next_decide_ms = 0  # after a "none", wait before asking the brain again
-        self._last_social_ms: int | None = None
-        self._last_reply_ms: int | None = None
-        self._greeted_back = False
-        # Called after an event lands outside a room action (a clip rendered in the
-        # background), so main.py can push it to the browser at once.
+        self.clock: Callable[[], int] | None = None
         self.on_append: Callable[[], None] | None = None
+        self._clock_ms = 0
+        self._question_counter = 0
+        self._silence_armed = False  # the presenter spoke since the panel last considered them
+        self._thinking: asyncio.Task[None] | None = None
+        self._pending: Trigger | None = None
         self.voice.on_event(self._on_voice_event)
 
     async def _on_voice_event(self, ev: SessionEvent) -> None:
-        """Adapter events (audio clips, status) join the session stream on our clock."""
         self.events.append(ev.model_copy(update={"session_id": self.session_id,
-                                                 "timestamp_ms": self._clock_ms}))
+                                                 "timestamp_ms": self._now()}))
         if self.on_append:
             self.on_append()
 
@@ -148,6 +135,9 @@ class Session:
     @property
     def ended(self) -> bool:
         return self.phase == "report"
+
+    def _now(self) -> int:
+        return self.clock() if self.clock else self._clock_ms
 
     def elapsed_ms(self, now_ms: int) -> int:
         return 0 if self.start_ms is None else now_ms - self.start_ms
@@ -158,36 +148,34 @@ class Session:
     def drain(self, since: int) -> list[SessionEvent]:
         return self.events[since:]
 
-    def _emit(self, type_: str, now_ms: int, payload: dict[str, Any] | None = None) -> SessionEvent:
-        self._clock_ms = now_ms
-        ev = SessionEvent(type=type_, session_id=self.session_id, timestamp_ms=now_ms,  # type: ignore[arg-type]
-                          payload=payload or {})
+    def _append(self, ev: SessionEvent) -> None:
+        self._clock_ms = max(self._clock_ms, ev.timestamp_ms)
         self.events.append(ev)
-        return ev
+        if self.background and self.on_append:
+            self.on_append()  # work finishing outside a room action still reaches the browser
+
+    def _emit(self, type_: str, now_ms: int, payload: dict[str, Any] | None = None) -> None:
+        self._append(SessionEvent(type=type_, session_id=self.session_id,  # type: ignore[arg-type]
+                                  timestamp_ms=now_ms, payload=payload or {}))
 
     def _error(self, now_ms: int, where: str, exc: Exception) -> None:
-        """A failed LLM/TTS call is logged and shown, and the session keeps going (§8)."""
-        log.warning("%s failed in %s: %s", self.session_id, where, exc)
-        self._emit("error", now_ms, {"where": where, "message": str(exc)[:300]})
+        """A failed brain or voice call is logged and shown; the session keeps going (§8)."""
+        message = f"{type(exc).__name__}: {exc}".rstrip(": ")
+        log.warning("%s failed in %s: %s", self.session_id, where, message)
+        self._emit("error", now_ms, {"where": where, "message": message[:300]})
 
     def _set_phase(self, phase: SessionPhase, now_ms: int) -> None:
-        if phase == self.phase:
-            return
-        previous, self.phase = self.phase, phase
-        self._emit("phase_changed", now_ms, {"from": previous, "to": phase})
-
-    def _resting_phase(self) -> SessionPhase:
-        """Where the room returns to after an event."""
-        return "qna" if self.in_qna else "presenting"
+        if phase != self.phase:
+            previous, self.phase = self.phase, phase
+            self._emit("phase_changed", now_ms, {"from": previous, "to": phase})
 
     def _player_for(self, kind: CurveballKind) -> str:
         players = [p for p in self.config.personas if kind in p.plays] or self.config.personas
         return players[0].id
 
-    # ---- presenter-side inputs (called by main.py from WebSocket messages) ----------------
+    # ---- presenter-side inputs (main.py, from the WebSocket) ------------------------------
 
     async def start(self, now_ms: int) -> None:
-        """SETUP → PRESENTING. Emit session_started {config, preset}; voice.start_voice_session."""
         if self.phase != "setup":
             return
         self.start_ms = now_ms
@@ -198,122 +186,63 @@ class Session:
             await self.voice.start_voice_session(self.session_id, self.config)
         except Exception as exc:
             self._error(now_ms, "voice.start_voice_session", exc)
-        # A real call starts with someone on the panel greeting you — in their own words.
-        self._last_social_ms = now_ms
-        await self._converse(now_ms, "(The presenter has just joined the call and hasn't said "
-                                     "anything yet. Greet them briefly and let them know you can "
-                                     "see and hear them.)", force=True)
+        await self._kick("joined")  # someone says hello, in their own words
 
     async def slide_changed(self, now_ms: int, number: int) -> None:
-        """Track slide, emit slide_changed, voice.send_context(slide text)."""
         self.slide_number = number
         self.slide_changed_at_ms = now_ms
         self._emit("slide_changed", now_ms, {"slide_number": number})
-        try:
-            await self.voice.send_context(slides.slide_text(self.deck, number))
-        except Exception as exc:
-            self._error(now_ms, "voice.send_context", exc)
 
     async def presenter_transcript(self, now_ms: int, seg: TranscriptSegment) -> None:
-        """Append a presenter segment, emit transcript_segment, update last_presenter_speech_ms.
-        Ignored while paused or ended; AI segments are captions, never answers.
-        An active `distraction` resolves on the next speech. In `answering` → _handle_answer."""
-        if self.phase in ("paused", "report", "setup"):
+        """One finished presenter sentence. Dropped while paused, ended, or while a panelist
+        is talking (that is the panel's own voice coming back through the mic)."""
+        if self.phase not in LIVE_PHASES or seg.speaker != "presenter":
             return
-        if seg.speaker != "presenter":
+        if now_ms < self.speaking_until_ms and self._is_echo(seg.text):
             return
         self.transcript.append(seg)
+        self.lines.append(Line("presenter", seg.text, seg.start_ms))
         self.last_presenter_speech_ms = seg.end_ms if seg.end_ms is not None else seg.start_ms
+        self._silence_armed = True
         self._emit("transcript_segment", now_ms, seg.model_dump())
         active = self.curveballs.active
-        if active and active.kind == "distraction":
-            await self._resolve(active, now_ms, "auto_restored")
-        if self.phase == "answering" and self.pending_question:
-            await self._handle_answer(now_ms, seg.text)
-        elif self.phase in ("presenting", "qna"):
-            await self._social(now_ms, seg.text)
+        if active and (active.kind == "distraction" or active.kind in ANSWERABLE):
+            await self._resolve(active, now_ms, "answered" if active.kind in ANSWERABLE
+                                else "auto_restored")
+        q = self.open_question
+        if q is not None:
+            q["answer"] = f"{q['answer']} {seg.text}" if q["answer"] else seg.text
+            self._emit("answer_received", now_ms,
+                       {"question_id": q["question_id"], "answer": seg.text})
+        await self._kick("spoke")
 
-    async def _social(self, now_ms: int, text: str) -> None:
-        """Answer the presenter the way a real panel would: confirm they can be heard, say
-        hello back once, and take questions when invited. Never counts against the presenter."""
-        recent = (self._last_social_ms is not None
-                  and now_ms - self._last_social_ms < SOCIAL_COOLDOWN_MS)
-        if HEARING_CHECK.search(text):
-            if not recent:
-                self._last_social_ms = now_ms
-                await self._converse(now_ms, text, force=True)
-            return
-        if GREETING.search(text) and len(text.split()) <= 8 and not self._greeted_back:
-            self._greeted_back = True
-            self._last_social_ms = now_ms
-            await self._converse(now_ms, text, force=True)
-            return
-        if INVITATION.search(text):
-            await self._take_questions(now_ms)
-            return
-        if ADDRESSED.search(text):
-            await self._converse(now_ms, text)
-
-    async def _converse(self, now_ms: int, text: str, force: bool = False) -> None:
-        """Talked to directly: one panelist answers, in character, like a person on a call.
-        The fastest voice (a live avatar) is preferred so the reply lands right away."""
-        if (not force and self._last_reply_ms is not None
-                and now_ms - self._last_reply_ms < REPLY_COOLDOWN_MS):
-            return
-        self._last_reply_ms = now_ms
-        prefer = sorted(getattr(self.voice, "fast_speakers", lambda: set())())
-        try:
-            ctx = self._context(now_ms, False, [])
-            ctx.recent_transcript = self.transcript[-12:]
-            reply = await self.orchestrator.reply(text, ctx, prefer)
-        except Exception as exc:
-            self._error(now_ms, "orchestrator.reply", exc)
-            return
-        if reply is not None and reply.line.strip():
-            await self._speak(reply.persona_id, reply.line, now_ms)
-
-    async def _take_questions(self, now_ms: int) -> None:
-        """Invited to ask: ask now (skipping the usual wait), or say so if the room is done."""
-        asked = len([q for q in self.questions if not q["follow_up_of"] and not q["curveball_id"]])
-        if self.phase == "presenting" and asked >= self.scheduler.question_budget:
-            await self._converse(now_ms, "(The presenter invited questions, but the panel has "
-                                         "already asked plenty. Let them continue, briefly.)",
-                                 force=True)
-            return
-        try:
-            ctx = self._context(now_ms, True, [])
-            ctx.qna = True  # invited: may ask about the talk as a whole
-            ctx.recent_transcript = self.transcript[-12:]
-            decision = await self.orchestrator.decide(ctx)
-        except Exception as exc:
-            self._error(now_ms, "orchestrator.decide", exc)
-            return
-        if decision.action == "question" and self._grounded(decision) \
-                and decision.persona_id and decision.line:
-            await self._ask(decision.persona_id, decision.line, now_ms, decision.reason,
-                            decision.cited_transcript_excerpt, decision.slide_number)
+    def _is_echo(self, text: str) -> bool:
+        """While a panelist talks, the mic can pick their voice back up. Drop only what is
+        mostly their own words, so a presenter who talks over them is still heard."""
+        panel = next((ln for ln in reversed(self.lines) if ln.speaker != "presenter"), None)
+        heard = set(_words(text))
+        if panel is None or not heard:
+            return False
+        return len(heard & set(_words(panel.text))) / len(heard) >= ECHO_OVERLAP
 
     async def control(self, action: str, now_ms: int) -> None:
         """pause · resume · skip · restore_slides · end. Pause and Skip are never penalised."""
         if action == "pause" and self.phase in LIVE_PHASES:
-            self.paused_phase = self.phase
-            self.paused_at_ms = now_ms
+            self.paused_phase, self.paused_at_ms = self.phase, now_ms
             self._set_phase("paused", now_ms)
             self._emit("paused", now_ms)
-            try:
-                await self.voice.cancel_speech()
-            except Exception as exc:
-                self._error(now_ms, "voice.cancel_speech", exc)
+            self.speaking_until_ms = 0
+            await self._cancel_voice(now_ms)
         elif action == "resume" and self.phase == "paused":
             self._unpause(now_ms)
-            self._set_phase(self.paused_phase or self._resting_phase(), now_ms)
+            self._set_phase(self.paused_phase or "presenting", now_ms)
             self.paused_phase = None
             self._emit("resumed", now_ms)
         elif action == "skip" and self.phase in LIVE_PHASES:
             await self._skip(now_ms)
         elif action == "restore_slides" and self.phase in LIVE_PHASES:
             active = self.curveballs.active
-            if active and active.kind in ("slides_down", "elevator"):
+            if active and active.kind in SLIDE_CURVEBALLS:
                 await self._resolve(active, now_ms, "presenter_restored")
         elif action == "end":
             if self.in_qna:
@@ -321,158 +250,164 @@ class Session:
             elif self.phase in LIVE_PHASES or self.phase == "paused":
                 await self.enter_qna(now_ms)
 
-    def _unpause(self, now_ms: int) -> None:
-        """Close the pause interval and move every *deadline-like* timestamp forward by the
-        paused duration so paused time never counts against the presenter. Event-like
-        timestamps (when a curveball fired, when a question was asked) stay on the session
-        clock so the report agrees with the event log; recovery timing subtracts `pauses`."""
-        if self.paused_at_ms is None:
-            return
-        delta_ms = now_ms - self.paused_at_ms
-        self.pauses.append((self.paused_at_ms, now_ms))
-        self.paused_at_ms = None
-        if delta_ms <= 0:
-            return
-        if self.start_ms is not None:
-            self.start_ms += delta_ms
-        if self.time_crunch_deadline_ms is not None:
-            self.time_crunch_deadline_ms += delta_ms
-        if self.last_event_end_ms is not None:
-            self.last_event_end_ms += delta_ms
-        if self.last_presenter_speech_ms is not None:
-            self.last_presenter_speech_ms += delta_ms
-        if self.slide_changed_at_ms is not None:
-            self.slide_changed_at_ms += delta_ms
-
-    def _paused_since(self, start_ms: int, now_ms: int) -> int:
-        return paused_between(self.pauses, start_ms, now_ms)
-
     async def force_curveball(self, kind: CurveballKind, now_ms: int) -> None:
-        """Debug/demo only (CLAUDE.md §7). Bypasses eligibility, never the one-at-a-time rule:
-        no-op unless presenting with nothing active."""
-        if self.phase != "presenting" or self.curveballs.active or self.pending_question:
+        """Debug/demo only (CLAUDE.md §7): no-op unless presenting with nothing active."""
+        if self.phase != "presenting" or self.curveballs.active:
             return
         persona_id = self._player_for(kind) if CATALOG[kind].speaker == "persona" else None
         await self._fire_curveball(kind, now_ms, None, persona_id)
 
-    # ---- the clock (main.py calls tick every second) -------------------------------------
+    # ---- the clock (main.py ticks every second) ---------------------------------------------
 
     async def tick(self, now_ms: int) -> None:
-        if self.phase in ("setup", "paused", "report"):
+        if self.phase not in LIVE_PHASES:
             return
-        deadline = self.time_crunch_deadline_ms
-        if deadline is not None and now_ms >= deadline:
-            await self._time_crunch_expired(now_ms)
+        self._clock_ms = max(self._clock_ms, now_ms)
+        if self.time_crunch_deadline_ms is not None and now_ms >= self.time_crunch_deadline_ms:
+            self.time_crunch_deadline_ms = None
+            self._emit("timer_override", now_ms, {"remaining_ms": 0, "style": "expired"})
+            await self.enter_qna(now_ms, crunch_resolution="timed_out")
             return
         active = self.curveballs.active
         due = self.curveballs.due_for_auto_resolve(
-            now_ms, self._paused_since(active.at_ms, now_ms) if active else 0)
+            now_ms, paused_between(self.pauses, active.at_ms, now_ms) if active else 0)
         if due:
             await self._resolve(due, now_ms, "auto_restored")
-        if self.phase == "presenting":
-            await self._maybe_interrupt(now_ms)
-        elif self.phase == "qna":
-            await self._qna_step(now_ms)
+        quiet_for = (None if self.last_presenter_speech_ms is None
+                     else now_ms - self.last_presenter_speech_ms)
+        if (self.phase == "presenting" and self._silence_armed and quiet_for is not None
+                and quiet_for >= SILENCE_MS and now_ms >= self.speaking_until_ms):
+            self._silence_armed = False
+            await self._kick("silence")
 
-    async def _time_crunch_expired(self, now_ms: int) -> None:
-        """The countdown hit zero: resolve the crunch on its own metric (not a resume gap),
-        then Q&A."""
-        self.time_crunch_deadline_ms = None
-        self._emit("timer_override", now_ms, {"remaining_ms": 0, "style": "expired"})
-        await self.enter_qna(now_ms, crunch_resolution="timed_out")
+    # ---- thinking: one brain call, then at most one line --------------------------------
 
-    def _cut_off_pending(self, now_ms: int, reason: str) -> None:
-        """The room, not the presenter, ended a pending question: it is `skipped` (never
-        "unanswered") and the UI hears about it."""
-        q = self.pending_question
-        if q is None:
+    async def _kick(self, trigger: Trigger) -> None:
+        """Ask the brain what happens next. In the server this runs beside the room, and a
+        sentence that lands while the brain is busy is folded into the next call."""
+        if not self.background:
+            await self._think(trigger)
             return
-        q["skipped"] = True
-        q["cut_off"] = reason
-        self._emit("skipped", now_ms, {"question_id": q["question_id"],
-                                       "curveball_id": q["curveball_id"], "reason": reason})
-        self.pending_question = None
-        self.followups_used = 0
-
-    async def _maybe_interrupt(self, now_ms: int) -> None:
-        """SchedulerSnapshot → scheduler.eligible → orchestrator.decide → _ask / _fire_curveball
-        (only a kind that was eligible). A failed decide is an error event, nothing more."""
-        snap = SchedulerSnapshot(
-            phase=self.phase,
-            elapsed_ms=self.elapsed_ms(now_ms),
-            questions_asked=len([q for q in self.questions
-                                 if not q["follow_up_of"] and not q["curveball_id"]]),
-            curveballs_fired=len(self.curveballs.records),
-            fired_kinds=self.curveballs.fired_kinds,
-            last_event_end_ms=self.last_event_end_ms,
-            last_presenter_speech_ms=self.last_presenter_speech_ms,
-            slide_number=self.slide_number,
-            slide_changed_at_ms=self.slide_changed_at_ms,
-            duration_target_s=self.config.duration_target_s,
-            now_ms=now_ms,
-        )
-        elig = self.scheduler.eligible(snap)
-        if not elig.anything or now_ms < self._next_decide_ms:
+        if self._thinking is not None and not self._thinking.done():
+            self._pending = trigger
             return
+        self._pending = None
+        self._thinking = asyncio.get_running_loop().create_task(self._think_loop(trigger))
+
+    async def _think_loop(self, trigger: Trigger) -> None:
+        while True:
+            try:
+                await self._think(trigger)
+            except Exception as exc:  # a background think never dies silently
+                self._error(self._now(), "engine.think", exc)
+            if self._pending is None:
+                return
+            trigger, self._pending = self._pending, None
+
+    async def _think(self, trigger: Trigger) -> None:
+        if self.phase not in LIVE_PHASES:
+            return
+        if self.in_qna and self.open_question is None:
+            trigger = "qna"  # between closing questions: the panel asks the next one
+        now = self._now()
+        ctx = self._context(now, trigger)
         try:
-            decision = await self.orchestrator.decide(
-                self._context(now_ms, elig.question, elig.curveball_kinds))
+            turn = await self.orchestrator.turn(ctx)
         except Exception as exc:
-            self._error(now_ms, "orchestrator.decide", exc)
-            self._next_decide_ms = now_ms + DECIDE_BACKOFF_MS
-            return
-        if decision.action == "none":
-            self._next_decide_ms = now_ms + DECIDE_BACKOFF_MS
-            return
-        if decision.action == "question" and elig.question:
-            if self._grounded(decision) and decision.persona_id and decision.line:
-                await self._ask(decision.persona_id, decision.line, now_ms, decision.reason,
-                                decision.cited_transcript_excerpt, decision.slide_number)
-        elif (decision.action == "curveball" and decision.curveball_kind
-              and decision.curveball_kind in elig.curveball_kinds):
-            kind = decision.curveball_kind
-            persona_id = decision.persona_id if self.persona(decision.persona_id) else None
-            if CATALOG[kind].speaker == "persona" and persona_id is None:
-                persona_id = self._player_for(kind)
-            await self._fire_curveball(kind, now_ms, decision.line, persona_id)
+            self._error(now, "orchestrator.turn", exc)
+            turn = None
+        if self.phase not in LIVE_PHASES:
+            return  # paused or ended while the brain was thinking
+        now = self._now()
+        if (turn is not None and turn.action == "curveball"
+                and turn.curveball_kind in ctx.eligible_kinds
+                and self.phase == "presenting" and self.curveballs.active is None):
+            assert turn.curveball_kind is not None
+            await self._fire_curveball(turn.curveball_kind, now, turn.line, turn.persona_id)
+        elif (turn is not None and turn.action == "speak" and turn.line
+                and self.persona(turn.persona_id)):
+            await self._say(turn, now)
+        else:
+            self._close_answered()
+        if self.in_qna and self.open_question is None and self.phase == "qna":
+            if self.qna_asked >= self.config.qna_questions or trigger == "qna":
+                await self.finish(self._now())  # out of questions, or nothing left to ask
+            else:
+                await self._kick("qna")  # that thread is done: the next closing question
 
-    def _grounded(self, decision) -> bool:
-        """§13: a question without a cited excerpt or a slide number does not get asked."""
-        if not self.persona(decision.persona_id):
-            return False
-        return bool(decision.cited_transcript_excerpt) or decision.slide_number is not None
-
-    def _context(self, now_ms: int, question_allowed: bool,
-                 kinds: list[CurveballKind]) -> OrchestratorContext:
-        cutoff = now_ms - RECENT_TRANSCRIPT_MS
+    def _context(self, now_ms: int, trigger: Trigger) -> OrchestratorContext:
+        eligible: list[CurveballKind] = []
+        if self.phase == "presenting" and self.curveballs.active is None:
+            snap = SchedulerSnapshot(
+                phase="presenting", elapsed_ms=self.elapsed_ms(now_ms), questions_asked=0,
+                curveballs_fired=len(self.curveballs.records),
+                fired_kinds=self.curveballs.fired_kinds, last_event_end_ms=self.last_panel_ms,
+                last_presenter_speech_ms=self.last_presenter_speech_ms,
+                slide_number=self.slide_number, slide_changed_at_ms=self.slide_changed_at_ms,
+                duration_target_s=self.config.duration_target_s, now_ms=now_ms)
+            eligible = self.scheduler.eligible(snap).curveball_kinds
+        q = self.open_question
         return OrchestratorContext(
             preset_id=self.config.preset_id,
             difficulty=self.config.difficulty,
             personas=self.config.personas,
             slide_number=self.slide_number,
             slide_text=slides.slide_text(self.deck, self.slide_number),
-            recent_transcript=[s for s in self.transcript if s.start_ms >= cutoff],
-            prior_qa=[{"persona_id": q["persona_id"], "q": q["question"],
-                       "cited": q["cited_excerpt"], "a": q["answer"]}
-                      for q in self.questions],
-            question_allowed=question_allowed,
-            eligible_kinds=kinds,
+            conversation=self.lines[-CONVERSATION_LINES:],
+            trigger=trigger,
+            elapsed_s=self.elapsed_ms(now_ms) // 1000,
+            seconds_since_panel_spoke=(None if self.last_panel_ms is None
+                                       else (now_ms - self.last_panel_ms) // 1000),
+            open_question=Line(q["persona_id"], q["question"], q["asked_at_ms"]) if q else None,
+            follow_ups_used=self.followups_used,
+            questions_asked=self._questions_asked(),
+            question_budget=self.scheduler.question_budget,
+            eligible_kinds=eligible,
             curveball_budget_remaining=max(
                 0, self.scheduler.curveball_budget - len(self.curveballs.records)),
-            seconds_since_last_event=(None if self.last_event_end_ms is None
-                                      else (now_ms - self.last_event_end_ms) // 1000),
+            qna_left=max(0, self.config.qna_questions - self.qna_asked),
         )
 
-    # ---- questions ------------------------------------------------------------------------
+    def _questions_asked(self) -> int:
+        return len([q for q in self.questions if not q["follow_up_of"] and not q["curveball_id"]])
+
+    async def _say(self, turn: PanelTurn, now_ms: int) -> None:
+        """One panelist speaks. A question opens a thread (a follow-up stays on it); anything
+        else closes a thread that has been answered."""
+        assert turn.persona_id and turn.line
+        q = self.open_question
+        if turn.is_question:
+            if (q is not None and q["answer"] and q["persona_id"] == turn.persona_id
+                    and self.followups_used < 1 and not q["curveball_id"]):
+                self.followups_used += 1
+                q = self._new_question(turn.persona_id, turn.line, now_ms, "follow-up",
+                                       None, q["question_id"], None)
+            else:
+                self._close_answered(force=True)
+                q = self._new_question(turn.persona_id, turn.line, now_ms, turn.reason,
+                                       turn.cited_transcript_excerpt, None, None)
+                if self.in_qna:
+                    self.qna_asked += 1
+            self.open_question = q
+        else:
+            self._close_answered()
+        await self._speak(turn.persona_id, turn.line, now_ms, turn.mood)
+
+    def _close_answered(self, force: bool = False) -> None:
+        """A thread is over once it has an answer (or, with `force`, when another starts)."""
+        q = self.open_question
+        if q is not None and (q["answer"] or force):
+            self.open_question = None
+            self.followups_used = 0
 
     def _new_question(self, persona_id: str, question: str, now_ms: int, reason: str,
-                      cited: str | None, slide_number: int | None,
-                      follow_up_of: str | None, curveball_id: str | None) -> dict[str, Any]:
+                      cited: str | None, follow_up_of: str | None,
+                      curveball_id: str | None) -> dict[str, Any]:
         self._question_counter += 1
         q: dict[str, Any] = {
             "question_id": f"q-{self._question_counter}", "persona_id": persona_id,
             "question": question, "reason": reason, "cited_excerpt": cited,
-            "slide_number": slide_number, "follow_up_of": follow_up_of,
+            "slide_number": self.slide_number, "follow_up_of": follow_up_of,
             "curveball_id": curveball_id, "answer": None, "skipped": False,
             "asked_at_ms": now_ms,
         }
@@ -481,115 +416,82 @@ class Session:
                    {k: v for k, v in q.items() if k not in ("answer", "skipped")})
         return q
 
-    async def _ask(self, persona_id: str, question: str, now_ms: int, reason: str,
-                   cited: str | None, slide_number: int | None,
-                   follow_up_of: str | None = None, curveball_id: str | None = None) -> None:
-        """Record, emit question_queued, INTERRUPTION → _speak → ANSWERING with the question
-        pending. The phase moves on even if speech fails."""
-        q = self._new_question(persona_id, question, now_ms, reason, cited, slide_number,
-                               follow_up_of, curveball_id)
-        if not curveball_id and self.phase == "presenting":
-            self._set_phase("interruption", now_ms)
-        # The mood sets the voice's emotion, and the talking head's expression follows it.
-        await self._speak(persona_id, question, now_ms, "pressing" if follow_up_of else None)
-        self.pending_question = q
-        self._set_phase("answering", now_ms)
-
-    async def _handle_answer(self, now_ms: int, answer: str) -> None:
-        """answer_received → orchestrator.follow_up. One follow-up max; then the ack line,
-        the cooldown starts, a curveball question resolves "answered", and the room returns
-        to presenting or Q&A."""
-        q = self.pending_question
-        assert q is not None
-        q["answer"] = answer
-        self._emit("answer_received", now_ms, {"question_id": q["question_id"], "answer": answer})
-        persona = self.persona(q["persona_id"]) or self.config.personas[0]
-        try:
-            verdict = await self.orchestrator.follow_up(q["question"], answer, persona,
-                                                        self.followups_used)
-        except Exception as exc:
-            self._error(now_ms, "orchestrator.follow_up", exc)
-            verdict = None
-        if verdict and verdict.verdict == "follow_up" and self.followups_used < 1:
-            self.followups_used += 1
-            await self._ask(q["persona_id"], verdict.line, now_ms, "follow-up", None,
-                            q["slide_number"], follow_up_of=q["question_id"],
-                            curveball_id=q["curveball_id"])
-            return
-        # A short reaction only when the panelist has something real to say; otherwise they
-        # just let you carry on, like people do. Never a stock line.
-        if verdict and verdict.verdict == "satisfied" and verdict.line.strip():
-            await self._speak(q["persona_id"], verdict.line, now_ms)
-        self.pending_question = None
-        self.followups_used = 0
-        self.last_event_end_ms = now_ms
-        if q["curveball_id"]:
-            rec = next(r for r in self.curveballs.records if r.curveball_id == q["curveball_id"])
-            await self._resolve(rec, now_ms, "answered")
-            return
-        if self.in_qna:
-            self.qna_asked += 1
-        self._set_phase(self._resting_phase(), now_ms)
-
     async def _speak(self, persona_id: str | None, line: str, now_ms: int,
                      style: str | None = None) -> None:
-        """ai_speech_started → the voice seam → ai_speech_ended. Only one AI voice ever
-        speaks. A voice failure is an error event; the pair of speech events still closes."""
+        """ai_speech_started → the voice → ai_speech_ended. The mic is ignored until the
+        line has finished playing, so the panel never answers its own voice."""
         speaker = persona_id or "moderator"
         self._emit("ai_speech_started", now_ms, {"speaker": speaker, "line": line})
+        seconds: float | None = None
         try:
             if persona_id:
                 persona = self.persona(persona_id)
-                await self.voice.request_persona_turn(
+                seconds = await self.voice.request_persona_turn(
                     persona_id, line, style or (persona.style_hint if persona else None))
             else:
-                await self.voice.play_moderator_line(line)
+                seconds = await self.voice.play_moderator_line(line)
         except Exception as exc:
             self._error(now_ms, "voice.speak", exc)
-        self._emit("ai_speech_ended", now_ms, {"speaker": speaker})
+        done = max(now_ms, self._now())
+        length_ms = int(seconds * 1000) if seconds is not None else len(line.split()) * WORD_MS
+        self.speaking_until_ms = max(self.speaking_until_ms, done) + length_ms + ECHO_GUARD_MS
+        self.lines.append(Line(speaker, line, now_ms))
+        self.last_panel_ms = now_ms
+        self._emit("ai_speech_ended", done, {"speaker": speaker})
 
-    async def _skip(self, now_ms: int) -> None:
-        """Skip the pending question (marking it skipped, not unanswered) or the active
-        non-time_crunch curveball. Never penalised: a skipped curveball has recovery null."""
-        q = self.pending_question
-        active = self.curveballs.active
-        target = None
-        if q and q["curveball_id"]:
-            target = next(r for r in self.curveballs.records
-                          if r.curveball_id == q["curveball_id"])
-        elif not q and active and active.kind != "time_crunch":
-            target = active
-        if not q and target is None:
-            return
+    async def _cancel_voice(self, now_ms: int) -> None:
         try:
             await self.voice.cancel_speech()
         except Exception as exc:
             self._error(now_ms, "voice.cancel_speech", exc)
+
+    async def _skip(self, now_ms: int) -> None:
+        """Skip the open question or the active curveball (not time_crunch). Never penalised."""
+        q = self.open_question
+        active = self.curveballs.active
+        target = active if active and active.kind != "time_crunch" else None
+        if q is None and target is None:
+            return
+        await self._cancel_voice(now_ms)
+        self.speaking_until_ms = 0
         self._emit("skipped", now_ms, {"question_id": q["question_id"] if q else None,
                                        "curveball_id": target.curveball_id if target else None})
-        if q:
+        if q is not None:
             q["skipped"] = True
-            if self.in_qna:
-                self.qna_asked += 1
-        self.pending_question = None
-        self.followups_used = 0
-        self.last_event_end_ms = now_ms
+            self.open_question = None
+            self.followups_used = 0
         if target is not None:
             await self._resolve(target, now_ms, "skipped")
-        else:
-            self._set_phase(self._resting_phase(), now_ms)
+
+    def _unpause(self, now_ms: int) -> None:
+        if self.paused_at_ms is None:
+            return
+        delta = now_ms - self.paused_at_ms
+        self.pauses.append((self.paused_at_ms, now_ms))
+        self.paused_at_ms = None
+        if delta <= 0:
+            return
+        if self.start_ms is not None:
+            self.start_ms += delta
+        if self.time_crunch_deadline_ms is not None:
+            self.time_crunch_deadline_ms += delta
+        if self.last_panel_ms is not None:
+            self.last_panel_ms += delta
+        if self.last_presenter_speech_ms is not None:
+            self.last_presenter_speech_ms += delta
+        if self.slide_changed_at_ms is not None:
+            self.slide_changed_at_ms += delta
 
     # ---- curveballs -------------------------------------------------------------------------
 
     async def _fire_curveball(self, kind: CurveballKind, now_ms: int, line: str | None,
                               persona_id: str | None) -> None:
-        """curveballs.trigger → CURVEBALL → deliver (moderator / persona / sfx) → then:
-        answerable kinds wait for an answer (ANSWERING), time_crunch keeps presenting with the
-        countdown, everything else RECOVERING until resolved."""
+        spec = CATALOG[kind]
+        if spec.speaker == "persona" and not self.persona(persona_id):
+            persona_id = self._player_for(kind)
         rec, event = self.curveballs.trigger(kind, now_ms, line, persona_id)
-        self.events.append(event)
-        self._set_phase("curveball", now_ms)
-        spec = rec.spec
+        self._append(event)
+        self._close_answered(force=True)
         if kind == "time_crunch":
             self.time_crunch_deadline_ms = now_ms + TIME_CRUNCH_MS
             self._emit("timer_override", now_ms, {"curveball_id": rec.curveball_id,
@@ -605,60 +507,42 @@ class Session:
             except Exception as exc:
                 self._error(now_ms, "voice.play_sfx", exc)
         if kind in ANSWERABLE:
-            answerer = rec.persona_id or self._player_for(kind)
-            self.pending_question = self._new_question(
-                answerer, rec.line, now_ms, f"curveball:{kind}", None,
-                self.slide_number, None, rec.curveball_id)
-            self._set_phase("answering", now_ms)
-        elif kind == "time_crunch":
-            self.last_event_end_ms = now_ms  # the cooldown applies; the clock is the pressure
-            self._set_phase("presenting", now_ms)
-        else:
-            self._set_phase("recovering", now_ms)
+            self.open_question = self._new_question(
+                rec.persona_id or self._player_for(kind), rec.line, now_ms, f"curveball:{kind}",
+                None, None, rec.curveball_id)
 
     async def _resolve(self, rec: CurveballRecord, now_ms: int, resolution: Resolution) -> None:
-        """curveballs.resolve → the orchestrator's rubric score merged into the measured
-        recovery (a failed assessment leaves the timing and no score) → event → cooldown →
-        back to presenting / Q&A."""
-        if rec.resolution is not None:
-            if self.phase == "answering" and self.pending_question is None:
-                self._set_phase(self._resting_phase(), now_ms)
+        """Timing is measured now; the rubric score is added in `finish`, so a slow
+        assessment never holds up the call."""
+        if rec.resolution is None:
+            self._append(self.curveballs.resolve(rec, now_ms, resolution, self.transcript,
+                                                 self.pauses))
+
+    async def _assess(self, rec: CurveballRecord) -> None:
+        if rec.recovery is None:
             return
-        event = self.curveballs.resolve(rec, now_ms, resolution, self.transcript, self.pauses)
-        if rec.recovery is not None:
-            after = [s for s in self.transcript
-                     if rec.at_ms < s.start_ms <= rec.at_ms + RECOVERY_WINDOW_MS]
-            try:
-                assessment = await self.orchestrator.assess_recovery(
-                    rec.kind, rec.line, after, rec.recovery.resume_after_ms)
-                rec.recovery.score = assessment.score
-                rec.recovery.evidence = assessment.evidence or rec.recovery.evidence
-                rec.recovery.suggestion = assessment.suggestion
-            except Exception as exc:
-                self._error(now_ms, "orchestrator.assess_recovery", exc)
-            event.payload["recovery"] = rec.recovery.model_dump()
-        self.events.append(event)
-        self.last_event_end_ms = now_ms
-        if rec.kind == "time_crunch":
+        after = [s for s in self.transcript
+                 if rec.at_ms < s.start_ms <= rec.at_ms + RECOVERY_WINDOW_MS]
+        try:
+            a = await self.orchestrator.assess_recovery(rec.kind, rec.line, after,
+                                                        rec.recovery.resume_after_ms)
+        except Exception as exc:
+            self._error(self._now(), "orchestrator.assess_recovery", exc)
             return
-        if self.phase in ("curveball", "recovering", "answering"):
-            self.pending_question = None
-            self._set_phase(self._resting_phase(), now_ms)
+        rec.recovery.score = a.score
+        rec.recovery.evidence = a.evidence or rec.recovery.evidence
+        rec.recovery.suggestion = a.suggestion
 
     # ---- the end --------------------------------------------------------------------------
 
     async def enter_qna(self, now_ms: int, crunch_resolution: Resolution = "answered") -> None:
-        """Presenting is over: a pending question is cut off (skipped, not penalised), an
-        open curveball resolves `timed_out`, an open time_crunch resolves `crunch_resolution`
-        (the presenter closing before the deadline is `answered`) and its deadline is
-        disarmed → QNA. qna_questions == 0 → finish."""
         if self.in_qna or self.ended:
             return
         if self.phase == "paused":
             self._unpause(now_ms)
             self.paused_phase = None
-        self.in_qna = True  # before resolving, so the resting phase is already Q&A
-        self._cut_off_pending(now_ms, "presentation ended")
+        self.in_qna = True
+        self._cut_off_open(now_ms, "presentation ended")
         self.time_crunch_deadline_ms = None
         for rec in list(self.curveballs.records):
             if rec.resolution is None:
@@ -667,43 +551,37 @@ class Session:
         self._set_phase("qna", now_ms)
         if self.config.qna_questions == 0:
             await self.finish(now_ms)
-
-    async def _qna_step(self, now_ms: int) -> None:
-        if self.pending_question:
-            return
-        if self.qna_asked >= self.config.qna_questions:
-            await self.finish(now_ms)
-            return
-        try:
-            ctx = self._context(now_ms, True, [])
-            ctx.qna = True
-            ctx.recent_transcript = self.transcript[-12:]  # the whole talk's tail, not 30 s
-            decision = await self.orchestrator.decide(ctx)
-        except Exception as exc:
-            self._error(now_ms, "orchestrator.decide", exc)
-            await self.finish(now_ms)
-            return
-        if decision.action == "question" and self._grounded(decision) \
-                and decision.persona_id and decision.line:
-            await self._ask(decision.persona_id, decision.line, now_ms, decision.reason,
-                            decision.cited_transcript_excerpt, decision.slide_number)
         else:
-            await self.finish(now_ms)
+            await self._kick("qna")
+
+    def _cut_off_open(self, now_ms: int, reason: str) -> None:
+        """The room, not the presenter, ended an unanswered question: skipped, never
+        "unanswered"."""
+        q = self.open_question
+        if q is None:
+            return
+        if not q["answer"]:
+            q["skipped"] = True
+            q["cut_off"] = reason
+            self._emit("skipped", now_ms, {"question_id": q["question_id"],
+                                           "curveball_id": q["curveball_id"], "reason": reason})
+        self.open_question = None
+        self.followups_used = 0
 
     async def finish(self, now_ms: int) -> None:
-        """Resolve leftovers timed_out, stop the voice, REPORT, build the report."""
         if self.ended:
             return
-        self._cut_off_pending(now_ms, "session ended")
+        self._cut_off_open(now_ms, "session ended")
         for rec in self.curveballs.records:
             if rec.resolution is None:
                 await self._resolve(rec, now_ms, "timed_out")
         self.time_crunch_deadline_ms = None
+        self._set_phase("report", now_ms)
+        await asyncio.gather(*(self._assess(r) for r in self.curveballs.records))
         try:
             await self.voice.stop_voice_session()
         except Exception as exc:
             self._error(now_ms, "voice.stop_voice_session", exc)
-        self._set_phase("report", now_ms)
         self.report = build_report(self)
         self._emit("session_ended", now_ms,
                    {"report_url": f"/api/sessions/{self.session_id}/report"})
