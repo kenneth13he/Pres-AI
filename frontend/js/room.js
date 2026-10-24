@@ -171,7 +171,12 @@ function onEvent(ev) {
     }
     case 'ai_speech_ended': seat(p.speaker)?.classList.remove('thinking'); break;
     case 'audio_status':
-      if (p.status === 'live_ready') { joinLive(p); break; }
+      if (p.status === 'live_ready') {
+        if (p.clip_faces && Object.keys(p.clip_faces).length) {
+          Object.assign(state.faces, p.clip_faces); renderTiles();  // seats without a live slot
+        }
+        joinLive(p); break;
+      }
       if (p.status === 'live_failed') { console.warn('[room] live avatars unavailable, using clips:', p.detail); break; }
       if (p.status === 'live_line') {
         state.mic?.setMuted(true);

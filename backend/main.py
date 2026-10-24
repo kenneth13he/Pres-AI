@@ -121,6 +121,10 @@ async def lifespan(_: FastAPI):
     for room in ROOMS.values():
         if room.ticker:
             room.ticker.cancel()
+        # Live avatars bill per minute: release them on shutdown, not at their 20-min cap.
+        live = getattr(room.session.voice, "_live", None)
+        if live is not None:
+            await live.close()
 
 
 app = FastAPI(title="PresAI", lifespan=lifespan)

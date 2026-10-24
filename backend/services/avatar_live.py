@@ -38,6 +38,7 @@ AVATAR_CHARACTER = {"builtin_claire_v1": "claire", "builtin_emma_v1": "emma",
 MAX_CALL_S = int(os.environ.get("BOSON_AVATAR_MAX_S", "1200"))  # 20 min hard stop per call
 SAMPLE_RATE = 24_000
 FRAME_SAMPLES = 480  # 20 ms
+JOIN_TIMEOUT_S = 12  # an accepted avatar that has not published video by then never will
 
 
 def livekit_configured() -> bool:
@@ -78,6 +79,7 @@ class LiveAvatarRoom:
         self.seats = {pid: LiveSeat(pid, LIVE_AVATARS[i], f"avatar-{pid}")
                       for i, pid in enumerate(self.persona_ids[:len(LIVE_AVATARS)])}
         self._room = None
+        self.refused: str | None = None  # why some seats didn't go live (capacity)
         self._http = httpx.AsyncClient(base_url=BASE_URL, timeout=30,
                                        headers={"Authorization": f"Bearer {self.api_key}"})
 
@@ -123,6 +125,11 @@ class LiveAvatarRoom:
                     },
                 })
                 if resp.status_code >= 400:
+                    if any(s.session_id for s in self.seats.values()):
+                        # Out of live slots (accounts can be capped at one concurrent avatar):
+                        # keep the seats that went live; the rest stay on talking-head clips.
+                        self.refused = f"{resp.status_code} {resp.text[:160]}"
+                        break
                     raise RuntimeError(f"avatar session for {seat.persona_id}: "
                                        f"{resp.status_code} {resp.text[:200]}")
                 seat.session_id = resp.json()["id"]
@@ -131,6 +138,33 @@ class LiveAvatarRoom:
         except BaseException:
             await self.close()
             raise
+        # Higgs can accept a session and still never start it (out of live capacity). Only
+        # seats whose avatar actually joins and publishes video stay live; the rest are
+        # released (so they aren't billed) and fall back to clips.
+        await self._await_avatars(JOIN_TIMEOUT_S)
+        if not any(s.session_id for s in self.seats.values()):
+            await self.close()
+            raise RuntimeError(self.refused or "no live avatar joined the room")
+        self.seats = {pid: s for pid, s in self.seats.items() if s.session_id}
+
+    async def _await_avatars(self, timeout_s: float) -> None:
+        assert self._room is not None
+        deadline = asyncio.get_running_loop().time() + timeout_s
+        pending = {s.identity: s for s in self.seats.values() if s.session_id}
+        while pending and asyncio.get_running_loop().time() < deadline:
+            for identity in list(pending):
+                participant = self._room.remote_participants.get(identity)
+                pubs = participant.track_publications.values() if participant else ()
+                if any(p.kind == 2 for p in pubs):  # rtc.TrackKind.KIND_VIDEO
+                    pending.pop(identity)
+            await asyncio.sleep(0.25)
+        for seat in pending.values():
+            self.refused = self.refused or "avatar never joined (live capacity)"
+            try:
+                await self._http.delete(f"/avatar/sessions/{seat.session_id}")
+            except httpx.HTTPError:
+                pass
+            seat.session_id = None
 
     async def speak(self, persona_id: str, pcm: AsyncIterator[bytes]) -> float:
         """Stream one line of 24 kHz mono PCM to the avatar and wait until it has been played.

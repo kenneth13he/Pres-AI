@@ -9,5 +9,8 @@
   "hannah|chloe|": "voice_b29fd22e47a8f4b3a9a8c5943cd16beab48c0d82829438ec7ab2422121f67cf2",
   "dev|marcus|<|prosody:speed_fast|>": "voice_b003aafcb7d97b6b1be4d5c91b115842090f23c6c7ee6d32099484132e20571d",
   "ava|chloe|<|prosody:pitch_high|>": "voice_cc63d368ada317d4483a844aaf327afe8985e30a0de0cdee579c01eefcada2ad",
-  "finn|oliver|": "voice_1867b10686882c2d28433b8037b2402a0c70fd0171d269d6c55447d060a67b89"
+  "finn|oliver|": "voice_1867b10686882c2d28433b8037b2402a0c70fd0171d269d6c55447d060a67b89",
+  "claire|eleanor|": "voice_56ff8e6463412d4f305038ea93ce15280191d1af323a67155ac61d1cee447ac4",
+  "emma|chloe|": "voice_77b67b13e0d42b45a9124261827ba36a5ed09b04c23a809ad7961ad61bc7b10c",
+  "james|marcus|": "voice_0e77c3b678708b56c4d15b95f92e04e187013553d404d356dd37434c3a603688"
 }

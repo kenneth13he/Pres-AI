@@ -194,6 +194,7 @@ class HiggsVoice:
                  audio_dir: Path | None = None, faces_dir: Path | None = None,
                  background: bool = True) -> None:
         self.background = background
+        self._real_client = client is None  # live avatars only ever with the real API
         self._queue: asyncio.Queue[tuple[str, str, str | None]] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
         self._idle_jobs: list[tuple[str, Path]] = []
@@ -210,6 +211,7 @@ class HiggsVoice:
         self._live: LiveAvatarRoom | None = None   # realtime avatars, when LiveKit is set up
         self._live_pending = False
         self._live_chars: dict[str, str] = {}
+        self._clip_faces: dict[str, Path] = {}
         # Cloned voices are on for real use; injected test clients keep the preset path.
         self.custom_voices = (client is None
                               and os.environ.get("BOSON_CUSTOM_VOICES", "true") == "true")
@@ -330,7 +332,8 @@ class HiggsVoice:
         self._session_id = session_id
         self._faces = assign_faces([p.id for p in config.personas], self.faces_dir)
         self._voices = assign_voices(config, self._faces)
-        live = self.avatar_enabled and self.background and livekit_configured()
+        live = (self.avatar_enabled and self.background and self._real_client
+                and livekit_configured())
         if live:
             # Live avatars: Higgs's built-in faces, one continuous stream each.
             self._live = LiveAvatarRoom(session_id, [p.id for p in config.personas])
@@ -339,6 +342,7 @@ class HiggsVoice:
                 character = self._live.character(pid) or pid
                 self._live_chars[pid] = character
                 self._voices[pid] = CHARACTER_VOICES[character][0]
+            self._clip_faces = self._faces  # for any seat that can't go live
             self._faces = {}  # the live stream is the face
         await self._status("ready", voices=self._voices, avatars=self.avatar_enabled,
                            live=live,
@@ -493,12 +497,44 @@ class HiggsVoice:
         try:
             await self._live.start()
         except Exception as exc:
-            # No LiveKit / no capacity / Higgs refused: fall back to clips with our own faces.
+            # No LiveKit / no capacity / Higgs refused: everyone falls back to clips.
             self._live = None
             self._live_chars = {}
+            self._faces = self._clip_faces
             await self._status("live_failed", detail=str(exc)[:300])
+            await self._start_clip_faces(list(self._faces))
             return
-        await self._status("live_ready", **self._live.viewer())
+        # Seats that didn't get a live slot keep their own face and voice on clips.
+        clip_seats = [pid for pid in self._live_chars if pid not in self._live.seats]
+        for pid in clip_seats:
+            self._live_chars.pop(pid)
+            if pid in self._clip_faces:
+                self._faces[pid] = self._clip_faces[pid]
+                character = character_of(self._faces[pid])
+                if character in CHARACTER_VOICES:
+                    self._voices[pid] = CHARACTER_VOICES[character][0]
+            self._voice_ids.pop(pid, None)
+        await self._status("live_ready", **self._live.viewer(), refused=self._live.refused,
+                           clip_faces={pid: f"/demo/faces/{self._faces[pid].name}"
+                                       for pid in clip_seats if pid in self._faces})
+        await self._start_clip_faces(clip_seats)
+
+    async def _start_clip_faces(self, pids: list[str]) -> None:
+        """Clip-mode seats need their cloned voice and their first listening loop."""
+        registry = _load_registry() if self.custom_voices else {}
+        for pid in pids:
+            key = self._voice_key(pid)
+            if key in registry:
+                self._voice_ids[pid] = registry[key]
+            elif self.custom_voices:
+                self._voice_jobs.append(pid)
+            face = self._faces.get(pid)
+            if face is None or not self.avatar_enabled:
+                continue
+            if self._idle_path(face).exists():
+                await self._status("idle", speaker=pid, url=self._idle_url(face))
+            else:
+                self._idle_jobs.append((pid, face))
 
     async def _render_live(self, speaker: str, text: str, style: str | None) -> None:
         """Stream the line's speech (cloned voice, emotion tag) straight into the avatar."""
