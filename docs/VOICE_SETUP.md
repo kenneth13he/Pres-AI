@@ -52,7 +52,10 @@ minute is discarded instead of submitting an unfinished point.
 Persona speech mutes capture to avoid self-transcription. Pause, Skip and End cancel queued
 speech. Playback completion acknowledgements control when the backend returns the floor;
 delayed transcripts cannot answer questions they preceded. Resume reconnects audio before
-unfreezing a paused timer if its idle connection has closed.
+unfreezing a paused timer if its idle connection has closed. Unexpected audio loss now
+pauses the room automatically, freezes elapsed/countdown and discards unfinished input.
+Press Resume to reconnect and continue. If the room cannot confirm Pause, the page clearly
+states that only its local timer is frozen; Resume reconnects and repairs Pause first.
 
 Click **End → Q&A** once to enter the closing round. The button becomes disabled
 **Q&A in progress**. Answer with Hold to talk; the report link appears automatically after
@@ -70,7 +73,7 @@ unavailable after 45 seconds. A genuinely unfinished session still directs you t
 Content coaching references captured source IDs; the server supplies the exact quotes.
 Unsupported judgments stay unassessed. Overall averages only assessed content dimensions
 and explains its coverage; measured recovery and event metrics remain separate. Saved
-historical reports are not regenerated. Current checks are 285 backend and 151 frontend
+historical reports are not regenerated. Current checks are 296 backend and 166 frontend
 tests, plus a separate live Boson preflight using fictional text and silent mock audio.
 A recorded human blackout run measured recovery, but its coaching response exceeded the
 citation limit and used fallback. Corrected generation passed two saved-context checks;

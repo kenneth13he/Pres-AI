@@ -11,6 +11,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -58,6 +59,14 @@ def reasoning_status(orchestrator: Orchestrator) -> dict[str, Any]:
     return result if isinstance(result, dict) else {"adapter": "unknown", "model": None}
 
 
+@dataclass(frozen=True)
+class _AudioLoss:
+    voice: HiggsVoice
+    attachment_id: int
+    at_ms: int
+    control_revision: int
+
+
 class Room:
     """A live session plus its WebSocket subscribers and its ticker task.
 
@@ -77,6 +86,8 @@ class Room:
         self.t0: int | None = None
         self.record_attempted = False
         self.reasoning_problems_seen = 0
+        self._control_revision = 0
+        self._audio_loss: _AudioLoss | None = None
         brain = reasoning_status(session.orchestrator)
         self.run_settings = {
             "voice_adapter": "higgs" if isinstance(session.voice, HiggsVoice) else "mock",
@@ -167,6 +178,7 @@ class Room:
         """Controls invalidate a slow audience call before waiting for its room lock."""
         if action not in ("pause", "skip", "end"):
             return
+        self._control_revision += 1
         self.session.prepare_control(action)
         try:
             await self.session.voice.cancel_speech()
@@ -177,6 +189,64 @@ class Room:
                          "message": "Audio cancellation failed; the control still applies."},
             ))
 
+    @property
+    def audio_loss_at_ms(self) -> int | None:
+        loss = self._audio_loss
+        if (loss is not None and self.session.voice is loss.voice
+                and loss.voice.attachment_id == loss.attachment_id):
+            return loss.at_ms
+        return None
+
+    def _prepare_audio_pause(self, voice: HiggsVoice, attachment_id: int) -> _AudioLoss:
+        self._control_revision += 1
+        loss = _AudioLoss(voice, attachment_id, self.now_ms(), self._control_revision)
+        self._audio_loss = loss
+        self.session.prepare_control("pause")
+        return loss
+
+    def prepare_audio_disconnect(self, voice: HiggsVoice,
+                                 attachment_id: int) -> _AudioLoss | None:
+        if voice.attachment_id != attachment_id:
+            return None
+        live = (self.session.start_ms is not None
+                and self.session.phase not in ("setup", "paused", "report"))
+        return self._prepare_audio_pause(voice, attachment_id) if live else None
+
+    async def audio_disconnected(self, voice: HiggsVoice, attachment_id: int,
+                                 loss: _AudioLoss | None = None) -> None:
+        if voice.attachment_id != attachment_id:
+            # A synchronously prepared loss still needs to release its own intent.
+            if loss is not None:
+                await self.run(self._pause_disconnected_audio(loss))
+            return
+        loss = loss or self.prepare_audio_disconnect(voice, attachment_id)
+        await voice.detach(attachment_id)
+        if loss is not None:
+            await self.run(self._pause_disconnected_audio(loss))
+
+    async def _pause_disconnected_audio(self, loss: _AudioLoss) -> None:
+        current = (self.session.voice is loss.voice and not loss.voice.attached
+                   and loss.voice.attachment_id == loss.attachment_id)
+        if current and self.session.start_ms is not None and not self.session.ended:
+            s = self.session
+            if (s.phase == "qna" and s.pending_question is None
+                    and s.qna_asked >= s.config.qna_questions):
+                await s.finish(self.now_ms())
+            else:
+                await self.apply_control("pause", loss.at_ms)
+        elif self._control_revision == loss.control_revision:
+            self.session.cancel_prepared_control()
+        if self._audio_loss is loss:
+            self._audio_loss = None
+
+    async def apply_control(self, action: str, at_ms: int) -> None:
+        # Audio loss is a receipt-time intent. Keep its original freeze point even if a
+        # bounded model/speech operation must unwind before the serialized pause applies.
+        loss_at = self.audio_loss_at_ms
+        if action == "pause" and loss_at is not None:
+            at_ms = min(at_ms, loss_at)
+        await self.session.control(action, at_ms)
+
     async def tick_forever(self) -> None:
         while not self.session.ended:
             await asyncio.sleep(TICK_S)
@@ -184,6 +254,16 @@ class Room:
 
     async def _tick(self) -> None:
         # This body runs inside Room.run's lock, after any model/audio work ahead of it.
+        s = self.session
+        voice = s.voice
+        finishing_qna = (s.phase == "qna" and s.pending_question is None
+                         and s.qna_asked >= s.config.qna_questions)
+        if (isinstance(voice, HiggsVoice) and not voice.attached and s.start_ms is not None
+                and s.phase not in ("setup", "paused", "report") and not finishing_qna):
+            loss = self._audio_loss if self.audio_loss_at_ms is not None else None
+            loss = loss or self._prepare_audio_pause(voice, voice.attachment_id)
+            await self._pause_disconnected_audio(loss)
+            return
         await self.session.tick(self.now_ms())
 
 
@@ -340,6 +420,8 @@ def session_snapshot(room: Room) -> dict[str, Any]:
     s = room.session
     timer_now = (s.paused_at_ms if s.phase == "paused" and s.paused_at_ms is not None
                  else room.now_ms())
+    if s.phase not in ("setup", "paused", "report") and room.audio_loss_at_ms is not None:
+        timer_now = room.audio_loss_at_ms
     return {
         "session_id": s.session_id, "phase": s.phase, "config": s.config.model_dump(),
         "preset": s.preset.model_dump(), "slide_number": s.slide_number,
@@ -362,7 +444,7 @@ class Control(BaseModel):
 async def control(session_id: str, body: Control) -> dict[str, str]:
     room = _room(session_id)
     await room.prepare_control(body.action)
-    await room.run(room.session.control(body.action, room.now_ms()))
+    await room.run(room.apply_control(body.action, room.now_ms()))
     return {"phase": room.session.phase}
 
 
@@ -516,9 +598,9 @@ async def _handle_client_message(room: Room, msg: dict[str, Any],
         if s.phase not in ("paused", "report", "setup"):
             s.last_presenter_speech_ms = ts
     elif t == "presentation_ended":
-        await room.run(s.control("end", ts))
+        await room.run(room.apply_control("end", ts))
     elif t == "control":
-        await room.run(s.control(str(msg.get("action")), ts))
+        await room.run(room.apply_control(str(msg.get("action")), ts))
 
 
 # ---- static: decks, demo assets, the frontend (last, so routes win) -------------------

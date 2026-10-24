@@ -6,18 +6,23 @@ continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
 
 ## Deadline handoff
 
-The user requested immediate publication with final human tests left open. The code fixes
-are in `2a9b85e`: 285 backend and 151 frontend/audio tests, lint/type/schema/mocks, and two
-bounded live report replays pass. Hold-to-talk stays default; talking-head videos stay off.
-P0-13 and P0-14 are **not signed off**. A private six-minute recording candidate exists
-locally, but no clean pair of the corrected build has been completed.
+The user requested publication with final human tests left open, then asked to finish the
+remaining important work automatically. The current gate is 296 backend and 166 frontend/audio
+tests plus lint/type/schema/mocks. Report/clock fixes and two bounded live report replays
+were already verified. Hold-to-talk stays default; talking-head videos stay off.
+P0-13 remains unsigned. P0-14's local backup-file requirement is met: see
+[`demo/RECORDING_BACKUP.md`](demo/RECORDING_BACKUP.md) for the reviewed six-minute real-run
+backup, hash and older-build limitations. The private video itself is excluded from Git.
 
 The subsequent corrected-build attempt recorded two voice disconnections and insufficient
 presentation text; report coaching correctly skipped. The countdown room was not started.
-Disconnections are consistent with the existing 60-second idle shutdown, but the exact
-browser-local cause was not retained. **Known limit:** audio can close while the room timer
-continues. Pause before a long idle period; use Reconnect microphone, or Resume from Pause,
-before continuing. Further full-room acceptance must include this idle/reconnect behavior.
+Disconnections were consistent with the existing 60-second idle shutdown; the exact
+browser-local cause was not retained. The resulting continuation-without-audio gap is now
+fixed: unexpected loss pauses the room, freezes elapsed/countdown, discards pending input
+and cancels playback. Resume reconnects before continuing. Network failure shows an explicit
+local-only freeze until backend Pause is confirmed. No automatic paid reconnect loop was added;
+idle/hard limits remain. Actual idle-callback and real ASGI socket simulations pass, but a
+fresh human pair of this final build is still unverified.
 
 ## What is ready
 
@@ -55,8 +60,8 @@ before continuing. Further full-room acceptance must include this idle/reconnect
 
 | Evidence | Result and limit |
 | --- | --- |
-| Offline backend gate | 285 tests; Ruff, Pyright, generated schema and mock fixtures passed, including setup, grading, queued terminal clock, preparing responses and final-only persistence. Re-run commands below on your checkout. |
-| Offline frontend/audio gate | 151 tests passed, including PTT, cancellation, setup, portraits, terminal guards, safe API errors and bounded report-preparation polling. |
+| Offline backend gate | 296 tests; Ruff, Pyright, generated schema and mock fixtures passed, including disconnect pause, ownership, teardown, clocks, report preparation and persistence. Re-run commands below on your checkout. |
+| Offline frontend/audio gate | 166 tests passed, including actual STT idle → voice close → room pause, frozen timers, pending-input discard, reconnect-before-Resume and control races. No microphone or vendor calls are used by these tests. |
 | Voice hardware | User confirmed microphone transcription, distinct clear voices, complete PTT turns through pauses, and automatic closing/report handoff. Earlier voice-lab latency sign-off is not a full-room acoustic latency guarantee. |
 | Two real-audience human flows | Natural blackout and natural countdown → Q&A runs both reached reports automatically with clear audio. Together: 12 real Boson reasoning successes; zero recorded model failures/fallbacks/rejections, room errors, skips or unanswered questions. |
 | Boson structured-output preflight | Decisions, follow-ups, recovery grading and custom-persona expansion all passed a bounded live check. Responses use grounding/validation and explicit diagnostics. |
@@ -88,6 +93,11 @@ record of local evidence; another machine cannot open those local session links.
 5. A timer tick queued behind closing audio sampled its clock too early, backdating the
    finish by about two seconds. Live ticks now sample time after acquiring the room lock;
    the regression verifies event order, frozen duration, persistence and cancellation.
+6. Audio idle closure used to leave the presentation running without its speech bridge.
+   Both controller and backend now pause safely. Attachment/control ownership protects a
+   replacement connection from old cleanup; terminal shutdown stays idempotent. Pause
+   intent uses the loss receipt time while bounded in-flight work unwinds. This timestamp
+   can precede a later canceled-speech completion in append order; it is not a backdated finish.
 
 Original reports were preserved. Subsequent fixes and replay tests do not retroactively
 make the original runs clean final-build demonstrations.
@@ -97,9 +107,9 @@ make the original runs clean final-build demonstrations.
 - **P0-13 is not signed off:** two consecutive unaided, recorded runs of the corrected
   frozen build still need acceptance. The recorded recovery demonstration had a report
   fallback; the subsequent attempt had voice disconnections. Historical attempts are retained.
-- **P0-14 is not signed off:** a six-minute recording candidate exists locally in `demo/`,
-  with the original preserved. It includes the report fallback; select the final backup
-  after the clean pair. Recordings remain excluded from Git.
+- **Backup limitation:** P0-14's real-run file exists and was human-reviewed, but records
+  an older build with the documented coaching fallback and clock issue. It does not certify
+  P0-13. A same-build clean recording can replace it later; the original remains preserved.
 - Content coaching is implemented, but scores can remain `null`/“Not assessed” when
   captured evidence is insufficient. Scores are subjective text estimates, not verified
   factual accuracy, acoustic measurements or psychological judgments. Overall averages
@@ -162,9 +172,10 @@ may require it; those are not evidence of a naturally scheduled clean demo.
 2. **All:** practise a naturally scheduled blackout on Slide 2 or later. Speak and release
    a brief recovery point while the blackout is active, before its thirty-second restore.
    Verify a measured resume gap, exact evidence quote and matching report entry.
-3. **All:** freeze the build, do two consecutive complete unaided recorded presentations
-   without debug controls, then save the backup recording. Update P0-13/P0-14 only when
-   the evidence meets their criteria.
+3. **All:** do two consecutive complete unaided recorded presentations without debug
+   controls, including idle/reconnect behavior. Update P0-13 only when evidence passes.
+   P0-14's older-build fallback file already exists; replace it with a clean final-build
+   recording when available, preserving its documented limitations in the meantime.
 4. **C + A:** verify the new report coaching in a real microphone session, including
    preparing → ready, evidence quotes, unsupported nulls and unchanged recovery/metrics.
    Use real session JSON, not the illustrative `?mock=1` report, for final acceptance.

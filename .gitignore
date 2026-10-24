@@ -12,4 +12,5 @@ data/decks/
 data/voice_checks/
 demo/*.mp4
 demo/*.mov
+demo/*.webm
 node_modules/

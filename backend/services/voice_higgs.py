@@ -22,6 +22,7 @@ from .voice_base import OnEvent, OnTranscript
 
 BASE_URL = "https://api.boson.ai/v1"
 PCM_SAMPLE_RATE = 24_000
+CANCEL_WAIT_S = 2.0
 VOICE_FOR_PERSONA = {
     "moderator": "eleanor", "vc": "marcus", "student": "chloe",
     "professor": "oliver", "mentor": "nora",
@@ -84,6 +85,7 @@ class HiggsVoice:
         self._on_transcript: OnTranscript | None = None
         self._session_id = ""
         self._sink: AudioSink | None = None
+        self._attachment_id = 0
         self._clock: Callable[[], int] = lambda: 0
         self._speech: asyncio.Task[None] | None = None
         self._played = asyncio.Event()
@@ -107,14 +109,38 @@ class HiggsVoice:
     def attached(self) -> bool:
         return self._sink is not None
 
-    def attach(self, sink: AudioSink, clock: Callable[[], int]) -> None:
+    @property
+    def attachment_id(self) -> int:
+        return self._attachment_id
+
+    def attach(self, sink: AudioSink, clock: Callable[[], int]) -> int:
+        if self._closed:
+            raise VoiceError("The voice session has ended. Create a new room.")
         if self.attached:
             raise VoiceError("An audio client is already connected.")
+        self._attachment_id += 1
         self._sink, self._clock = sink, clock
+        return self._attachment_id
 
-    async def detach(self) -> None:
+    async def detach(self, attachment_id: int | None = None) -> bool:
+        if attachment_id is not None and attachment_id != self._attachment_id:
+            return False
         self._sink = None
-        await self.cancel_speech()
+        task = self._speech
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+            await self._wait_cancelled_speech(task)
+        return True
+
+    async def _wait_cancelled_speech(self, task: asyncio.Task[None]) -> None:
+        try:
+            await asyncio.wait_for(asyncio.shield(task), CANCEL_WAIT_S)
+        except asyncio.CancelledError:
+            caller = asyncio.current_task()
+            if caller is not None and caller.cancelling():
+                raise
+        except (VoiceError, TimeoutError):
+            pass
 
     def acknowledge(self, play_id: str) -> None:
         if self._accept_ack and play_id == self._play_id:
@@ -178,9 +204,12 @@ class HiggsVoice:
     async def request_persona_turn(self, persona_id: str, text: str,
                                    style: str | None = None) -> None:
         async with self._speech_lock:
+            if self._closed:
+                raise VoiceError("The voice session has ended. Create a new room.")
             if self._sink is None:
                 raise VoiceError("Audio is disconnected. Reconnect before speaking.")
-            self._speech = asyncio.create_task(self._say(persona_id, text, style))
+            self._speech = asyncio.create_task(self._say(
+                persona_id, text, style, self._attachment_id))
             task = self._speech
             try:
                 await task
@@ -194,7 +223,8 @@ class HiggsVoice:
                 self._play_id = None
                 self._accept_ack = False
 
-    async def _say(self, persona_id: str, text: str, style: str | None) -> None:
+    async def _say(self, persona_id: str, text: str, style: str | None,
+                   attachment_id: int) -> None:
         self._play_id = uuid.uuid4().hex
         self._played.clear()
         first_at = None
@@ -203,32 +233,35 @@ class HiggsVoice:
             async with asyncio.timeout(30):
                 await self._status("speaking")  # flushes the engine's start before any PCM
                 await self._send({"type": "speech_started", "play_id": self._play_id,
-                                  "speaker": persona_id, "text": text})
+                                  "speaker": persona_id, "text": text}, attachment_id)
                 async for chunk in self.tts_pcm_stream(
                     text, self._voices.get(persona_id, "default"), style,
                 ):
                     if first_at is None:
                         first_at = round((time.monotonic() - started) * 1000)
-                    await self._send(chunk)
+                    await self._send(chunk, attachment_id)
                 if first_at is None:
                     raise VoiceError("Boson returned no speech audio.")
                 self._accept_ack = True
                 await self._send({"type": "speech_complete", "play_id": self._play_id,
-                                  "first_audio_ms": first_at})
+                                  "first_audio_ms": first_at}, attachment_id)
                 await self._played.wait()
         except TimeoutError:
             with suppress(VoiceError):
-                await self._send({"type": "cancel"})
+                await self._send({"type": "cancel"}, attachment_id)
             raise VoiceError("Voice playback timed out. Please reconnect audio.") from None
         except BaseException:
             with suppress(VoiceError):
-                await self._send({"type": "cancel"})
+                await self._send({"type": "cancel"}, attachment_id)
             raise
         finally:
-            await self._status("ready")
+            if self.attached and self._attachment_id == attachment_id and not self._closed:
+                await self._status("ready")
 
-    async def _send(self, data: dict[str, Any] | bytes) -> None:
-        if self._sink is None:
+    async def _send(self, data: dict[str, Any] | bytes,
+                    attachment_id: int | None = None) -> None:
+        if (self._sink is None or attachment_id is not None
+                and attachment_id != self._attachment_id):
             raise VoiceError("Audio disconnected during speech.")
         try:
             await self._sink(data if isinstance(data, bytes) else json.dumps(data))
@@ -247,14 +280,17 @@ class HiggsVoice:
         if self._speech and not self._speech.done():
             self._speech.cancel()
         if self._sink:
-            await self._send({"type": "cancel"})
+            with suppress(VoiceError):
+                await self._send({"type": "cancel"})
 
     async def stop_voice_session(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         try:
             await self.cancel_speech()
             if self._speech and self._speech is not asyncio.current_task():
-                with suppress(asyncio.CancelledError):
-                    await self._speech
+                await self._wait_cancelled_speech(self._speech)
         finally:
             await self._client.aclose()
             self._closed = True

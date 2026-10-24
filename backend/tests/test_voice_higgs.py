@@ -156,6 +156,79 @@ async def test_disconnect_releases_wait_for_playback_and_shutdown_is_repeatable(
         await voice.start_voice_session("room", make_config())
 
 
+@pytest.mark.parametrize("cleanup_timeout", [False, True])
+async def test_detach_waiting_for_old_stream_cleanup_never_cancels_replacement(
+    monkeypatch, cleanup_timeout,
+):
+    if cleanup_timeout:
+        monkeypatch.setattr("backend.services.voice_higgs.CANCEL_WAIT_S", 0.01)
+    closing, release = asyncio.Event(), asyncio.Event()
+
+    class SlowClose(Chunks):
+        async def aclose(self):
+            closing.set()
+            await release.wait()
+            self.closed = True
+
+    old_stream = SlowClose(asyncio.Event())
+    streams = iter([old_stream, Chunks()])
+    voice = HiggsVoice(fake_client(lambda _: httpx.Response(200, stream=next(streams))))
+    first_chunk = asyncio.Event()
+
+    async def old_sink(data):
+        if isinstance(data, bytes):
+            first_chunk.set()
+
+    old_owner = voice.attach(old_sink, lambda: 100)
+    old_speech = asyncio.create_task(voice.play_moderator_line("Old line."))
+    await asyncio.wait_for(first_chunk.wait(), 1)
+    detaching = asyncio.create_task(voice.detach(old_owner))
+    await asyncio.wait_for(closing.wait(), 1)
+    received = []
+
+    async def new_sink(data):
+        received.append(data)
+        if isinstance(data, str) and json.loads(data)["type"] == "speech_complete":
+            voice.acknowledge(json.loads(data)["play_id"])
+
+    new_owner = voice.attach(new_sink, lambda: 200)
+    if cleanup_timeout:
+        assert await asyncio.wait_for(detaching, 1)
+        assert not old_speech.done()  # bounded teardown does not wait forever for HTTP close
+    release.set()
+    assert await asyncio.wait_for(detaching, 1)
+    await asyncio.wait_for(old_speech, 1)
+    assert new_owner != old_owner and voice.attached and received == []
+    assert not await voice.detach(old_owner)
+    await asyncio.wait_for(voice.play_moderator_line("New line."), 1)
+    assert b"".join(item for item in received if isinstance(item, bytes))
+    assert not any(isinstance(item, str) and json.loads(item)["type"] == "cancel"
+                   for item in received)
+    await voice.stop_voice_session()
+
+
+async def test_dead_sink_cleanup_after_stop_is_idempotent_and_never_generates_speech():
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, content=b"\x00\x00")
+
+    voice = HiggsVoice(fake_client(respond))
+
+    async def closed_sink(_):
+        raise RuntimeError("WebSocket was already closed")
+
+    owner = voice.attach(closed_sink, lambda: 100)
+    await voice.stop_voice_session()
+    await voice.stop_voice_session()
+    await voice.detach(owner)
+    await voice.detach(owner)
+    assert requests == [] and not voice.attached and not voice.speaking
+    with pytest.raises(VoiceError, match="ended"):
+        voice.attach(closed_sink, lambda: 200)
+
+
 @pytest.mark.parametrize("payload", [[], {}, {"value": ""}, {"value": 42}])
 async def test_malformed_temporary_credentials_have_a_safe_error(payload):
     voice = HiggsVoice(fake_client(lambda _: httpx.Response(200, json=payload)))

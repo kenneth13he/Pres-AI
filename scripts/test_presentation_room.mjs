@@ -34,7 +34,7 @@ function environment({ saved = session(), mock = false, liveVoice = true,
   const calls = [], sent = [], requests = [], views = {}, listeners = new Map(), intervals = new Map();
   const voiceInstances = [], voiceOptions = [];
   let handlers, onEvent, onBusStatus, now = 10000, nextTimer = 0, nextTurn = 0;
-  let failMicrophone = false, holdMicrophone = null, holdConnection = null, serverPhase = saved.phase, resumePhase = 'presenting', controlReply = null;
+  let failMicrophone = false, holdMicrophone = null, holdConnection = null, serverPhase = saved.phase, resumePhase = 'presenting', endPhase = 'qna', controlReply = null;
   const view = { bind(value) { handlers = value; } };
   for (const name of ['configure', 'phase', 'connection', 'audio', 'error', 'meter',
     'speaking', 'caption', 'slide', 'curveball', 'timer', 'ended', 'dispose', 'notice']) {
@@ -84,7 +84,7 @@ function environment({ saved = session(), mock = false, liveVoice = true,
       if (url === '/health' && healthReply) return healthReply.promise;
       if (url.endsWith('/control')) {
         const action = JSON.parse(init.body).action;
-        serverPhase = ({ pause: 'paused', resume: resumePhase, end: 'qna' })[action] ?? serverPhase;
+        serverPhase = ({ pause: 'paused', resume: resumePhase, end: endPhase })[action] ?? serverPhase;
       }
       return { ok: true, json: async () => url === '/health'
         ? { adapters: { voice: liveVoice ? 'higgs' : 'mock', stt: 'higgs', llm: 'mock' } }
@@ -136,6 +136,7 @@ function environment({ saved = session(), mock = false, liveVoice = true,
     holdMicrophone(value) { holdMicrophone = value; },
     holdConnection(value) { holdConnection = value; },
     resumeTo(value) { resumePhase = value; },
+    endTo(value) { endPhase = value; },
     holdControlReply(value) { controlReply = value; },
     event(type, payload = {}, timestamp_ms = 0) {
       if (type === 'phase_changed') serverPhase = payload.to;
@@ -304,8 +305,12 @@ test('reconnecting voice in a running session preserves elapsed time and sends n
     assert.equal(env.messages('presentation_started').length, 0);
     assert.equal(env.latest('timer')[0].elapsed_ms, 45000);
     env.voice.active = false; env.options.onListeningState(false);
+    await tick();
+    assert.equal(app.state.phase, 'paused');
     await env.handlers.start(); env.advance(2000); app.tick();
     assert.equal(env.messages('presentation_started').length, 0);
+    assert.equal(env.latest('timer')[0].elapsed_ms, 45000, 'Reconnecting alone must not resume the clock.');
+    await env.handlers.pause(); env.advance(2000); app.tick();
     assert.equal(env.latest('timer')[0].elapsed_ms, 47000);
   } finally { await app.stop(); }
 });
@@ -660,3 +665,230 @@ test('a late failed Resume response cannot replace the completed report with a s
     assert.equal(app.state.phase, 'report'); assert.equal(env.views.error.length, errors);
   } finally { reply.resolve({ phase: 'answering' }); await resuming; await app.stop(); }
 });
+
+function loseAudio(env, callback = env.options) {
+  env.voice.active = false; env.voice.listening = false;
+  callback.onListeningState(false);
+}
+
+test('unexpected current audio closure pauses backend and both local clocks once without reconnecting', async () => {
+  const env = environment({ saved: session({ phase: 'presenting', elapsed_ms: 42000,
+    session_clock_ms: 42000, timer_remaining_ms: 22000 }) }), app = await bootRoom(env.deps);
+  try {
+    await env.handlers.start(); env.advance(5000); const callback = env.options;
+    loseAudio(env); callback.onListeningState(false); callback.onListeningState(false);
+    assert.equal(app.state.phase, 'paused');
+    assert.equal(env.latest('timer')[0].elapsed_ms, 47000);
+    assert.equal(env.latest('timer')[0].remaining_ms, 17000);
+    env.advance(90000); app.tick(); await tick();
+    assert.equal(env.latest('timer')[0].elapsed_ms, 47000);
+    assert.equal(env.latest('timer')[0].remaining_ms, 17000);
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['pause']);
+    assert.equal(env.voiceInstances.length, 1); assert.ok(env.voice.stopped >= 1);
+    assert.equal(env.handlers.beginTurn(), false);
+    assert.match(env.latest('notice')[0], /Session paused.*Resume to reconnect/);
+    const origin = app.state.startedAt;
+    await env.handlers.pause();
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['pause', 'resume']);
+    assert.equal(env.voiceInstances.length, 2); assert.equal(app.state.startedAt, origin);
+    assert.equal(env.messages('presentation_started').length, 0);
+    env.advance(2000); app.tick(); assert.equal(env.latest('timer')[0].elapsed_ms, 49000);
+  } finally { await app.stop(); }
+});
+
+test('audio loss discards held and pending-final turn IDs before pause; stale transcripts never answer later', async () => {
+  for (const held of [true, false]) {
+    const env = environment({ saved: session({ phase: 'answering' }) }), app = await bootRoom(env.deps);
+    try {
+      await env.handlers.start(); env.handlers.beginTurn();
+      if (!held) env.handlers.endTurn();
+      const turn = env.messages('presenter_turn_started').at(-1).turn_id, callback = env.options;
+      const marker = env.calls.length; loseAudio(env); await tick();
+      const calls = env.calls.slice(marker), rest = calls.findIndex((call) => call.includes('/control'));
+      assert.ok(calls.indexOf('voice:discard') >= 0 && calls.indexOf('voice:discard') < rest);
+      assert.ok(calls.indexOf('voice:stop') >= 0 && calls.indexOf('voice:stop') < rest);
+      assert.equal(env.messages('presenter_turn_cancelled').filter((value) => value.turn_id === turn).length, 1);
+      callback.onSegment({ start_ms: 1, end_ms: 2000, text: 'Discarded answer' }, turn);
+      await env.handlers.pause();
+      callback.onSegment({ start_ms: 1, end_ms: 2000, text: 'Still discarded' }, turn);
+      assert.equal(env.messages('transcript_segment').length, 0);
+      assert.equal(app.state.transcribing, false);
+    } finally { await app.stop(); }
+  }
+});
+
+test('audio loss during Skip waits for the current command, masks its stale phase and then pauses', async () => {
+  const env = environment({ saved: session({ phase: 'answering', elapsed_ms: 12000 }) });
+  const app = await bootRoom(env.deps), reply = deferred();
+  try {
+    await env.handlers.start(); env.holdControlReply(reply);
+    const skipping = env.handlers.skip(); await tick(); loseAudio(env);
+    assert.equal(app.state.phase, 'paused');
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['skip']);
+    env.event('skipped'); assert.match(env.latest('notice')[0], /Audio disconnected/);
+    env.advance(5000); env.holdControlReply(null); reply.resolve({ phase: 'presenting' });
+    await skipping; await tick();
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['skip', 'pause']);
+    assert.equal(app.state.phase, 'paused'); app.tick();
+    assert.equal(env.latest('timer')[0].elapsed_ms, 12000);
+  } finally { reply.resolve({ phase: 'presenting' }); await app.stop(); }
+});
+
+test('audio loss during Restore sends a pause without accepting the old Restore phase', async () => {
+  const env = environment({ saved: session({ phase: 'recovering', elapsed_ms: 12000 }) });
+  const app = await bootRoom(env.deps), reply = deferred();
+  try {
+    await env.handlers.start(); env.holdControlReply(reply);
+    const restoring = env.handlers.restore(); await tick();
+    env.holdControlReply(null); loseAudio(env); await tick();
+    reply.resolve({ phase: 'presenting' }); await restoring;
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['restore_slides', 'pause']);
+    assert.equal(app.state.phase, 'paused');
+  } finally { reply.resolve({ phase: 'presenting' }); await app.stop(); }
+});
+
+test('room event-bus loss can pause through REST and Resume cannot run while that bus is absent', async () => {
+  const env = environment({ saved: session({ phase: 'presenting', elapsed_ms: 20000 }) }), app = await bootRoom(env.deps);
+  try {
+    await env.handlers.start(); env.busStatus('disconnected'); await tick();
+    assert.equal(app.state.phase, 'paused');
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['pause']);
+    env.advance(30000); app.tick(); assert.equal(env.latest('timer')[0].elapsed_ms, 20000);
+    assert.match(env.latest('notice')[0], /Reload the room.*Resume/);
+    await env.handlers.pause();
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['pause']);
+    assert.equal(app.state.phase, 'paused');
+  } finally { await app.stop(); }
+});
+
+test('failed automatic pause stays visibly frozen, does not loop, and Resume repairs pause before resuming', async () => {
+  const env = environment({ saved: session({ phase: 'presenting', elapsed_ms: 20000 }) });
+  const originalFetch = env.deps.fetch; let failPause = true;
+  env.deps.fetch = async (url, init) => {
+    const response = await originalFetch(url, init);
+    if (url.endsWith('/control') && JSON.parse(init.body).action === 'pause' && failPause) {
+      return { ok: false, json: async () => ({ detail: 'Pause unavailable' }) };
+    }
+    return response;
+  };
+  const app = await bootRoom(env.deps);
+  try {
+    await env.handlers.start(); const callback = env.options; loseAudio(env); await tick();
+    callback.onListeningState(false); env.advance(90000); app.tick(); await tick();
+    assert.equal(app.state.phase, 'paused'); assert.equal(env.latest('timer')[0].elapsed_ms, 20000);
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['pause']);
+    assert.match(env.latest('error')[0], /local timer is frozen.*could not confirm Pause.*Resume/);
+    assert.doesNotMatch(env.latest('notice')[0], /Session paused/);
+    failPause = false; await env.handlers.pause();
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['pause', 'pause', 'resume']);
+    assert.equal(app.state.phase, 'presenting'); assert.equal(env.voiceInstances.length, 2);
+  } finally { await app.stop(); }
+});
+
+for (const pauseFails of [true, false]) {
+  test(`audio loss during manual Pause keeps clocks frozen when its REST ${pauseFails ? 'fails' : 'succeeds'}`, async () => {
+    const env = environment({ saved: session({ phase: 'presenting', elapsed_ms: 20000,
+      timer_remaining_ms: 15000 }) }), app = await bootRoom(env.deps), reply = deferred();
+    let pausing;
+    try {
+      await env.handlers.start(); env.advance(2000); env.holdControlReply(reply);
+      pausing = env.handlers.pause(); await tick();
+      loseAudio(env); env.busStatus('disconnected');
+      env.advance(10000); app.tick();
+      assert.equal(app.state.phase, 'paused');
+      assert.equal(env.latest('timer')[0].elapsed_ms, 22000);
+      assert.equal(env.latest('timer')[0].remaining_ms, 13000);
+      env.holdControlReply(null);
+      if (pauseFails) reply.reject(new Error('Manual Pause request failed.'));
+      else reply.resolve({ phase: 'paused' });
+      await pausing; await tick();
+      env.advance(10000); app.tick();
+      assert.equal(env.latest('timer')[0].elapsed_ms, 22000);
+      assert.equal(env.latest('timer')[0].remaining_ms, 13000);
+      assert.deepEqual(env.controls().map((request) => request.body.action), ['pause']);
+      if (pauseFails) {
+        assert.match(env.latest('error')[0], /local timer is frozen.*could not confirm Pause.*Resume/);
+        assert.doesNotMatch(env.latest('notice')[0], /Session paused/);
+      } else assert.match(env.latest('notice')[0], /Session paused/);
+      env.busStatus('live'); await env.handlers.pause();
+      assert.deepEqual(env.controls().map((request) => request.body.action),
+        pauseFails ? ['pause', 'pause', 'resume'] : ['pause', 'resume']);
+      assert.equal(app.state.phase, 'presenting');
+      assert.equal(env.messages('presentation_started').length, 0);
+    } finally { reply.resolve({ phase: 'paused' }); await pausing; await app.stop(); }
+  });
+}
+
+test('audio lost while Resume POST is pending cannot reopen the clock and queues one pause afterward', async () => {
+  const env = environment({ saved: session({ phase: 'paused', elapsed_ms: 20000 }) });
+  const app = await bootRoom(env.deps), reply = deferred();
+  try {
+    await env.handlers.start(); env.holdControlReply(reply);
+    const resuming = env.handlers.pause(); await tick(); loseAudio(env);
+    env.holdControlReply(null); reply.resolve({ phase: 'presenting' });
+    await resuming; await tick();
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['resume', 'pause']);
+    env.advance(10000); app.tick(); assert.equal(env.latest('timer')[0].elapsed_ms, 20000);
+    assert.equal(app.state.phase, 'paused');
+  } finally { reply.resolve({ phase: 'presenting' }); await app.stop(); }
+});
+
+test('backend Pause arriving before audio-close callback supplies confirmation without a duplicate pause request', async () => {
+  const env = environment({ saved: session({ phase: 'presenting' }) }), app = await bootRoom(env.deps);
+  try {
+    await env.handlers.start(); env.event('phase_changed', { to: 'paused' });
+    env.event('audio_status', { status: 'waiting_for_audio' }); loseAudio(env); await tick();
+    assert.deepEqual(env.controls(), []);
+    assert.match(env.latest('notice')[0], /Session paused.*Resume to reconnect/);
+    assert.equal(app.state.phase, 'paused');
+  } finally { await app.stop(); }
+});
+
+test('End supersedes an automatic Pause reply, preserves Q&A audio safety, and finishing Q&A remains available', async () => {
+  const env = environment({ saved: session({ phase: 'presenting' }) }), app = await bootRoom(env.deps), reply = deferred();
+  try {
+    await env.handlers.start(); env.holdControlReply(reply); loseAudio(env); await tick();
+    assert.equal(env.views.currentControls.canEndWhileConnecting, true);
+    env.holdControlReply(null);
+    const ending = env.handlers.end(), duplicate = env.handlers.end();
+    assert.equal(env.views.currentControls.canEndWhileConnecting, false);
+    await Promise.all([ending, duplicate]);
+    reply.resolve({ phase: 'paused' }); await tick(); await tick();
+    assert.equal(app.state.inQna, true); assert.equal(app.state.phase, 'paused');
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['pause', 'end', 'pause']);
+    // The live backend completes an explicit second End into report; emulate that response.
+    env.endTo('report');
+    await env.handlers.end(); assert.equal(app.state.phase, 'report');
+  } finally { reply.resolve({ phase: 'paused' }); await app.stop(); }
+});
+
+test('setup, reconnect failure, intentional Pause/End/Stop reply and old bridges never trigger automatic pauses', async () => {
+  const env = environment(), app = await bootRoom(env.deps);
+  try {
+    env.failMicrophone(true); await env.handlers.start();
+    assert.deepEqual(env.controls(), []); assert.equal(app.state.phase, 'setup');
+    env.failMicrophone(false); await env.handlers.start();
+    env.event('phase_changed', { to: 'presenting' }); const old = env.options;
+    env.handlers.stopReply(); assert.deepEqual(env.controls(), []);
+    await env.handlers.pause(); const pausedCount = env.controls().length;
+    loseAudio(env); await tick(); assert.equal(env.controls().length, pausedCount);
+    await env.handlers.pause(); old.onListeningState(false); await tick();
+    assert.equal(app.state.phase, 'presenting');
+    assert.deepEqual(env.controls().map((request) => request.body.action), ['pause', 'resume']);
+  } finally { await app.stop(); }
+});
+
+for (const terminal of ['report', 'dispose']) {
+  test(`late automatic Pause completion cannot mutate ${terminal}`, async () => {
+    const env = environment({ saved: session({ phase: 'presenting' }) }), app = await bootRoom(env.deps), reply = deferred();
+    try {
+      await env.handlers.start(); env.holdControlReply(reply); loseAudio(env); await tick();
+      if (terminal === 'report') env.event('phase_changed', { to: 'report' }); else await app.stop();
+      const before = JSON.stringify(env.views);
+      reply.resolve({ phase: 'paused' }); await tick();
+      assert.equal(app.state.phase, terminal === 'report' ? 'report' : 'paused');
+      if (terminal === 'dispose') assert.equal(JSON.stringify(env.views), before);
+      assert.equal(env.controls().length, 1);
+    } finally { reply.resolve({ phase: 'paused' }); await app.stop(); }
+  });
+}

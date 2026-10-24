@@ -238,6 +238,10 @@ class Session:
             self._control_pending = True
             self.presenter_turn_cancelled()
 
+    def cancel_prepared_control(self) -> None:
+        """Release an abandoned control intent; its activity invalidation stays effective."""
+        self._control_pending = False
+
     def invalidate_audience_decisions(self) -> None:
         """A disconnected input owner must not deliver a delayed audience action."""
         self._activity_revision += 1

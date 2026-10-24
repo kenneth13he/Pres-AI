@@ -98,9 +98,10 @@ No key is included in this guide. See [VOICE_SETUP.md](VOICE_SETUP.md) for setup
 P0-2 and P0-11 retain their earlier human acceptance in the voice lab. Two human room flows
 also completed with real Boson reasoning, clear audio and automatic Q&A/report. Their original
 reports remain historical evidence; subsequent countdown fixes were checked with a separately
-labelled synthetic timing replay. Formal clean-demo, measured recovery demonstration and
-backup recording sign-off remain separate P0-13/P0-14 work. See the dated acceptance entries
-below. Automated checks emulate browser APIs and do not replace human hardware testing.
+labelled synthetic timing replay. A later recorded natural blackout measured 7.140-second
+recovery, and the reviewed older-build backup now exists locally (see
+[RECORDING_BACKUP.md](../demo/RECORDING_BACKUP.md)). P0-13's two clean final-build runs remain
+open. Automated checks emulate browser APIs and do not replace human hardware testing.
 
 ## Automated verification
 
@@ -113,7 +114,7 @@ Use Node from your normal PATH for the browser checks. The macOS setup launcher 
 also use an existing bundled runtime on Codex installations. No Node runtime is
 required by the running app.
 
-Current checks: **285 backend tests and 151 frontend/audio tests pass**, plus lint, types,
+Current checks: **296 backend tests and 166 frontend/audio tests pass**, plus lint, types,
 schema consistency and mock fixtures. Coverage includes real ASGI event/binary socket flows
 with simulated vendor HTTP, standalone deterministic frontend controllers, audience
 configuration/upload races, report rendering and portrait/speaker lifecycle. These are
@@ -142,8 +143,11 @@ succeeds. Transcript history intentionally retains the old question; skipping di
 the active demand without erasing the record. The paused state explicitly says the timer
 is frozen. Past skips do not show a fresh success banner on reload.
 
-After the idle limit closes audio, **Resume reconnects speech and microphone before
-unfreezing the session**. A failed connection leaves the room paused with a retry message.
+Unexpected audio loss now pauses the room automatically and freezes both timers. Held or
+pending final input is discarded, playback canceled, and stale cleanup cannot affect a
+replacement audio bridge. **Resume reconnects speech and microphone before unfreezing the
+session**. A failed connection leaves the room paused with a retry message. If network loss
+prevents confirming Pause, the page labels its freeze as local-only and repairs Pause on Resume.
 Repeated clicks share one connection; End remains available during connection work, and
 late responses cannot reopen a finished room. Reloading paused Q&A preserves Finish Q&A.
 The one-minute idle and ten-minute hard limits remain intact.

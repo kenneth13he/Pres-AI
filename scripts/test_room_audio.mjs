@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 const dataModule = (source) => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const read = (name) => readFile(new URL(`../frontend/js/${name}`, import.meta.url), 'utf8');
 const vad = dataModule(await read('voice_vad.js'));
@@ -11,7 +12,12 @@ const realtime = dataModule((await read('realtime.js'))
 const { connectVoice } = await import(dataModule((await read('voice.js'))
   .replace("'/js/realtime.js'", `'${realtime}'`)));
 const { startMic } = await import(dataModule(await read('mic.js')));
-function environment({ pushToTalk = true, canBeginTurn = () => true } = {}) {
+const controllerSource = process.env.ROOM_AUDIO_USE_HEAD_CONTROLLER === '1'
+  ? execFileSync('git', ['show', 'HEAD:frontend/js/room_controller.js'], {
+    cwd: new URL('..', import.meta.url), encoding: 'utf8',
+  }) : await read('room_controller.js');
+const { bootRoom } = await import(dataModule(controllerSource));
+function environment({ pushToTalk = true, canBeginTurn = () => true, freshMics = false } = {}) {
   const sockets = [], signals = [], states = [], trace = [], segments = [], statuses = [];
   const listeners = new Map(); let callbacks, now = 1000, micCalls = 0;
   const mic = { active: true, enabled: true, held: false,
@@ -30,13 +36,19 @@ function environment({ pushToTalk = true, canBeginTurn = () => true } = {}) {
     setEnabled(value) { this.enabled = value; if (!value) this.held = false; },
     stop() { this.active = false; this.enabled = false; this.held = false; },
   };
-  globalThis.roomTestMic = async (options) => { callbacks = options; micCalls++; return mic; };
+  let currentMic = mic;
+  const microphones = [];
+  globalThis.roomTestMic = async (options) => {
+    if (freshMics && micCalls) currentMic = { ...mic, active: true, enabled: true, held: false };
+    callbacks = options; micCalls++; microphones.push(currentMic); trace.push('mic:open');
+    return currentMic;
+  };
   globalThis.window = { addEventListener: (n,c) => listeners.set(n,c), removeEventListener: (n) => listeners.delete(n) };
   globalThis.location = { protocol: 'http:', host: 'localhost:8000' };
-  globalThis.fetch = async () => ({ ok: true, json: async () => ({ value: 'temporary-room-test',
+  globalThis.fetch = async () => { trace.push('mint'); return { ok: true, json: async () => ({ value: 'temporary-room-test',
     url: 'wss://room-test.invalid', config: { type: 'session.update', session: {
       model: 'higgs-realtime', audio: { input: { turn_detection: null } },
-    } } }) });
+    } } }) }; };
   globalThis.WebSocket = class {
     static OPEN = 1;
     constructor(url, protocols) {
@@ -52,7 +64,8 @@ function environment({ pushToTalk = true, canBeginTurn = () => true } = {}) {
     close() { this.readyState = 3; this.closed = true; this.onclose?.(); }
   };
   const player = { bytes: [], cancelled: 0, enqueue(bytes) { this.bytes.push(bytes); },
-    cancel() { this.cancelled++; }, whenIdle: async () => {} };
+    cancel() { this.cancelled++; }, whenIdle: async () => {},
+    async resume() { trace.push('player:resume'); }, async close() { trace.push('player:close'); } };
   const options = { sessionId: 'room-test', player, pushToTalk, canBeginTurn, clock: () => now,
     onTurnStart(id) { signals.push(['start', id]); trace.push('start'); },
     onTurnEnd(id) { signals.push(['end', id]); trace.push('end'); },
@@ -60,8 +73,10 @@ function environment({ pushToTalk = true, canBeginTurn = () => true } = {}) {
     onSegment(segment, id) { segments.push({ segment, id }); },
     onListeningState(active) { states.push(active); }, onStatus(text) { statuses.push(text); },
   };
-  return { mic, sockets, signals, states, trace, segments, statuses, listeners, player,
-    get binary() { return sockets[0]; }, get stt() { return sockets.find((socket) => socket.protocols); },
+  return { sockets, signals, states, trace, segments, statuses, listeners, player, microphones,
+    get mic() { return currentMic; }, get now() { return now; }, advance(ms) { now += ms; },
+    get binary() { return sockets.filter((socket) => !socket.protocols).at(-1); },
+    get stt() { return sockets.filter((socket) => socket.protocols).at(-1); },
     get micCalls() { return micCalls; }, get micOptions() { return callbacks; },
     connect: () => connectVoice(options),
     feed(ms = 100, level = 0.2) {
@@ -290,4 +305,101 @@ test('voice and transcription admission reaches the actual Space microphone hand
     assert.equal(env.segments.length, 1); assert.equal(env.segments[0].id, env.signals[0][1]);
   } finally { voice.stop(); }
   assert.equal(track.stopped, true);
+});
+
+test('actual transcription idle closes both audio paths and pauses room until explicit reconnect', async () => {
+  const globals = ['window', 'location', 'fetch', 'WebSocket', 'roomTestMic', 'performance',
+    'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'];
+  const saved = new Map(globals.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  const env = environment({ freshMics: true }), intervals = new Map(), timeouts = new Map();
+  let nextTimer = 0, handlers, app;
+  const views = {}, sent = [], requests = [], voices = [];
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  Object.defineProperty(globalThis, 'performance', { configurable: true, value: { now: () => env.now } });
+  globalThis.setInterval = (callback, ms) => { const id = ++nextTimer; intervals.set(id, { callback, ms }); return id; };
+  globalThis.clearInterval = (id) => intervals.delete(id);
+  globalThis.setTimeout = (callback, ms) => { const id = ++nextTimer; timeouts.set(id, { callback, ms }); return id; };
+  globalThis.clearTimeout = (id) => timeouts.delete(id);
+  const view = { bind(value) { handlers = value; } };
+  for (const name of ['configure', 'phase', 'connection', 'audio', 'error', 'meter', 'speaking',
+    'caption', 'slide', 'curveball', 'timer', 'ended', 'dispose', 'notice', 'controls']) {
+    view[name] = (value) => { (views[name] ??= []).push(value); };
+  }
+  const emit = (type, payload = {}) => app.onEvent({ type, payload, session_id: 'room-test', timestamp_ms: env.now - 1000 });
+  const deps = {
+    view, location: { ...globalThis.location, search: '?session=room-test' }, window: globalThis.window,
+    now: () => env.now, isMock: () => false, createPlayer: () => env.player,
+    setInterval: globalThis.setInterval, clearInterval: globalThis.clearInterval,
+    getSession: async () => ({ session_id: 'room-test', phase: 'setup', session_clock_ms: 0,
+      elapsed_ms: 0, events: [], config: { input_mode: 'push_to_talk', personas: [] },
+      preset: { name: 'Startup pitch' } }),
+    connect(_id, onEvent, onStatus) {
+      queueMicrotask(() => onStatus('live'));
+      return { close() {}, send(message) {
+        sent.push(message);
+        if (message.type === 'presentation_started') {
+          onEvent({ type: 'phase_changed', session_id: 'room-test', timestamp_ms: 0,
+            payload: { from: 'setup', to: 'presenting' } });
+        }
+        return true;
+      } };
+    },
+    async connectVoice(options) {
+      const voice = await connectVoice(options); voices.push(voice); return voice;
+    },
+    async fetch(url, options = {}) {
+      if (url === '/health') return { ok: true, json: async () => ({ adapters: { voice: 'higgs', orchestrator: 'boson' } }) };
+      const { action } = JSON.parse(options.body); requests.push(action); env.trace.push(`control:${action}`);
+      return { ok: true, json: async () => ({ phase: action === 'pause' ? 'paused' : 'presenting' }) };
+    },
+    playMock() { throw new Error('The integrated room must not use mock replay.'); },
+  };
+  try {
+    app = await bootRoom(deps); await settle();
+    assert.equal(await handlers.start(), true); assert.equal(app.state.phase, 'presenting');
+    assert.equal(voices[0].active, true); assert.equal(voices[0].listening, true);
+    emit('timer_override', { remaining_ms: 120000, style: 'urgent' });
+    assert.equal(handlers.beginTurn(), true); env.feed(100); handlers.endTurn();
+    const turn = sent.find((message) => message.type === 'presenter_turn_ended').turn_id;
+    assert.equal(app.state.transcribing, true); assert.equal(env.commits().length, 1);
+    const staleStt = env.stt;
+    const idle = [...intervals.values()].find(({ ms }) => ms === 5000);
+    assert.ok(idle, 'The actual transcription controller installed its idle interval.');
+    env.advance(61000); idle.callback(); await settle();
+    assert.equal(app.state.phase, 'paused'); assert.deepEqual(requests, ['pause']);
+    assert.equal(app.state.audioReady, false); assert.equal(app.state.transcribing, false);
+    assert.equal(env.mic.held, false); assert.equal(env.mic.active, false);
+    assert.equal(voices[0].active, false); assert.ok(env.sockets.every((socket) => socket.closed));
+    assert.equal(sent.filter((message) => message.type === 'presenter_turn_cancelled' && message.turn_id === turn).length, 1);
+    staleStt.event({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'late', transcript: 'Must not become an answer.' });
+    assert.equal(sent.some((message) => message.type === 'transcript_segment'), false);
+    app.tick(); const frozen = views.timer.at(-1);
+    assert.equal(frozen.elapsed_ms, 61100); assert.equal(frozen.remaining_ms, 58900);
+    env.advance(10000); app.tick();
+    assert.equal(views.timer.at(-1).elapsed_ms, frozen.elapsed_ms);
+    assert.equal(views.timer.at(-1).remaining_ms, frozen.remaining_ms);
+    assert.equal(env.trace.filter((event) => event === 'mint').length, 1);
+    assert.equal(timeouts.size, 0, 'A disconnected bridge must not schedule an automatic reconnect.');
+    assert.equal(handlers.beginTurn(), false);
+
+    const reconnectAt = env.trace.length;
+    await handlers.pause(); await settle();
+    assert.deepEqual(requests, ['pause', 'resume']); assert.equal(env.micCalls, 2);
+    assert.notEqual(env.microphones[0], env.microphones[1]);
+    const reconnect = env.trace.slice(reconnectAt);
+    assert.ok(reconnect.indexOf('mic:open') >= 0 && reconnect.indexOf('mic:open') < reconnect.indexOf('control:resume'));
+    assert.equal(voices[1].active, true); assert.equal(voices[1].listening, true);
+    assert.equal(app.state.phase, 'presenting'); assert.equal(handlers.beginTurn(), true);
+    env.feed(100); handlers.endTurn(); env.final('fresh-final', 'Only the new capture is forwarded.');
+    assert.equal(sent.filter((message) => message.type === 'transcript_segment').length, 1);
+    assert.notEqual(sent.find((message) => message.type === 'transcript_segment').turn_id, turn);
+    assert.equal(app.state.transcribing, false);
+  } finally {
+    try { await app?.stop(); } finally {
+      for (const [name, descriptor] of saved) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else delete globalThis[name];
+      }
+    }
+  }
 });

@@ -72,7 +72,11 @@ def install_voice_routes(app: FastAPI, get_room: Callable[[str], Any]) -> None:
             else:
                 await ws.send_text(data)
 
-        voice.attach(send, room.now_ms)
+        try:
+            attachment_id = voice.attach(send, room.now_ms)
+        except VoiceError:
+            await ws.close(code=4409)
+            return
         started: float | None = None
         try:
             async with asyncio.timeout(600):
@@ -94,11 +98,25 @@ def install_voice_routes(app: FastAPI, get_room: Callable[[str], Any]) -> None:
         finally:
             if started is not None:
                 SpendCounter.realtime_ms += int((time.monotonic() - started) * 1000)
-            await voice.detach()
+            # Record loss before yielding. Socket cancellation must not abort the room's
+            # independent pause/cleanup while an earlier model or audio turn unwinds.
+            loss = room.prepare_audio_disconnect(voice, attachment_id)
+            cleanup = asyncio.create_task(room.audio_disconnected(voice, attachment_id, loss))
+            room.workers.add(cleanup)
+
+            def cleanup_done(task: asyncio.Task[None]) -> None:
+                room.workers.discard(task)
+                if not task.cancelled():
+                    task.exception()  # observe any teardown failure after the socket has gone
+
+            cleanup.add_done_callback(cleanup_done)
             try:
-                await ws.close()
-            except RuntimeError:
-                pass
+                await asyncio.shield(cleanup)
+            finally:
+                try:
+                    await ws.close()
+                except (RuntimeError, WebSocketDisconnect):
+                    pass
 
     @app.post("/api/sessions/{session_id}/voice/test")
     async def test_speech(session_id: str, body: TestSpeech, request: Request) -> dict[str, bool]:

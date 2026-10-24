@@ -9,6 +9,7 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
   const player = createPlayer(), seen = new Set(), captionedQuestions = new Set();
   const validTurns = new Set(), cancelledTurns = new Set();
   let voice, link, interval, elapsedBase = 0, elapsedAt = null, countdown = null, mock = false, voiceEpoch = 0, controlEpoch = 0, audioOpening = null, pendingAction = null;
+  let audioSafety = null;
   const wallClock = () => state.startedAt == null ? 0 : Math.max(0, Math.round(now() - state.startedAt));
   const elapsed = () => elapsedBase + (elapsedAt == null ? 0 : now() - elapsedAt);
   const remaining = () => countdown == null ? null : Math.max(0, countdown.ms - (countdown.at == null ? 0 : now() - countdown.at));
@@ -26,7 +27,8 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
     view.controls({ started: state.started, busy: state.busy, listening: state.audioReady,
       ptt: state.inputMode === 'push_to_talk', canPresent: !mock && state.busConnected,
       connecting: state.connecting || state.startSent && !state.started, pending: state.pending, inQna: state.inQna,
-      canEndWhileConnecting: state.connecting && pendingAction === 'resume',
+      canEndWhileConnecting: state.connecting && pendingAction === 'resume'
+        || state.pending && Boolean(audioSafety) && pendingAction !== 'end',
       canTalk: state.busConnected && !state.transcribing && ['presenting', 'answering', 'qna', 'recovering'].includes(state.phase) });
   }
   function syncCapture() {
@@ -34,17 +36,50 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
     controls();
   }
   function tick() { view.timer({ elapsed_ms: elapsed(), remaining_ms: remaining(), paused: state.phase === 'paused' }); }
+  function safetyNotice(safety) {
+    if (audioSafety !== safety || state.disposed || state.phase === 'report') return;
+    const message = !safety.confirmed ? (safety.failed
+      ? 'Audio disconnected. Local timer frozen. Press Resume to retry the connection and Pause.'
+      : 'Audio disconnected. Local timer frozen while the room pauses…')
+      : !state.busConnected ? 'Connection lost. Session paused. Reload the room, then press Resume to reconnect.'
+        : 'Audio disconnected. Session paused. Press Resume to reconnect and continue.';
+    view.notice?.(message); view.audio(message);
+  }
+  function suspendForAudioLoss(cause, previouslyReady = state.audioReady) {
+    if (!previouslyReady || mock || state.disposed || !state.started || state.connecting
+      || ['setup', 'report'].includes(state.phase) || pendingAction === 'end') return;
+    const alreadyPaused = state.phase === 'paused' && pendingAction !== 'resume';
+    const safety = audioSafety || { cause, confirmed: alreadyPaused,
+      needsPause: !alreadyPaused && pendingAction !== 'pause', running: false, failed: false };
+    if (pendingAction === 'resume') { safety.confirmed = false; safety.needsPause = true; }
+    audioSafety = safety; state.audioReady = false; state.busy = false; voiceEpoch++;
+    discardTurns(); voice?.cancelTurn(); void Promise.resolve(voice?.stop()).catch(() => {});
+    player.cancel(); view.speaking(null); setPhase('paused'); safetyNotice(safety);
+    void requestSafetyPause();
+  }
+  async function requestSafetyPause() {
+    const safety = audioSafety;
+    if (!safety || !safety.needsPause || safety.running || state.pending || state.disposed || state.phase === 'report') return;
+    safety.running = true; safety.needsPause = false; safety.failed = false;
+    try { await control('pause', safety); }
+    finally {
+      safety.running = false;
+      if (audioSafety === safety && safety.needsPause) void requestSafetyPause();
+    }
+  }
   function setPhase(phase) {
     if (state.disposed || state.phase === 'report') return;
+    if (phase === 'qna') { state.inQna = true; countdown = null; }
+    if (audioSafety && !['paused', 'report'].includes(phase)) phase = 'paused';
     if (phase !== state.phase) {
       elapsedBase = elapsed(); elapsedAt = ['setup', 'paused', 'report'].includes(phase) ? null : now();
       if (countdown) { countdown.ms = remaining(); countdown.at = phase === 'paused' ? null : now(); }
     }
     state.phase = phase;
     if (phase !== 'setup') { state.started = true; state.startSent = false; }
-    if (phase === 'qna') { state.inQna = true; countdown = null; }
     view.phase(phase); syncCapture(); tick();
     if (phase === 'report') {
+      audioSafety = null;
       view.notice?.(''); endAudio();
       view.ended(mock ? '/report.html?mock=1' : `/report.html?session=${encodeURIComponent(sessionId)}`);
     }
@@ -66,20 +101,26 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
       case 'session_started':
         if (!historic) { state.started = true; state.startSent = false; syncCapture(); }
         break;
-      case 'phase_changed': if (!historic) setPhase(p.to); break;
+      case 'phase_changed':
+        if (!historic) {
+          if (p.to === 'paused' && audioSafety) {
+            audioSafety.confirmed = true; audioSafety.needsPause = false;
+          }
+          setPhase(p.to); if (audioSafety) safetyNotice(audioSafety);
+        } break;
       case 'slide_changed': state.slide = p.slide_number; view.slide(state.slide); break;
       case 'transcript_segment': view.caption('you', p.text); break;
       case 'question_queued':
-        if (!historic) view.notice?.('');
+        if (!historic && !audioSafety) view.notice?.('');
         captionedQuestions.add(p.question);
         view.caption(p.persona_id, p.question, p.follow_up_of ? 'follow-up' : p.curveball_id ? 'curveball' : null); break;
       case 'ai_speech_started':
-        if (!historic) { state.busy = true; view.speaking(p.speaker); controls(); }
+        if (!historic && !audioSafety) { state.busy = true; view.speaking(p.speaker); controls(); }
         if (!captionedQuestions.delete(p.line)) view.caption(p.speaker, p.line); break;
       case 'ai_speech_ended':
         if (!historic) { state.busy = false; view.speaking(null); controls(); } break;
       case 'curveball_triggered':
-        if (!historic) view.notice?.('');
+        if (!historic && !audioSafety) view.notice?.('');
         view.curveball(p);
         if (p.speaker === 'ui') view.caption('moderator', p.line || p.kind, p.kind);
         if (!historic && p.sfx_url) player.playSfx?.(p.sfx_url); break;
@@ -87,11 +128,19 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
         view.curveball(null);
         if (p.recovery?.resume_after_ms != null) view.caption('moderator', `Speech resumed after ${(p.recovery.resume_after_ms / 1000).toFixed(1)} seconds.`);
         break;
-      case 'timer_override': if (!historic) { countdown = { ms: p.remaining_ms, at: now() }; tick(); } break;
-      case 'audio_status': if (!historic && p.status === 'waiting_for_audio') view.audio('Connect your microphone to continue.'); break;
+      case 'timer_override': if (!historic) { countdown = { ms: p.remaining_ms, at: state.phase === 'paused' ? null : now() }; tick(); } break;
+      case 'audio_status':
+        if (!historic && p.status === 'waiting_for_audio') {
+          if (audioSafety) safetyNotice(audioSafety);
+          else if (state.phase === 'paused') view.notice?.('Audio disconnected. Session paused. Press Resume to reconnect and continue.');
+          else view.audio('Connect your microphone to continue.');
+        } break;
       case 'skipped':
         view.caption('moderator', 'Skipped — carry on.');
-        if (!historic) view.notice?.('Question skipped. No penalty. The transcript keeps what was said.');
+        if (!historic) {
+          if (audioSafety) safetyNotice(audioSafety);
+          else view.notice?.('Question skipped. No penalty. The transcript keeps what was said.');
+        }
         break;
       case 'error': view.error(p.message || 'Something went wrong. You can pause or skip and continue.'); break;
       case 'session_ended':
@@ -120,7 +169,13 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
           if (current()) view.audio(/^Listening/.test(text)
             ? (state.inputMode === 'push_to_talk' ? 'Ready. Hold to speak and release when finished.' : 'Listening in hands-free mode.') : text);
         },
-        onListeningState: (active) => { if (current()) { state.audioReady = active; if (!active) state.transcribing = false; controls(); } },
+        onListeningState: (active) => {
+          if (!current()) return;
+          const previouslyReady = state.audioReady;
+          state.audioReady = active;
+          if (!active) { state.transcribing = false; suspendForAudioLoss('audio', previouslyReady); }
+          controls();
+        },
         onSpeaking: (active) => { if (current()) { state.busy = active; controls(); } },
         onActivity: () => { if (current()) send({ type: 'presenter_speech_activity' }); },
         onTurnStart: (turn_id) => {
@@ -162,12 +217,23 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
       return false;
     } finally { state.connecting = false; controls(); }
   }
-  async function control(action) {
+  async function postControl(action) {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/control`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'The room control did not complete.');
+    return result;
+  }
+  async function control(action, safety = null) {
     if (!state.started || state.disposed || state.phase === 'report' || mock
-      || state.pending && !(action === 'end' && pendingAction === 'resume' && audioOpening)) return;
+      || safety && audioSafety !== safety
+      || state.pending && !(action === 'end' && pendingAction !== 'end'
+        && (pendingAction === 'resume' && audioOpening || audioSafety))) return;
     const interrupts = action !== 'restore_slides';
     const command = ++controlEpoch, timerWasRunning = elapsedAt != null;
     if (interrupts) { state.pending = true; pendingAction = action; }
+    if (action === 'end' && audioSafety) audioSafety.needsPause = false;
     if (action === 'pause') {
       elapsedBase = elapsed(); elapsedAt = null;
       if (countdown) { countdown.ms = remaining(); countdown.at = null; }
@@ -186,24 +252,49 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
         }
         if (command !== controlEpoch || state.disposed || state.phase !== 'paused') return;
         if (!state.busConnected) throw new Error('The room connection was lost. The session is still paused. Reload to reconnect.');
+        if (audioSafety && !audioSafety.confirmed) {
+          const paused = await postControl('pause');
+          if (command !== controlEpoch || state.disposed || state.phase === 'report') return;
+          if (paused.phase !== 'paused') throw new Error('Could not confirm the room is paused. Try Resume again when connected.');
+          audioSafety.confirmed = true;
+        }
       }
-      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/control`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action }),
-      });
-      const result = await response.json();
+      const result = await postControl(action);
       if (command !== controlEpoch || state.disposed || state.phase === 'report') return;
-      if (!response.ok) throw new Error(result.detail || 'The room control did not complete.');
+      if (safety && result.phase !== 'paused' && result.phase !== 'report') throw new Error('The room did not confirm Pause.');
+      if (safety) { safety.confirmed = true; safetyNotice(safety); }
+      if (action === 'pause' && audioSafety && result.phase === 'paused') {
+        audioSafety.confirmed = true; audioSafety.failed = false; safetyNotice(audioSafety);
+      }
+      if (action === 'resume') {
+        if (!(state.audioReady && voice?.active && voice?.listening && state.busConnected)) {
+          suspendForAudioLoss('audio', true);
+          if (audioSafety) { audioSafety.confirmed = false; audioSafety.needsPause = true; }
+          throw new Error('Audio disconnected while resuming. The local timer is still frozen. Press Resume to reconnect.');
+        }
+        audioSafety = null; view.notice?.('');
+      }
+      if (action === 'end' && audioSafety && result.phase !== 'report') {
+        audioSafety.confirmed = false; audioSafety.needsPause = true;
+      }
       if (result.phase && command === controlEpoch) setPhase(result.phase);
     } catch (error) {
       if (command !== controlEpoch || state.disposed || state.phase === 'report') return;
-      if (action === 'pause' && timerWasRunning && state.phase !== 'paused') {
+      if (action === 'pause' && timerWasRunning && state.phase !== 'paused' && !audioSafety) {
         elapsedAt = now(); if (countdown) countdown.at = now();
       }
-      view.error(error.message);
+      const pauseSafety = safety || (action === 'pause' ? audioSafety : null);
+      if (pauseSafety) {
+        if (pauseSafety.confirmed) safetyNotice(pauseSafety);
+        else {
+          pauseSafety.failed = true; safetyNotice(pauseSafety);
+          view.error('Audio disconnected. The local timer is frozen, but the room could not confirm Pause. Check the connection, then press Resume to retry.');
+        }
+      } else view.error(error.message);
     }
     finally {
       if (interrupts && command === controlEpoch) { state.pending = false; pendingAction = null; }
-      syncCapture();
+      if (!state.disposed) { syncCapture(); void requestSafetyPause(); }
     }
   }
   function changeSlide(delta) {
@@ -213,6 +304,7 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
   }
   async function stop() {
     if (state.disposed) return; state.disposed = true;
+    audioSafety = null;
     discardTurns(); voiceEpoch++; voice?.cancelTurn(); await voice?.stop(); state.audioReady = false;
     link?.close(); await player.close();
     if (interval != null) clearInterval(interval);
@@ -258,7 +350,9 @@ export async function bootRoom({ view, connect, getSession, isMock, createPlayer
       if (state.disposed || state.phase === 'report') return;
       state.busConnected = status === 'live';
       view.connection(state.busConnected ? connectionLabel() : 'Room disconnected. Reload to reconnect.');
-      if (!state.busConnected) { voice?.cancelTurn(); voice?.setPaused(true); }
+      if (!state.busConnected) {
+        suspendForAudioLoss('room'); voice?.cancelTurn(); voice?.setPaused(true);
+      }
       else if (state.started) syncCapture();
       controls();
     });

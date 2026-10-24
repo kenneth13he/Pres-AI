@@ -4,19 +4,20 @@ Current local mode uses **live Boson/Higgs speech and audience reasoning** with 
 Boson key and balance. Hold-to-talk is the default; static portraits are used and avatar
 video is off. The Claude adapter remains available but was not used for these local runs.
 
-Last updated: 2026-10-24. Current checkpoint gate: **285 backend + 151 frontend/audio tests**,
+Last updated: 2026-10-24. Current checkpoint gate: **296 backend + 166 frontend/audio tests**,
 plus lint, type, schema and mock checks. Two earlier human flows had clear audio and
 automatic Q&A/report finish, with 12 reasoning successes and zero recorded errors or
 fallbacks, but incomplete final-build coverage. A subsequent recorded blackout run measured
 7.140-second recovery; its content-coaching validation failure prevents clean acceptance.
-**P0-13 and P0-14 remain open pending two fresh clean recorded runs after the fixes.**
+**P0-13 remains open pending two fresh clean recorded runs. P0-14's local backup file exists.**
 
 Deadline handoff: the user requested publication now with final tests explicitly open.
 The next corrected-build attempt had two voice disconnection errors and insufficient
 captured speech, so coaching was correctly skipped and no clean acceptance is claimed.
-The countdown room was not started. Existing 60-second idle audio closure can leave the
-room timer running; pause before long idle periods and reconnect before continuing.
-The exact browser-local cause of this attempt's disconnections was not saved.
+The countdown room was not started. The exact browser-local cause of that attempt's
+disconnections was not saved. The idle continuation gap has since been fixed: unexpected
+audio loss now pauses the room and freezes timers, with explicit reconnect-before-Resume.
+Actual idle-callback and ASGI disconnect simulations pass without hardware/vendor calls.
 
 The table distinguishes live local behavior from remaining demo evidence. Historical
 checkpoints below retain the provider and test state that applied at the time.
@@ -40,7 +41,7 @@ corrected. Historical reports stay unchanged. The earlier checkpoint was publish
 | 7 | Presenter resumes; recovery seconds measured | live natural blackout recovery observed | Recorded attempt measured 7.140 s with an exact recovery quote and automatic restoration. Human confirmed clear speech. Its separate report-coaching fallback still prevents whole-run clean acceptance |
 | 8 | Q&A, then report with evidence quotes | human automatic finish confirmed; corrected coaching awaits fresh run | Recorded attempt completed two grounded questions and two follow-ups. Coaching response exceeded citation limits and fell back; fixed generation passes two saved-context live checks. No historical report was changed |
 | — | Two clean final-build demos | open | Fresh pair required after report-generation and queued-clock fixes. Supplemental replays are separate from human evidence |
-| — | Backup recording exists in `demo/` | candidate only | Local six-minute room/blackout/Q&A/report recording is hash-verified and human-reviewed. It contains the coaching fallback; final clean backup selection remains open. Video is excluded from Git |
+| — | Backup recording exists in `demo/` | local file complete (P0-14) | Human-reviewed, hash-verified real-run backup: see RECORDING_BACKUP.md. It is an older build with coaching fallback/clock caveats, and does not certify P0-13. Video is excluded from Git |
 
 ## Hour gates
 
