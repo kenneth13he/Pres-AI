@@ -43,15 +43,15 @@ async def test_persona_line_becomes_a_clip_event_in_the_session_stream(tmp_path)
     await session.slide_changed(s(1), 2)
     await session.force_curveball("heckler", s(70))
     clips = [e for e in session.events if e.type == "audio_status"
-             and e.payload["status"] == "clip" and e.payload["speaker"] == "vc"]
-    assert len(clips) == 1
+             and e.payload["status"] == "clip" and "wrapper" in e.payload["text"]]
+    assert len(clips) == 1 and clips[0].payload["speaker"] == "vc"
     clip = clips[0]
     assert clip.timestamp_ms == s(70)
     assert clip.payload["url"].startswith(f"/audio/{session.session_id}/")
     assert (tmp_path / clip.payload["url"].removeprefix("/audio/")).read_bytes() == b"ID3fake-mp3"
     heckle = next(r for r in seen if "wrapper" in r["input"])
     assert heckle["voice"] == "eleanor" and heckle["input"].startswith("<|emotion:anger|>")
-    assert seen[0]["voice"] == "nora"  # the host's welcome opens the call
+
     assert SpendCounter.tts_chars > before
 
 

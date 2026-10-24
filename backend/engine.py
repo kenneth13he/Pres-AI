@@ -68,8 +68,6 @@ ADDRESSED = re.compile(
     r"|\b(you guys|y'?all|everyone|panel|tell me|talk to me|give me|please|let'?s (talk|chat))\b",
     re.I)
 REPLY_COOLDOWN_MS = 4_000
-WELCOME = "Hi, thanks for joining — we can see and hear you. Go ahead whenever you're ready."
-HEARD_YOU = "Yes, we can hear you clearly — go ahead."
 SOCIAL_COOLDOWN_MS = 15_000
 DECIDE_BACKOFF_MS = 5_000  # the brain said "nothing to ask": give the talk 5 s before asking again
 # Curveballs that are a question in disguise: the presenter answers, then we resolve "answered".
@@ -200,9 +198,11 @@ class Session:
             await self.voice.start_voice_session(self.session_id, self.config)
         except Exception as exc:
             self._error(now_ms, "voice.start_voice_session", exc)
-        # A real call starts with the host letting you know they can see and hear you.
-        await self._speak(None, WELCOME, now_ms, "warm")
+        # A real call starts with someone on the panel greeting you — in their own words.
         self._last_social_ms = now_ms
+        await self._converse(now_ms, "(The presenter has just joined the call and hasn't said "
+                                     "anything yet. Greet them briefly and let them know you can "
+                                     "see and hear them.)", force=True)
 
     async def slide_changed(self, now_ms: int, number: int) -> None:
         """Track slide, emit slide_changed, voice.send_context(slide text)."""
@@ -241,13 +241,12 @@ class Session:
         if HEARING_CHECK.search(text):
             if not recent:
                 self._last_social_ms = now_ms
-                await self._speak(None, HEARD_YOU, now_ms, "warm")
+                await self._converse(now_ms, text, force=True)
             return
         if GREETING.search(text) and len(text.split()) <= 8 and not self._greeted_back:
             self._greeted_back = True
             self._last_social_ms = now_ms
-            friendly = min(self.config.personas, key=lambda p: p.skepticism)
-            await self._speak(friendly.id, "Hi! Good to meet you — go ahead.", now_ms, "warm")
+            await self._converse(now_ms, text, force=True)
             return
         if INVITATION.search(text):
             await self._take_questions(now_ms)
@@ -255,10 +254,11 @@ class Session:
         if ADDRESSED.search(text):
             await self._converse(now_ms, text)
 
-    async def _converse(self, now_ms: int, text: str) -> None:
+    async def _converse(self, now_ms: int, text: str, force: bool = False) -> None:
         """Talked to directly: one panelist answers, in character, like a person on a call.
         The fastest voice (a live avatar) is preferred so the reply lands right away."""
-        if self._last_reply_ms is not None and now_ms - self._last_reply_ms < REPLY_COOLDOWN_MS:
+        if (not force and self._last_reply_ms is not None
+                and now_ms - self._last_reply_ms < REPLY_COOLDOWN_MS):
             return
         self._last_reply_ms = now_ms
         prefer = sorted(getattr(self.voice, "fast_speakers", lambda: set())())
@@ -269,16 +269,16 @@ class Session:
         except Exception as exc:
             self._error(now_ms, "orchestrator.reply", exc)
             return
-        if reply is not None:
+        if reply is not None and reply.line.strip():
             await self._speak(reply.persona_id, reply.line, now_ms)
 
     async def _take_questions(self, now_ms: int) -> None:
         """Invited to ask: ask now (skipping the usual wait), or say so if the room is done."""
         asked = len([q for q in self.questions if not q["follow_up_of"] and not q["curveball_id"]])
         if self.phase == "presenting" and asked >= self.scheduler.question_budget:
-            friendly = min(self.config.personas, key=lambda p: p.skepticism)
-            await self._speak(friendly.id, "No more questions from me for now — carry on.",
-                              now_ms, "warm")
+            await self._converse(now_ms, "(The presenter invited questions, but the panel has "
+                                         "already asked plenty. Let them continue, briefly.)",
+                                 force=True)
             return
         try:
             ctx = self._context(now_ms, True, [])
@@ -516,8 +516,10 @@ class Session:
                             q["slide_number"], follow_up_of=q["question_id"],
                             curveball_id=q["curveball_id"])
             return
-        ack = verdict.line if verdict and verdict.verdict == "satisfied" else "Thanks — go on."
-        await self._speak(q["persona_id"], ack, now_ms, "warm")  # even the VC is warm here
+        # A short reaction only when the panelist has something real to say; otherwise they
+        # just let you carry on, like people do. Never a stock line.
+        if verdict and verdict.verdict == "satisfied" and verdict.line.strip():
+            await self._speak(q["persona_id"], verdict.line, now_ms)
         self.pending_question = None
         self.followups_used = 0
         self.last_event_end_ms = now_ms

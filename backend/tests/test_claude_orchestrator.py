@@ -103,7 +103,9 @@ async def test_follow_up_uses_the_prompt_once_then_hands_back():
     assert first.verdict == "follow_up"
     assert client.messages.calls[0]["system"] == FOLLOW_UP_PROMPT
     second = await orch.follow_up("Evidence?", "We plan to grow.", persona, used=1)
-    assert second.verdict == "satisfied" and len(client.messages.calls) == 1  # no second call
+    # past the one follow-up the model is told so; a follow_up anyway becomes silence
+    assert second.verdict == "satisfied" and second.line == ""
+    assert "no more follow-ups: yes" in client.messages.calls[1]["messages"][0]["content"]
 
 
 async def test_recovery_is_null_without_speech_and_evidence_must_be_verbatim():

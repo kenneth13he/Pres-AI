@@ -216,10 +216,13 @@ covered. Personas are fictional. Be brief.
 Output rules: persona_id must be one of the listed persona ids exactly; cited_transcript_excerpt
 must be copied verbatim from the transcript (or null); slide_number is the slide shown now."""
 
-FOLLOW_UP_PROMPT = """Does the presenter's answer address the actual question? If yes,
-acknowledge in at most 6 words (for example "Fair enough, go on.") and hand back. If no,
-ask one concise follow-up targeting the missing detail. Never rude; never the same wording
-twice."""
+FOLLOW_UP_PROMPT = """You asked the presenter a question on a live call and they just answered.
+If the answer addresses it, verdict "satisfied": react the way this persona really would, in a
+few natural words that respond to what they actually said — or return an empty line to simply
+let them continue, which is often the most natural choice. Never a generic stock phrase like
+"fair enough, go on" or "thanks, go on". If it doesn't address it, verdict "follow_up": ask one
+concise follow-up targeting the missing detail, in character. If "no more follow-ups" is set,
+always answer "satisfied". Never rude, never repeat yourself."""
 
 RECOVERY_PROMPT = """Score the presenter's recovery from a curveball, 0-100, on the rubric
 for its kind: time_crunch - core message and a clear close within the limit; slides_down -
@@ -230,13 +233,14 @@ inventing specifics; distraction - resumed the thought without restarting; vip_a
 stated the ask and the why-now within 30 s. Quote the transcript as evidence. If timing is
 null, say so in the observation."""
 
-REPLY_PROMPT = """You are one fictional panelist on a live video call with someone rehearsing a
-pitch or presentation. They just spoke to the panel directly. Reply as ONE panelist, in that
+REPLY_PROMPT = """You are one fictional panelist on a live video call with someone rehearsing
+a pitch or presentation. They just spoke to the panel directly. Reply as ONE panelist, in that
 persona's character and focus: one or two short, natural spoken sentences, no lists, no
-markdown. Answer what they actually said or asked. If they're making small talk or checking
-in, respond like a real person on a call and, where it fits, nudge them back to their pitch.
-Stay in character: a skeptical VC sounds skeptical, a confused student sounds unsure. Never
-sycophantic, never rude. If a preferred persona is listed and fits, use them.
+markdown, no stock phrases. Text in (parentheses) describes the situation rather than words
+the presenter said. Answer what they actually said or asked. If they're making small talk or
+checking in, respond like a real person on a call and, where it fits, nudge them back to
+their pitch. Stay in character: a skeptical VC sounds skeptical, a confused student sounds
+unsure. Never sycophantic, never rude. If a preferred persona is listed and fits, use them.
 persona_id must be one of the listed ids exactly."""
 
 PERSONA_PROMPT = """Turn a free-text description of an audience member into a fictional
@@ -388,12 +392,15 @@ class ClaudeOrchestrator:
     async def follow_up(
         self, question: str, answer: str, persona: Persona, used: int
     ) -> FollowUpVerdict:
-        if used >= 1:
-            return FollowUpVerdict(verdict="satisfied", line="Thanks — go on.")
         user = (f"persona: {persona.role} ({persona.name}); style: {persona.style_hint}\n"
-                f"question: {question}\nanswer: {answer}")
+                f"question: {question}\nanswer: {answer}\n"
+                f"no more follow-ups: {'yes' if used >= 1 else 'no'}")
         out = await self._parse(FOLLOW_UP_PROMPT, user, FollowUpVerdict, "low")
-        return out or FollowUpVerdict(verdict="satisfied", line="Fair enough, go on.")
+        if out is None:
+            return FollowUpVerdict(verdict="satisfied", line="")  # say nothing, carry on
+        if used >= 1 and out.verdict == "follow_up":
+            return FollowUpVerdict(verdict="satisfied", line="")  # one follow-up is the limit
+        return out
 
     async def assess_recovery(
         self, kind: CurveballKind, line: str, after: list[TranscriptSegment],

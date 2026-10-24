@@ -207,10 +207,10 @@ function onEvent(ev) {
     case 'curveball_resolved': clearCurveball(p); break;
     case 'timer_override':
       state.timerOverrideUntil = p.remaining_ms > 0 ? Date.now() + p.remaining_ms : null;
-      if (p.remaining_ms === 0) caption('moderator', 'Time. Let’s go to questions.'); break;
+      break;
     case 'paused': $('slide-viewer').classList.add('opacity-50'); break;
     case 'resumed': $('slide-viewer').classList.remove('opacity-50'); break;
-    case 'skipped': caption('moderator', p.reason ? 'Out of time for that one — no penalty.' : 'Skipped — carry on.'); break;
+    case 'skipped': break;
     case 'error': console.warn('[room] error event', p); break;
     case 'session_ended': setPhase('report'); break;
   }
@@ -241,7 +241,7 @@ function clearCurveball(p) {
   $('tiles').querySelectorAll('.seat').forEach((t) => t.classList.remove('blank', 'flash'));
   state.activeCurveball = null;
   const r = p.recovery;
-  if (r && r.resume_after_ms != null) caption('moderator', `Back on track after ${(r.resume_after_ms / 1000).toFixed(1)} s${r.score != null ? ` · recovery ${r.score}/100` : ''}.`);
+  void r; // recovery timing lives in the report, not in the call
 }
 
 // ---- controls -------------------------------------------------------------------------

@@ -406,32 +406,30 @@ def lines(session, speaker=None):
             and (speaker is None or e.payload["speaker"] == speaker)]
 
 
-async def test_the_host_welcomes_you_when_the_call_starts():
+async def test_someone_greets_you_when_the_call_starts():
     session = make_session()
     await session.start(0)
-    assert lines(session, "moderator") == [
-        "Hi, thanks for joining — we can see and hear you. Go ahead whenever you're ready."]
+    assert len(lines(session)) == 1  # one greeting, written for the moment (mock: canned)
 
 
 async def test_can_you_hear_me_gets_an_answer_but_not_every_time():
     session = make_session()
     await session.start(0)
     await session.presenter_transcript(s(20), seg(20, "hello can you guys hear me"))
-    assert lines(session, "moderator")[-1] == "Yes, we can hear you clearly — go ahead."
+    assert len(lines(session)) == 2
     await session.presenter_transcript(s(25), seg(25, "can you hear me now"))  # within cooldown
-    assert lines(session, "moderator").count("Yes, we can hear you clearly — go ahead.") == 1
+    assert len(lines(session)) == 2
     await session.presenter_transcript(s(45), seg(45, "am I on mute?"))
-    assert lines(session, "moderator").count("Yes, we can hear you clearly — go ahead.") == 2
+    assert len(lines(session)) == 3
     assert session.phase == "presenting" and session.questions == []
 
 
-async def test_a_hello_gets_one_hello_back_from_the_friendliest_panelist():
+async def test_a_hello_gets_one_hello_back():
     session = make_session()
     await session.start(0)
     await session.presenter_transcript(s(17), seg(17, "Hi everyone"))
     await session.presenter_transcript(s(19), seg(19, "hello again"))
-    # Sam has the lowest skepticism on the panel
-    assert lines(session, "student") == ["Hi! Good to meet you — go ahead."]
+    assert len(lines(session)) == 2  # the opening greeting + one hello back
 
 
 async def test_inviting_questions_gets_one_right_away():
@@ -443,12 +441,48 @@ async def test_inviting_questions_gets_one_right_away():
     assert session.phase == "answering" and len(session.questions) == 1
 
 
-async def test_when_the_room_has_asked_enough_they_say_so():
+async def test_when_the_room_has_asked_enough_someone_says_so_in_their_own_words():
     session = make_session(difficulty="friendly")
     await session.start(0)
-    session.questions = [{"follow_up_of": None, "curveball_id": None}] * 2  # budget used
+    done = {"persona_id": "vc", "question": "q", "cited_excerpt": None, "answer": "a",
+            "follow_up_of": None, "curveball_id": None}
+    session.questions = [dict(done), dict(done)]  # budget used
     await session.presenter_transcript(s(80), seg(80, "Does that make sense?"))
-    assert lines(session)[-1] == "No more questions from me for now — carry on."
+    assert len(lines(session)) == 2 and session.phase == "presenting"
+
+
+async def test_no_stock_phrases_anywhere_in_the_real_panel():
+    import inspect
+
+    import backend.engine as eng
+    from backend.services.audience import ClaudeOrchestrator
+
+    code = inspect.getsource(eng) + inspect.getsource(ClaudeOrchestrator)
+    for stock in ("Thanks — go on", "Fair enough, go on.\")", "Good to meet you",
+                  "we can hear you clearly", "No more questions from me"):
+        assert stock not in code, stock
+
+
+async def test_a_good_answer_can_be_met_with_silence():
+    session = make_session()
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    claim = "We can get 100,000 customers in six months."
+    await session.presenter_transcript(s(33), seg(33, claim))
+    await session.tick(s(36))
+    before = len(lines(session))
+
+    from backend.services.audience import MockOrchestrator
+
+    class Quiet(MockOrchestrator):
+        async def follow_up(self, question, answer, persona, used):
+            from spec.contracts import FollowUpVerdict
+            return FollowUpVerdict(verdict="satisfied", line="")
+
+    session.orchestrator = Quiet()
+    await session.presenter_transcript(
+        s(45), seg(45, "Two pilots, three hundred weekly actives, both renewing, up 20%."))
+    assert len(lines(session)) == before and session.phase == "presenting"
 
 
 async def test_talking_to_the_panel_gets_a_reply_from_the_fastest_voice():
@@ -456,9 +490,10 @@ async def test_talking_to_the_panel_gets_a_reply_from_the_fastest_voice():
     session.voice.fast_speakers = lambda: {"professor"}  # type: ignore[attr-defined]
     await session.start(0)
     await session.presenter_transcript(s(40), seg(40, "can we have a real conversation"))
-    assert lines(session, "professor") == ["Sure. Walk us through it."]
+    # the greeting + this reply, both from the fast voice
+    assert len(lines(session, "professor")) == 2
     await session.presenter_transcript(s(41), seg(41, "what do you think so far?"))  # cooldown
-    assert len(lines(session, "professor")) == 1
+    assert len(lines(session, "professor")) == 2
     await session.presenter_transcript(s(50), seg(50, "how would you price this?"))
-    assert lines(session, "professor")[-1].startswith("Good question")
+    assert len(lines(session, "professor")) == 3
     assert session.questions == [] and session.phase == "presenting"  # never scored
