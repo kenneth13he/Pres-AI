@@ -35,12 +35,16 @@ fresh human pair of this final build is still unverified.
   ingested the six-slide sample PDF, returned a valid slide PNG, captured one synthetic
   held turn, froze Pause time, resumed and produced a valid report with zero error events.
   This used no provider credentials and is automatic proof, not human microphone acceptance.
-- `origin/main` (`302c44b`) is an ancestor of the release. The latest alternate
-  `feat/voice-room` (`f958d7c`) has identical shared public report/persona/event contracts;
-  its report additions are already covered here. Its native panel/free-chat engine uses
-  a different protocol. A merge dry-run reports conflicts: do not wholesale merge it over
-  the tested single-orchestrator, hold-to-talk lifecycle. An intentional future migration
-  needs integration work; no unsafe late merge was performed.
+- `origin/main` (`302c44b`) is an ancestor of the release. The alternate
+  `feat/voice-room` report snapshot (`f958d7c`) has identical shared public
+  report/persona/event contracts; its report additions are already covered here.
+  Its subsequent update through `3bc3b8c` was also reviewed: shared contracts are
+  unchanged; it adds a live-face warm pool and a WAV-upload Higgs STT path for its
+  own room. Yang already uses Higgs STT with explicit hold-to-talk and socket ownership.
+  The warm pool is outside the requested videos-off release. Its native panel/free-chat
+  engine uses a different protocol. A merge dry-run reports conflicts: do not wholesale
+  merge it over the tested single-orchestrator, hold-to-talk lifecycle. An intentional
+  future migration needs integration work; no unsafe late merge was performed.
 - Mock/offline checks require no vendor key, but normal page styling still uses the
   Tailwind CDN and therefore needs internet or a cached copy. Live Boson use needs internet.
 
