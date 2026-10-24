@@ -9,10 +9,11 @@ The prompts and the Claude call shape are settled; the bodies are skeletons.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol, TypeVar
 
 from spec.contracts import (
     CurveballKind,
@@ -24,6 +25,8 @@ from spec.contracts import (
 )
 
 from .curveballs import CATALOG
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -220,51 +223,137 @@ class ClaudeOrchestrator:
     Model `claude-opus-5-5`. Thinking stays adaptive (it cannot be disabled on this model);
     latency is controlled with output_config.effort: "low" for decide/follow_up (they run in a
     ~4 s window), "high" for assess_recovery. JSON comes back through structured outputs
-    (`client.messages.parse(..., output_format=<pydantic model>)`), never prefill. Keep the
-    system prompt byte-identical across calls so the prefix caches; everything that varies
-    goes in the user turn. A `stop_reason == "refusal"` returns None and the caller skips.
+    (`client.messages.parse(..., output_format=<pydantic model>)`), never prefill. The system
+    prompts are byte-identical across calls so the prefix caches; everything that varies goes
+    in the user turn. A `stop_reason == "refusal"` returns None and the caller falls back to
+    a safe default — the session never breaks on the brain (§8).
+
+    `client` is injectable so the formatting and fallbacks are tested without a key.
     """
 
-    def __init__(self) -> None:
-        import anthropic
+    def __init__(self, client: Any | None = None, model: str | None = None) -> None:
+        if client is None:
+            import anthropic
 
-        self.client = anthropic.AsyncAnthropic()
-        self.model = os.environ.get("ORCHESTRATOR_MODEL", "claude-opus-5-5")
+            client = anthropic.AsyncAnthropic()
+        self.client = client
+        self.model = model or os.environ.get("ORCHESTRATOR_MODEL", "claude-opus-5-5")
+        self.timeout_s = float(os.environ.get("ORCHESTRATOR_TIMEOUT_S", "8"))
 
-    async def _parse(self, system: str, user: str, schema: type,
-                     effort: Literal["low", "high"]):
-        response = await self.client.messages.parse(
-            model=self.model,
-            max_tokens=2048,
-            system=system,
-            output_config={"effort": effort},
-            messages=[{"role": "user", "content": user}],
-            output_format=schema,
+    async def _parse(self, system: str, user: str, schema: type[T],
+                     effort: Literal["low", "high"]) -> T | None:
+        response = await asyncio.wait_for(
+            self.client.messages.parse(
+                model=self.model,
+                max_tokens=2048,
+                system=system,
+                output_config={"effort": effort},
+                messages=[{"role": "user", "content": user}],
+                output_format=schema,
+            ),
+            timeout=self.timeout_s,
         )
         if response.stop_reason == "refusal":
             return None
         return response.parsed_output
 
+    # ---- formatting (pure, tested) --------------------------------------------------
+
+    @staticmethod
+    def format_transcript(segments: list[TranscriptSegment]) -> str:
+        if not segments:
+            return "(silence)"
+        return "\n".join(f"[{s.start_ms / 1000:.1f}s] {s.text}" for s in segments)
+
+    @staticmethod
+    def format_context(ctx: OrchestratorContext) -> str:
+        personas = "\n".join(
+            f"- {p.id}: {p.role}; focus: {', '.join(p.focus)}; skepticism {p.skepticism:.2f}"
+            + (f"; style {p.style_hint}" if p.style_hint else "")
+            + (f"; may voice: {', '.join(p.plays)}" if p.plays else "")
+            for p in ctx.personas
+        )
+        prior = "\n".join(
+            f"- {q['persona_id']} asked: {q['q']!r}"
+            + (f" (citing {q['cited']!r})" if q.get("cited") else "")
+            + (f" → answered: {q['a']!r}" if q.get("a") else " → not answered")
+            for q in ctx.prior_qa
+        ) or "(none)"
+        allowed = []
+        if ctx.question_allowed:
+            allowed.append("question")
+        if ctx.eligible_kinds:
+            allowed.append("curveball")
+        allowed.append("none")
+        return (
+            f"preset: {ctx.preset_id}\ndifficulty: {ctx.difficulty}\n"
+            f"personas (fictional):\n{personas}\n\n"
+            f"slide {ctx.slide_number} text:\n{ctx.slide_text[:1500] or '(no deck)'}\n\n"
+            f"recent presenter transcript (last ~30 s):\n"
+            f"{ClaudeOrchestrator.format_transcript(ctx.recent_transcript)}\n\n"
+            f"prior questions this session:\n{prior}\n\n"
+            f"actions allowed right now: {', '.join(allowed)}\n"
+            f"eligible curveball kinds: {', '.join(ctx.eligible_kinds) or '(none)'}\n"
+            f"curveball budget remaining: {ctx.curveball_budget_remaining}\n"
+            f"seconds since the last audience event: "
+            f"{ctx.seconds_since_last_event if ctx.seconds_since_last_event is not None else 'n/a'}"
+        )
+
+    # ---- the three prompts + persona expansion ----------------------------------------
+
     async def decide(self, ctx: OrchestratorContext) -> OrchestratorDecision:
-        # TODO(C): format ctx into the user turn (personas, slide text ≤1500 chars, last ~30 s
-        # of transcript with timestamps, prior Q&A, question_allowed, eligible kinds, budget,
-        # seconds since last event) → self._parse(SYSTEM_PROMPT, user, OrchestratorDecision, "low")
-        raise NotImplementedError
+        none = OrchestratorDecision(action="none", reason="no decision")
+        if not ctx.question_allowed and not ctx.eligible_kinds:
+            return none
+        out = await self._parse(SYSTEM_PROMPT, self.format_context(ctx),
+                                OrchestratorDecision, "low")
+        if out is None:
+            return OrchestratorDecision(action="none", reason="model declined; skipped")
+        # Enforce what the engine will check anyway, so a bad answer is a "none", not an error.
+        if out.action == "question" and not ctx.question_allowed:
+            return none
+        if out.action == "curveball" and out.curveball_kind not in ctx.eligible_kinds:
+            return none
+        return out
 
     async def follow_up(
         self, question: str, answer: str, persona: Persona, used: int
     ) -> FollowUpVerdict:
-        # TODO(C): used ≥ 1 → satisfied without a call; else _parse(FOLLOW_UP_PROMPT, ..., "low")
-        raise NotImplementedError
+        if used >= 1:
+            return FollowUpVerdict(verdict="satisfied", line="Thanks — go on.")
+        user = (f"persona: {persona.role} ({persona.name}); style: {persona.style_hint}\n"
+                f"question: {question}\nanswer: {answer}")
+        out = await self._parse(FOLLOW_UP_PROMPT, user, FollowUpVerdict, "low")
+        return out or FollowUpVerdict(verdict="satisfied", line="Fair enough, go on.")
 
     async def assess_recovery(
         self, kind: CurveballKind, line: str, after: list[TranscriptSegment],
         resume_after_ms: int | None,
     ) -> RecoveryAssessment:
-        # TODO(C): _parse(RECOVERY_PROMPT, ..., RecoveryAssessment, "high")
-        raise NotImplementedError
+        if not after:
+            return RecoveryAssessment(
+                score=None, evidence=None,
+                observation="No presenter speech was recorded after the event; not assessed.",
+                suggestion="Keep a three-point outline in your head so you can restart anywhere.",
+            )
+        timing = "null" if resume_after_ms is None else f"{resume_after_ms / 1000:.1f} s"
+        user = (f"kind: {kind}\nline delivered: {line}\n"
+                f"measured time until the presenter resumed: {timing}\n"
+                f"next 60 s of presenter transcript:\n{self.format_transcript(after)}")
+        out = await self._parse(RECOVERY_PROMPT, user, RecoveryAssessment, "high")
+        if out is None:
+            return RecoveryAssessment(
+                score=None, evidence=None,
+                observation="The model declined to assess this recovery.",
+                suggestion="Name what happened in one sentence, then continue from your outline.",
+            )
+        if out.evidence and not any(out.evidence.strip() in s.text for s in after):
+            out.evidence = after[0].text  # evidence must be verbatim (§10)
+        return out
 
     async def expand_persona(self, description: str, index: int) -> Persona:
-        # TODO(C): _parse(PERSONA_PROMPT, ..., Persona, "low");
-        #          set id=f"custom_{index}", custom=True
-        raise NotImplementedError
+        out = await self._parse(PERSONA_PROMPT, f"description: {description.strip()}",
+                                Persona, "low")
+        if out is None:
+            return await MockOrchestrator().expand_persona(description, index)
+        return out.model_copy(update={"id": f"custom_{index}", "custom": True})

@@ -72,3 +72,13 @@ Open question for the team: none
 Fixed (per review): `demo/sample_pitch.pdf` added (6-slide fictional Startup Pitch deck, generated with PyMuPDF — the §13 stage-recovery deck); ligatures expanded in extracted text so slide lines match the transcript; ingest runs in a threadpool so a big deck never stalls the rooms; 50 MB upload cap with a presenter-safe 400; route test cleans up the deck folder and the in-memory entry it creates; wrong AES fallback dropped.
 Evidence: test_slides.py 6/6 (ligature case added); suite 58/58; `data/decks` count unchanged across a test run
 Gate: green at the fix commit
+
+## P0-3b (C half) · 2026-10-23 · C · session 5
+Built: the real `ClaudeOrchestrator` — official `anthropic` SDK, `messages.parse` with structured outputs on `claude-opus-5-5`, adaptive thinking with effort low (decide / follow-up) and high (recovery); byte-stable system prompts with everything variable in the user turn; an 8 s timeout (`ORCHESTRATOR_TIMEOUT_S`); refusals and disallowed answers fall back to "none" / satisfied / null, never an exception that the engine can't absorb; evidence must be a verbatim transcript quote or it is replaced; `expand_persona` turns free text into a labelled custom `Persona`. Client is injectable, so all of it is tested offline. `scripts/try_orchestrator.py` makes one live call per prompt once a key is in `.env`.
+Tests: test_claude_orchestrator.py 7/7 (context formatting, call shape, guards, refusal, one-follow-up rule, null recovery, verbatim evidence, persona expansion + fallback, timeout); suite 65/65
+Gate: green at the commit
+Demo path: the brain can go live with `ORCHESTRATOR=claude` + `ANTHROPIC_API_KEY` — not yet exercised against the live API (needs the key: §15 Q6)
+Files outside my paths: .env.example (ORCHESTRATOR_TIMEOUT_S)
+Proposed decision changes (not implemented): none
+Next: all C-owned P0 lines are done; remaining C work is integration (P0-13) once A's room and B's voice land, then P1-2 curveballs and P1-4 fillers/WPM polish
+Open question for the team: whose Anthropic key, and its monthly cap — run `scripts/try_orchestrator.py` once it is in `.env`
