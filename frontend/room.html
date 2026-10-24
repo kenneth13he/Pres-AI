@@ -3,94 +3,169 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PresAI · Room</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="/css/app.css" />
+  <title>Pres AI · Room</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="stylesheet" href="/css/app.css?v=optimized-room-1" />
+  <style>
+    .room-page { min-height:100vh; display:flex; flex-direction:column; }
+    .room-head { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:14px 24px; border-bottom:1px solid var(--raised-2); }
+    .room-brand, .room-actions, .slide-controls, .mic-readout { display:flex; align-items:center; gap:12px; }
+    .room-brand { flex-wrap:wrap; gap:10px; }
+    .room-brand .logo { font-size:17px; margin-right:4px; }
+    .room-name { font-size:15px; font-weight:700; }
+    .room-meta { color:var(--muted); font-size:13px; }
+    .room-actions { flex-wrap:wrap; gap:8px; }
+    #timer { font:500 24px var(--mono); min-width:90px; text-align:right; margin-right:10px; font-variant-numeric:tabular-nums; }
+    #timer.urgent { color:var(--coral); } #timer.paused { opacity:.65; }
+    .room-page button { touch-action:manipulation; }
+    .room-page button:disabled { opacity:.4; cursor:not-allowed; }
+    .room-page button:focus-visible, .room-page a:focus-visible, .room-page summary:focus-visible { outline:2px solid var(--mint); outline-offset:4px; }
+    #btn-start { padding:10px 17px; border-radius:10px; font-size:14px; }
+    #btn-restore { background:var(--coral); color:var(--coral-ink); border-color:transparent; }
+    #btn-end { border-color:transparent; background:var(--raised-3); }
+    .room-feedback { padding:12px 24px 0; }
+    #room-state { margin:0; min-height:22px; font-size:14px; color:var(--mint); }
+    #room-notice { margin:10px 0 0; padding:12px 16px; border:1px solid var(--mint-line); border-radius:12px; color:var(--text); background:var(--mint-tint); font-size:14px; }
+    .room-layout { flex:1; display:grid; grid-template-columns:minmax(0,1fr) 340px; min-height:0; }
+    .meeting-room { padding:20px 24px; min-width:0; }
+    .room-page .meeting-stage { border:1px solid var(--border); border-radius:16px; background:#101214; overflow:visible; }
+    .room-page .meeting-stage > * { position:absolute; }
+    #stage-decor, #tiles { inset:0; pointer-events:none; }
+    #stage-decor > div { position:absolute; }
+    .slide-viewer { position:absolute; background:#181b1e; border:1px solid #2c3134; border-radius:1cqw; overflow:hidden; transition:opacity .4s; }
+    #slide-img { display:block; width:100%; height:100%; object-fit:contain; }
+    .slide-text { position:absolute; inset:0; display:grid; place-items:center; padding:8%; text-align:center; font-size:clamp(12px,1.8cqw,22px); color:var(--muted); }
+    .slide-viewer.dim #slide-img, .slide-viewer.dim .slide-text { opacity:.15; }
+    .slide-viewer .overlay { position:absolute; inset:0; display:grid; place-items:center; padding:8%; text-align:center; background:#050606; opacity:0; pointer-events:none; transition:opacity .3s; }
+    .slide-viewer.black .overlay { opacity:1; }
+    #overlay-title { font-size:clamp(14px,2cqw,26px); font-weight:800; }
+    #overlay-sub { margin-top:10px; color:var(--muted); font-size:clamp(11px,1.25cqw,16px); }
+    .room-page .seat { position:absolute; border:0; border-radius:.9cqw; background:var(--raised); overflow:visible; pointer-events:auto; }
+    .room-page .seat::before { display:none; }
+    .room-page .seat.speaking { z-index:5; }
+    .room-page .seat .portrait { position:absolute; inset:0; z-index:0; overflow:hidden; border-radius:inherit; background:linear-gradient(145deg,#283b33,#172320); isolation:isolate; }
+    /* Keep the complete static portrait visible; its softened copy fills wide seats. */
+    .portrait-fill { position:absolute; inset:-12%; z-index:0; width:124%; height:124%; display:block; object-fit:cover; object-position:center; filter:blur(14px) brightness(.45) saturate(.9); pointer-events:none; }
+    .portrait-image { position:absolute; inset:0; z-index:1; width:100%; height:100%; display:block; object-fit:contain; object-position:center; }
+    .portrait-fallback { position:absolute; inset:0; z-index:1; display:grid; place-items:center; color:var(--mint); font-size:clamp(14px,2.5cqw,36px); font-weight:800; }
+    .room-page .seat-label { position:absolute; left:0; right:0; bottom:0; z-index:2; padding:20px 7% 6%; border-radius:0 0 .9cqw .9cqw; background:linear-gradient(transparent,rgba(7,10,9,.92)); text-shadow:0 1px 3px #000; }
+    .seat-name, .seat-role, .fiction-label { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .seat-name { font-size:clamp(10px,1.15cqw,15px); font-weight:800; line-height:1.2; }
+    .seat-role { margin:2px 0 0; color:#d3d9d6; font-size:clamp(9px,.95cqw,12px); line-height:1.2; }
+    .fiction-label { margin-top:2px; font-size:clamp(8px,.75cqw,10px); color:#acb8b2; line-height:1.2; }
+    .speech-slot { position:absolute; left:50%; bottom:calc(100% + 10px); z-index:4; transform:translateX(-50%); width:max-content; max-width:min(310px,44vw); }
+    .speech-bubble { border:1px solid var(--mint-line); border-radius:12px; background:#17231d; padding:10px 12px; box-shadow:0 8px 24px #0006; max-height:150px; overflow:auto; }
+    .bubble-tag { display:block; margin-bottom:4px; color:var(--mint); font:500 10px var(--mono); text-transform:uppercase; }
+    .bubble-text { margin:0; font-size:13px; line-height:1.4; }
+    .speaking-waves { position:absolute; right:6%; top:8%; z-index:2; display:flex; gap:2px; align-items:center; height:14px; opacity:0; }
+    .speaking-waves i { width:3px; height:6px; border-radius:3px; background:var(--mint); }
+    .speaking .speaking-waves { opacity:1; }
+    .speaking .speaking-waves i { animation:voice-wave .65s ease-in-out infinite alternate; }
+    .speaking .speaking-waves i:nth-child(2) { animation-delay:.2s; } .speaking .speaking-waves i:nth-child(3) { animation-delay:.4s; }
+    @keyframes voice-wave { to { height:14px; } }
+    #host { left:2%; bottom:3%; width:220px; max-width:42%; height:52px; z-index:2; }
+    .room-page .host-seat { position:relative; width:100%; height:100%; background:var(--surface); border:1px solid var(--border-input); border-radius:10px; }
+    .room-page .host-seat .portrait { width:48px; right:auto; border-radius:9px 0 0 9px; }
+    .room-page .host-seat .seat-label { left:55px; top:0; padding:7px 7px 5px 0; background:none; text-shadow:none; }
+    .host-seat .seat-name { font-size:12px; } .host-seat .seat-role { font-size:10px; } .host-seat .fiction-label { font-size:9px; }
+    .host-seat .speech-slot { left:0; transform:none; max-width:300px; }
+    .slide-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; flex-wrap:wrap; color:var(--muted); font-size:13px; }
+    .slide-controls { gap:8px; } .slide-controls button { padding:5px 13px; } #slide-no { min-width:82px; text-align:center; }
+    .room-footnote { margin:16px 0 0; color:var(--faint); font-size:12px; line-height:1.6; }
+    .transcript-panel { border-left:1px solid var(--raised-2); display:flex; flex-direction:column; min-width:0; max-height:calc(100vh - 130px); padding:18px; }
+    .room-audio { border-bottom:1px solid var(--raised-2); padding-bottom:16px; }
+    .talk-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    #btn-talk { flex:1 0 100%; width:100%; border-radius:12px; padding:14px 12px; font-size:15px; user-select:none; touch-action:none; }
+    #audio-mode { font:500 11px var(--mono); color:var(--mint); margin-left:auto; }
+    #audio-status { margin:10px 0 0; font-size:13px; color:var(--muted); line-height:1.5; }
+    #mic-consent, .room-help { font-size:11px; color:var(--faint); line-height:1.5; }
+    #mic-consent { margin:10px 0; } .room-help summary { cursor:pointer; color:var(--muted); } .room-help p { margin:8px 0 0; }
+    #qna-hint { margin:12px 0 8px; font-size:13px; line-height:1.4; color:var(--mint); }
+    #btn-finish-session { font-size:12px; margin-bottom:12px; }
+    #room-error { color:var(--coral); font-size:13px; line-height:1.5; margin-top:12px; }
+    #report-ready { padding:12px; border:1px solid var(--mint-line); border-radius:10px; background:var(--mint-tint); font-size:14px; line-height:1.6; }
+    #report-link { color:var(--mint); text-decoration:underline; text-underline-offset:3px; }
+    .transcript-heading { display:flex; align-items:center; justify-content:space-between; padding:18px 0 12px; }
+    #transcript-title { margin:0; font-size:14px; font-weight:700; }
+    .transcript-log { flex:1; min-height:100px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding-bottom:12px; }
+    .caption { border-left:2px solid var(--mint); padding:9px 11px; border-radius:0 9px 9px 0; background:var(--surface); color:#d6dad9; font-size:14px; line-height:1.5; overflow-wrap:anywhere; }
+    .caption.presenter { border-color:var(--text); } .caption.moderator { border-color:var(--coral); }
+    .room-paused .speaking-waves i { animation-play-state:paused; }
+    @media(max-width:1050px) { .room-layout { grid-template-columns:minmax(0,1fr) 310px; } .room-head { padding:14px 18px; } .meeting-room { padding:20px 18px; } }
+    @media(max-width:850px) { .room-layout { grid-template-columns:1fr; } .transcript-panel { border-left:0; border-top:1px solid var(--raised-2); max-height:none; } .transcript-log { max-height:45vh; } .room-actions { width:100%; } #timer { margin-right:auto; text-align:left; } .speech-slot { max-width:48vw; } }
+    @media(prefers-reduced-motion:reduce) { .room-page *, .room-page *::before { animation:none!important; transition:none!important; } }
+  </style>
 </head>
-<body class="room-page min-h-screen">
-  <main class="mx-auto max-w-7xl px-4 py-6">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <span class="text-sm text-slate-500">PresAI ·</span>
-        <span id="preset-name" class="text-sm text-slate-300">Room</span>
-        <span id="phase" class="ml-3 rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">setup</span>
-        <p id="room-state" class="mt-1 text-sm font-medium text-cyan-200" role="status" aria-live="polite">Microphone is off. Start when ready.</p>
-      </div>
-      <div class="flex items-center gap-4">
-        <div id="timer" class="timer font-mono text-2xl">00:00</div>
-        <div class="flex flex-wrap gap-2 text-sm">
-          <button id="btn-start" class="rounded-lg bg-cyan-500 px-4 py-2 font-medium text-black">Start presenting</button>
-          <button id="btn-pause" class="rounded-lg bg-slate-800 px-3 py-2" title="Pause or resume the session">Pause</button>
-          <button id="btn-skip" class="rounded-lg bg-slate-800 px-3 py-2" title="Skip the current question or curveball">Skip</button>
-          <button id="btn-restore" class="hidden rounded-lg bg-amber-600 px-3 py-2">Restore slides</button>
-          <button id="btn-end" class="rounded-lg bg-slate-800 px-3 py-2">End → Q&amp;A</button>
-        </div>
-      </div>
-    </header>
-    <p id="room-notice" class="mt-3 rounded-lg border border-emerald-800 bg-emerald-950/60 px-4 py-3 text-sm text-emerald-100" role="status" aria-live="polite" hidden></p>
-
-    <div class="room-layout mt-5">
-      <section class="meeting-room" aria-label="Presentation and audience room">
-        <div class="screen-row">
-          <div id="slide-viewer" class="slide-viewer screen overflow-hidden rounded-lg">
-            <img id="slide-img" alt="" class="h-full w-full object-contain" />
-            <div id="slide-text" class="slide-text absolute inset-0 hidden place-items-center p-8 text-center text-slate-400"></div>
-            <div class="overlay">
-              <div>
-                <div class="text-3xl font-semibold" id="overlay-title">Projector disconnected</div>
-                <div class="mt-2 text-slate-400" id="overlay-sub">Keep going.</div>
-              </div>
-            </div>
-          </div>
-          <div id="host" class="host"></div>
-        </div>
-        <div class="slide-toolbar text-sm text-slate-400">
-          <div class="flex gap-2">
-            <button id="prev" aria-label="Previous slide" class="rounded bg-slate-800 px-3 py-1">←</button>
-            <span id="slide-no">Slide 1</span>
-            <button id="next" aria-label="Next slide" class="rounded bg-slate-800 px-3 py-1">→</button>
-          </div>
-          <div class="flex items-center gap-2">
-            <span id="mic-label">Mic level</span>
-            <div class="meter w-32"><div id="mic-level"></div></div>
-          </div>
-        </div>
-        <div class="table-scene" aria-label="Fictional audience at the table">
-          <div class="back-wall" aria-hidden="true"></div>
-          <div id="tiles" class="seats"></div>
-          <div class="table-top" aria-hidden="true"></div>
-          <div class="you-marker">you · presenting</div>
-        </div>
-      </section>
-
-      <aside class="transcript-panel" aria-label="Session controls and transcript">
-        <section class="room-audio rounded-xl border border-slate-800 p-4" aria-label="Microphone controls">
-          <div class="flex flex-wrap items-center gap-3">
-            <button id="btn-talk" class="rounded-lg bg-cyan-500 px-5 py-3 font-medium text-black" disabled>Hold to talk</button>
-            <button id="btn-stop-reply" class="rounded-lg bg-slate-800 px-3 py-2" disabled>Stop reply</button>
-            <span id="audio-mode" class="text-sm text-cyan-300">Hold to talk</span>
-            <p id="audio-status" class="text-sm text-slate-400" role="status">Microphone is off. Start when ready.</p>
-          </div>
-          <p id="mic-consent" class="mt-2 text-xs text-slate-500">Starting asks for microphone access. Speech goes to Boson for transcription; raw audio is not saved. The transcript stays in this local session.</p>
-          <p id="qna-hint" class="mt-3 text-sm text-cyan-200" role="status" hidden>Answer with Hold to talk. The report becomes ready automatically when Q&amp;A is complete.</p>
-          <button id="btn-finish-session" class="mt-2 rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300" aria-describedby="qna-hint" hidden>Finish session early</button>
-          <details class="room-help mt-1 text-xs text-slate-400">
-            <summary>Presentation tips and controls</summary>
-            <p id="ptt-hint" class="mt-2">Hold the button or Space, including thinking pauses. Release when finished.</p>
-            <p class="mt-2">Space is reserved for speaking. Use Enter or click to activate the other controls.</p>
-            <p class="mt-2">Present for at least 30 seconds and release between points. Your audience asks about your claims, then listens to your answer.</p>
-          </details>
-          <p id="room-error" class="mt-2 text-sm text-amber-300" role="alert" hidden></p>
-          <p id="report-ready" class="mt-3 text-sm" hidden>Session finished. <a id="report-link" class="text-cyan-300 underline" href="/">Open the session report</a></p>
-        </section>
-        <h2 id="transcript-title" class="mb-3 mt-5 text-xs uppercase tracking-wide text-slate-400">Transcript history</h2>
-        <div id="captions" class="transcript-log" role="log" aria-live="polite" aria-relevant="additions"></div>
-      </aside>
+<body class="room-page">
+  <header class="room-head">
+    <div class="room-brand">
+      <a href="/" class="logo" aria-label="Pres AI home"><span class="logo-mark"></span></a>
+      <span id="preset-name" class="room-name">Presentation room</span>
+      <span id="guest-count" class="room-meta"></span>
+      <span id="phase" class="phase-pill">setup</span>
     </div>
-
-    <p class="mt-4 text-xs text-slate-600">Personas are fictional · Pause and Skip are never scored against you · <span id="conn">connecting…</span></p>
+    <div class="room-actions">
+      <div id="timer" class="mono">00:00</div>
+      <button id="btn-start" class="btn-mint">Start presenting</button>
+      <button id="btn-pause" class="btn-sq" title="Pause or resume the session">Pause</button>
+      <button id="btn-skip" class="btn-sq" title="Skip the current question or curveball">Skip</button>
+      <button id="btn-restore" class="btn-sq hidden">Restore slides</button>
+      <button id="btn-end" class="btn-sq">End → Q&amp;A</button>
+    </div>
+  </header>
+  <div class="room-feedback">
+    <p id="room-state" role="status" aria-live="polite">Microphone is off. Start when ready.</p>
+    <p id="room-notice" role="status" aria-live="polite" hidden></p>
+  </div>
+  <main class="room-layout">
+    <section class="meeting-room" aria-label="Presentation and audience room">
+      <div id="stage" class="stage meeting-stage">
+        <div id="stage-decor" aria-hidden="true"></div>
+        <div id="slide-viewer" class="slide-viewer">
+          <img id="slide-img" alt="" />
+          <div id="slide-text" class="slide-text hidden"></div>
+          <div class="overlay"><div><div id="overlay-title">Projector disconnected</div><div id="overlay-sub">Keep going.</div></div></div>
+        </div>
+        <div id="tiles" class="seats" aria-label="Fictional audience"></div>
+        <div id="host" class="host" aria-label="Moderator"></div>
+      </div>
+      <div class="slide-toolbar">
+        <div class="slide-controls">
+          <button id="prev" class="btn-sq" aria-label="Previous slide">←</button>
+          <span id="slide-no">Slide 1</span>
+          <button id="next" class="btn-sq" aria-label="Next slide">→</button>
+        </div>
+        <div class="mic-readout"><span id="mic-label">Mic level</span><div class="meter"><div id="mic-level"></div></div></div>
+      </div>
+      <p class="room-footnote"><span id="room-setting">Video call</span> · Static audience portraits · Personas are fictional<br>Pause and Skip are never scored against you · <span id="conn">connecting…</span></p>
+    </section>
+    <aside class="transcript-panel" aria-label="Session controls and transcript">
+      <section class="room-audio" aria-label="Microphone controls">
+        <div class="talk-controls">
+          <button id="btn-talk" class="btn-mint" disabled>Hold to talk</button>
+          <button id="btn-stop-reply" class="btn-sq" disabled>Stop reply</button>
+          <span id="audio-mode">Hold to talk</span>
+        </div>
+        <p id="audio-status" role="status">Microphone is off. Start when ready.</p>
+        <p id="mic-consent">Starting asks for microphone access. Speech goes to Boson for transcription; raw audio is not saved. The transcript stays in this local session.</p>
+        <p id="qna-hint" role="status" hidden>Answer with Hold to talk. The report becomes ready automatically when Q&amp;A is complete.</p>
+        <button id="btn-finish-session" class="btn-sq" aria-describedby="qna-hint" hidden>Finish session early</button>
+        <details class="room-help">
+          <summary>Presentation tips and controls</summary>
+          <p id="ptt-hint">Hold the button or Space, including thinking pauses. Release when finished.</p>
+          <p>Space is reserved for speaking. Use Enter or click to activate the other controls.</p>
+          <p>Present for at least 30 seconds and release between points. Your audience asks about your claims, then listens to your answer.</p>
+        </details>
+        <p id="room-error" role="alert" hidden></p>
+        <p id="report-ready" hidden>Session finished. <a id="report-link" href="/">Open the session report</a></p>
+      </section>
+      <div class="transcript-heading"><h2 id="transcript-title">Transcript history</h2><span class="kicker">Live captions</span></div>
+      <div id="captions" class="transcript-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+    </aside>
   </main>
   <audio id="sfx" preload="auto"></audio>
-  <script type="module" src="/js/room.js"></script>
+  <script type="module" src="/js/room.js?v=optimized-room-1"></script>
 </body>
 </html>

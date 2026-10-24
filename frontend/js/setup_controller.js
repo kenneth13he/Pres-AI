@@ -1,4 +1,5 @@
 import { createSetupState, audienceSummary, validateSetup, buildSessionRequest } from './setup_model.js';
+import { restoreSetupProfile } from './setup_profiles.js';
 
 export function createSetupController({ data, presetId, view, uploadSlides, createSession, navigate }) {
   const state = createSetupState(data, presetId);
@@ -11,6 +12,7 @@ export function createSetupController({ data, presetId, view, uploadSlides, crea
   };
   const controller = {
     state,
+    profile(value) { change(() => restoreSetupProfile(state, value)); },
     choosePersona(id, checked) {
       change(() => {
         if (!state.roster.has(id)) return;

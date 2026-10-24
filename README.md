@@ -4,7 +4,7 @@ An AI audience that listens to your presentation, interrupts with grounded quest
 
 **Read `CLAUDE.md` first.** It is the house rules and the shared source of truth: scope, priorities, contracts, team split, hour gates, vendor facts, money rules. Then `PRIORITIES.md` for what to build next, `DECISIONS.md` for what is settled, `demo/DEMO_STATUS.md` for what is live.
 
-**Continuing from the verified voice work on `yang`? Read [COLLABORATOR_HANDOFF.md](COLLABORATOR_HANDOFF.md).** It covers the current build, setup, test evidence, remaining checks, and the next work for each owner.
+**Using the optimized `feat/optimized-presentation-room` branch? Read [COLLABORATOR_HANDOFF.md](COLLABORATOR_HANDOFF.md).** It covers the current build, setup, test evidence, remaining checks, and the next work for each owner.
 
 ## Run it
 
@@ -48,6 +48,11 @@ docs/archive/           the original plan this grew from
 
 ## Current state
 
+The optimized branch combines the premium dark redesign, five-step setup and reusable local
+profiles, persistent Continue actions, five room layouts, and whole static portraits with
+blurred backdrops. It retains the verified voice/backend lifecycle; camera and avatar
+videos remain off. The UI is selectively adapted from `9df73d3` and `5274a12`.
+
 The presentation room includes live Boson transcription, streamed persona speech,
 hold-to-talk controls, real audience reasoning, static portraits, an audience builder,
 curveballs, Q&A, and reports from actual session events. Offline backend and browser
@@ -58,7 +63,7 @@ fixes and the focused checks still needed.
 Reports now include a bounded text-coaching pass with evidence resolved from captured
 source IDs. Unsupported dimensions remain unassessed; recovery timing and event metrics
 stay deterministic. Audio stops before grading, and the report page automatically waits
-for feedback. Current checks: **299 backend + 166 frontend tests**. Unexpected audio loss
+for feedback. Current checks: **299 backend + 178 frontend tests**. Unexpected audio loss
 automatically pauses the room; Resume reconnects before either timer continues. The additional opt-in
 `scripts/try_report_assessment.py --live` probe uses fictional text and one real Boson
 grading call; it is separate from human presentation acceptance.

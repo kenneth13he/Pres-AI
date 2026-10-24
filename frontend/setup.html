@@ -3,108 +3,177 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PresAI · Build your audience</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="/css/app.css" />
+  <title>Pres AI · Setup</title>
+  <script>
+    // File previews cannot load the app's root-relative modules or API.
+    if (window.location.protocol === 'file:') {
+      window.location.replace('http://127.0.0.1:8000/setup.html' + window.location.search + window.location.hash);
+    } else {
+      document.documentElement.setAttribute('data-local-app', 'true');
+    }
+  </script>
+  <style>html[data-local-app] #file-open-help { display: none !important; }</style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="stylesheet" href="/css/app.css?v=optimized-room-1" />
+  <style>
+    .wiz-head { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 28px; border-bottom: 1px solid var(--raised-2); background: rgba(12,13,15,.85); backdrop-filter: blur(12px); }
+    .steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .steps button { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--faint); font-size: 14px; font-weight: 600; cursor: pointer; }
+    .steps button.cur { background: var(--raised-2); }
+    .steps button.reached { color: var(--text); }
+    .steps .num { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 500 11px var(--mono); background: var(--raised-2); color: var(--faint); }
+    .steps .cur .num { background: var(--text); color: var(--bg); }
+    .steps .done .num { background: var(--mint); color: var(--bg); }
+    .wiz-main { flex: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 40px 28px 48px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 40px; align-items: start; }
+    h1.title { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.03em; }
+    p.lede { margin: 8px 0 0; font-size: 16px; line-height: 1.5; color: var(--muted); }
+    .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+    .preview { position: sticky; top: 96px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); padding: 16px; }
+    .sum-row { display: flex; justify-content: space-between; gap: 16px; padding: 11px 4px; border-top: 1px solid #1f2326; font-size: 14px; }
+    .drop { margin-top: 28px; padding: 44px 24px; border-radius: 18px; border: 1.5px dashed var(--border-dashed); background: #101214; text-align: center; cursor: pointer; transition: all .2s; }
+    .drop.drag { border-color: var(--mint); background: oklch(0.82 0.15 150 / .06); }
+    .portrait { position: relative; width: 168px; height: 168px; border-radius: 14px; border: 1.5px dashed var(--border-dashed); background: var(--bg); cursor: pointer; overflow: hidden; display: grid; place-items: center; }
+    .add-tile { text-align: left; padding: 12px 14px; border-radius: 12px; border: 1.5px dashed var(--border-dashed); background: transparent; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; }
+    .add-tile:hover { border-color: oklch(0.82 0.15 150 / .6); background: oklch(0.82 0.15 150 / .04); }
+    .btn-save { padding: 11px 20px; border-radius: 10px; border: 0; background: var(--mint); color: var(--mint-ink); font-size: 14px; font-weight: 700; cursor: pointer; }
+    .btn-save:disabled { background: var(--raised-3); color: var(--faint); cursor: not-allowed; }
+    .tick { flex: none; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid #3a4043; color: var(--mint-ink); display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+    .tick.on { border-color: var(--mint); background: var(--mint); }
+  </style>
 </head>
-<body class="min-h-screen bg-slate-950 text-slate-100">
-  <main class="mx-auto max-w-5xl px-5 py-10 sm:py-14">
-    <a href="/" class="text-sm text-slate-400 transition hover:text-cyan-300">← Change preset</a>
-    <p class="mt-7 text-xs font-medium uppercase tracking-widest text-cyan-400">PresAI · Your rehearsal room</p>
-    <h1 id="title" class="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Set the room</h1>
-    <p id="preset-description" class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-400">Choose your audience, add your slides, and practise handling the room.</p>
-
-    <fieldset id="setup-fields" class="mt-8 min-w-0 space-y-6">
-      <legend class="sr-only">Rehearsal settings</legend>
-      <section class="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 sm:p-6" aria-labelledby="audience-heading">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 id="audience-heading" class="text-base font-semibold"><span class="mr-2 text-cyan-400">01</span> Who is in the room?</h2>
-            <p id="seat-count" class="mt-1 text-xs text-slate-400">Loading your audience…</p>
+<body>
+<div id="file-open-help" style="padding:18px;background:#131517;color:#eceeed;font:16px system-ui;line-height:1.5">
+  Open the running app to use this page:
+  <a href="http://127.0.0.1:8000/setup.html" style="color:#85dfab;text-decoration:underline">Open PresAI setup →</a>
+</div>
+<div style="min-height:100vh;display:flex;flex-direction:column">
+  <header class="wiz-head">
+    <a href="/" class="logo"><span class="logo-mark"></span>Pres AI</a>
+    <nav id="steps" class="steps" aria-label="Setup steps">
+      <button id="wizard-step-0" type="button"><span class="num">1</span>Profile</button>
+      <button id="wizard-step-1" type="button"><span class="num">2</span>Slides</button>
+      <button id="wizard-step-2" type="button"><span class="num">3</span>Room</button>
+      <button id="wizard-step-3" type="button"><span class="num">4</span>Audience</button>
+      <button id="wizard-step-4" type="button"><span class="num">5</span>Curveballs</button>
+    </nav>
+    <a href="/" style="font-size:14px;color:var(--muted)">Exit</a>
+  </header>
+  <main class="wiz-main">
+    <div style="max-width:640px;width:100%">
+      <p id="wizard-notice" class="err" role="alert" hidden></p>
+      <fieldset id="setup-fields" style="border:0;padding:0;margin:0;min-width:0">
+        <section id="wizard-panel-0" aria-labelledby="profile-title">
+          <h1 id="profile-title" class="title">Choose a profile</h1>
+          <p class="lede">Keep your room, audience and pacing preferences ready for next time.</p>
+          <label class="field" style="margin-top:24px"><span>Presentation type</span><select id="preset-choice" class="input" aria-label="Presentation type"></select></label>
+          <div id="profiles" class="grid-cards" style="margin-top:28px"></div>
+          <div class="panel" style="margin-top:16px">
+            <label class="field"><span>Profile name · optional</span><input id="profile-name" class="input" maxlength="60" placeholder="e.g. My startup pitch"></label>
+            <span class="hint">Save the choices you make in this wizard to reuse on this browser.</span>
+            <p id="profile-status" class="hint" role="status">Default profile · applies to this session only</p>
           </div>
-          <button id="customise" type="button" aria-expanded="false" aria-controls="builder" class="rounded-lg border border-slate-700 px-3 py-2 text-sm text-cyan-300 transition hover:border-cyan-500">Customise audience</button>
-        </div>
-        <div id="audience-summary" class="mt-5 grid gap-3 sm:grid-cols-3" aria-live="polite"></div>
-        <p id="selection-help" class="mt-4 text-xs leading-relaxed text-slate-500">Choose two or three fictional audience members. The moderator hosts separately.</p>
-        <p id="selection-error" role="alert" class="mt-3 hidden rounded-lg border border-amber-700/50 bg-amber-950/20 p-3 text-sm text-amber-200"></p>
-
-        <div id="builder" class="mt-6 hidden space-y-6 border-t border-slate-800 pt-6">
-          <div>
-            <p class="text-sm font-medium text-slate-200">Pick your audience</p>
-            <p class="mt-1 text-xs text-slate-500">Each person has a different focus. Adjust how much they challenge you.</p>
-            <div id="roster" class="mt-4 grid gap-3 sm:grid-cols-2"></div>
+          <div class="wizard-foot" aria-label="Profile actions"><div class="wizard-progress"><span class="wizard-step-label">Step 1 of 5</span><p id="wizard-hint-0" class="wizard-hint" role="status">Loading your setup…</p></div><button id="use-default" class="btn-ghost" type="button" disabled>Use default profile</button><button id="profile-continue" class="btn-mint" type="button" aria-describedby="wizard-hint-0" disabled>Continue to slides →</button></div>
+        </section>
+        <section id="wizard-panel-1" aria-labelledby="slides-heading" hidden>
+          <h1 id="slides-heading" class="title">Your slides</h1>
+          <p class="lede">Optional. Add a PDF so audience questions can refer to your slides.</p>
+          <label id="pdf-drop" class="drop" for="pdf" style="display:block">
+            <span class="chip">PDF</span><span style="display:block;margin-top:18px;font-size:18px;font-weight:700">Drop your slides here</span>
+            <span class="hint" style="display:block;margin-top:6px">or click to browse</span>
+            <input id="pdf" type="file" accept=".pdf,application/pdf" class="sr-only" aria-describedby="pdf-status">
+          </label>
+          <p id="pdf-status" class="hint" role="status">Optional · PDF only · up to 50 MB</p>
+          <button id="remove-pdf" type="button" class="btn-text hidden">Remove file · present without slides</button>
+          <p class="hint" style="margin-top:20px">PowerPoint, Keynote or an online deck? Export it as PDF first.</p>
+          <div class="wizard-foot" aria-label="Slides actions"><div class="wizard-progress"><span class="wizard-step-label">Step 2 of 5</span><p id="wizard-hint-1" class="wizard-hint" role="status">Slides are optional. You can continue without a PDF.</p></div><button id="wizard-back-1" type="button" class="btn-ghost">← Back</button><button id="wizard-next-1" type="button" class="btn-mint" aria-describedby="wizard-hint-1">Continue to room →</button></div>
+        </section>
+        <section id="wizard-panel-2" aria-labelledby="room-heading" hidden>
+          <h1 id="room-heading" class="title">Set the room</h1><p class="lede">Choose the setting for your two or three audience members.</p>
+          <div id="room-settings" class="grid-cards" style="margin-top:28px"></div>
+          <div class="panel" style="margin-top:22px">
+            <label class="field"><span>Microphone</span><select id="input-mode" class="input"><option value="push_to_talk" selected>Hold to talk · button or Space</option><option value="live">Hands-free microphone</option></select></label>
+            <p id="mic-consent" class="hint">Your microphone stays off until you start presenting. Hold to talk waits until you release, even through pauses.</p>
+            <span class="chip">Static fictional portraits · videos off</span>
           </div>
-          <div class="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-4">
-            <div class="flex items-center justify-between gap-3">
-              <label for="custom-persona" class="text-sm font-medium text-slate-200">Add a custom third person</label>
-              <button id="remove-custom" type="button" class="hidden text-xs text-cyan-300 hover:underline">Remove custom</button>
+          <div class="wizard-foot" aria-label="Room actions"><div class="wizard-progress"><span class="wizard-step-label">Step 3 of 5</span><p id="wizard-hint-2" class="wizard-hint" role="status">Choose a setting, then continue.</p></div><button id="wizard-back-2" type="button" class="btn-ghost">← Back</button><button id="wizard-next-2" type="button" class="btn-mint" aria-describedby="wizard-hint-2">Continue to audience →</button></div>
+        </section>
+        <section id="wizard-panel-3" aria-labelledby="title" hidden>
+          <h1 id="title" class="title">Choose your audience</h1><p id="preset-description" class="lede"></p>
+          <div class="panel" style="margin-top:28px">
+            <div class="row"><div><h2 id="audience-heading" class="panel-title" style="margin:0">Who's in the room?</h2><span id="seat-count" class="hint"></span></div><button id="customise" type="button" class="pill" aria-expanded="false" aria-controls="builder">Customise audience</button></div>
+            <p id="selection-help" class="hint"></p><p id="selection-error" class="err hidden" role="alert"></p>
+          </div>
+          <div id="builder" class="hidden" style="margin-top:16px">
+            <div id="roster" class="grid-cards"></div>
+            <div class="panel" style="margin-top:16px;border-style:dashed">
+              <div class="row"><span class="panel-title">+ Custom guest</span><button id="remove-custom" class="btn-text hidden" type="button">Remove</button></div>
+              <label id="custom-help" for="custom-persona" class="hint">Describe a fictional audience member and what they should question. This uses the third seat.</label>
+              <textarea id="custom-persona" class="input" rows="3" maxlength="600" aria-describedby="custom-help custom-count" placeholder="A thesis committee chair who challenges vague evidence"></textarea><span id="custom-count" class="hint">0 / 600</span>
             </div>
-            <p id="custom-help" class="mt-1 text-xs leading-relaxed text-slate-500">Describe a fictional audience member. Keep two roster people selected to leave them a seat.</p>
-            <textarea id="custom-persona" rows="2" maxlength="600" aria-describedby="custom-help custom-count"
-              placeholder="For example: a thesis committee member who wants every assumption explained"
-              class="mt-3 w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm outline-none focus:border-cyan-500"></textarea>
-            <p id="custom-count" class="mt-1 text-right text-xs text-slate-500">0 / 600</p>
           </div>
-        </div>
-      </section>
-
-      <section class="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 sm:p-6" aria-labelledby="slides-heading">
-        <h2 id="slides-heading" class="text-base font-semibold"><span class="mr-2 text-cyan-400">02</span> Bring your slides <span class="ml-1 text-xs font-normal text-slate-500">Optional</span></h2>
-        <div id="pdf-drop" class="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 p-5 text-center transition">
-          <p class="text-sm text-slate-300">Drop a PDF here, or choose a file</p>
-          <label class="mt-3 inline-block cursor-pointer rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-400">
-            Choose PDF
-            <input id="pdf" type="file" accept="application/pdf,.pdf" aria-describedby="pdf-status" class="sr-only" />
-          </label>
-          <p id="pdf-status" aria-live="polite" class="mt-3 text-xs text-slate-500">Optional · PDF only · up to 50 MB</p>
-          <button id="remove-pdf" type="button" class="mt-3 hidden text-xs text-cyan-300 hover:underline">Remove file · present without slides</button>
-        </div>
-      </section>
-
-      <details class="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 sm:p-6">
-        <summary class="cursor-pointer text-sm font-semibold text-slate-200">Advanced <span class="ml-2 font-normal text-slate-500">Pressure, timing, and microphone</span></summary>
-        <div class="mt-5 grid gap-5 text-sm sm:grid-cols-2">
-          <label for="difficulty">Difficulty
-            <select id="difficulty" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3">
-              <option value="friendly">Friendly · questions only</option><option value="normal" selected>Normal · 2 questions, 1 curveball</option><option value="brutal">Brutal · 2–3 questions, 2 curveballs</option>
-            </select>
-          </label>
-          <label for="frequency">Interruptions
-            <select id="frequency" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3">
-              <option value="rare">Rare</option><option value="normal" selected>Normal</option><option value="often">Often</option>
-            </select>
-          </label>
-          <label for="cb-mode">Curveballs
-            <select id="cb-mode" aria-describedby="curveball-note" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3">
-              <option value="surprise" selected>Surprise me</option><option value="choose">Let me choose</option><option value="off">Off</option>
-            </select>
-          </label>
-          <label for="duration">Target length · minutes
-            <input id="duration" type="number" min="1" max="20" step="1" value="3" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" />
-          </label>
-          <div class="sm:col-span-2">
-            <p id="curveball-note" class="text-xs leading-relaxed text-slate-500">The room picks a curveball when a natural moment comes.</p>
-            <div id="cb-choose" class="mt-3 hidden grid gap-2 sm:grid-cols-2"></div>
+          <div class="wizard-foot" aria-label="Audience actions"><div class="wizard-progress"><span class="wizard-step-label">Step 4 of 5</span><p id="wizard-hint-3" class="wizard-hint" role="status">Choose two or three audience members.</p></div><button id="wizard-back-3" type="button" class="btn-ghost">← Back</button><button id="wizard-next-3" type="button" class="btn-mint" aria-describedby="wizard-hint-3">Continue to pacing →</button></div>
+        </section>
+        <section id="wizard-panel-4" aria-labelledby="pacing-heading" hidden>
+          <h1 id="pacing-heading" class="title">Curveballs &amp; pacing</h1><p class="lede">Set how much pressure the audience brings. Pause and Skip are always available.</p>
+          <div class="panel" style="margin-top:28px">
+            <label class="field"><span>Difficulty</span><select id="difficulty" class="input"><option value="friendly">Friendly · no curveballs</option><option value="normal" selected>Normal · one curveball</option><option value="brutal">Brutal · up to two curveballs</option></select></label>
+            <label class="field"><span>Curveballs</span><select id="cb-mode" class="input"><option value="surprise" selected>Surprise me</option><option value="choose">Let me choose</option><option value="off">Off</option></select></label>
+            <p id="curveball-note" class="hint"></p><div id="cb-choose" class="grid-cards hidden"></div>
+            <div class="divider"></div>
+            <label class="field"><span>Audience questions</span><select id="frequency" class="input"><option value="rare">Rare</option><option value="normal" selected>Normal</option><option value="often">Often</option></select></label>
+            <div class="grid-cards"><label class="field"><span>Length · minutes</span><input id="duration" class="input" type="number" min="1" max="20" step="1" value="3"></label><label class="field"><span>Closing Q&amp;A questions</span><input id="qna" class="input" type="number" min="0" max="3" step="1" value="2"></label></div>
           </div>
-          <label for="qna">Closing Q&amp;A · questions
-            <input id="qna" type="number" min="0" max="3" step="1" value="2" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3" />
-          </label>
-          <label for="input-mode">Microphone
-            <select id="input-mode" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 p-3">
-              <option value="push_to_talk" selected>Hold to talk · button or Space</option><option value="live">Hands-free microphone</option>
-            </select>
-          </label>
-        </div>
-      </details>
-    </fieldset>
-
-    <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
-      <button id="start" type="button" disabled class="rounded-xl bg-cyan-400 px-6 py-3 text-base font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-40">Start rehearsal →</button>
-      <p id="start-status" role="status" aria-live="polite" class="text-sm text-slate-400">Loading audience choices…</p>
+          <div class="wizard-foot" aria-label="Rehearsal actions"><div class="wizard-progress"><span class="wizard-step-label">Step 5 of 5</span><p id="start-status" class="wizard-hint" role="status">Your microphone stays off until you start presenting.</p></div><button id="wizard-back-4" type="button" class="btn-ghost">← Back</button><button id="save-profile" type="button" class="btn-ghost">Save profile</button><button id="start" type="button" class="btn-mint" aria-describedby="start-status" disabled>Start rehearsal →</button></div>
+        </section>
+      </fieldset>
     </div>
-    <p id="mic-consent" class="mt-5 max-w-3xl text-xs leading-relaxed text-slate-500">Hold-to-talk is the default. Microphone permission is requested when you start presenting in the room. Speech is sent to Boson for transcription. Raw microphone audio is not saved; your transcript stays in the local session.</p>
-    <p class="mt-3 text-xs text-slate-600">All audience members are fictional. Pause and Skip are never scored against you.</p>
+    <aside id="preview" class="preview">
+      <div class="row" style="margin-bottom:14px"><span id="preview-room-name" class="panel-title">Video call</span><span class="phase-pill mint">Room preview</span></div>
+      <div id="preview-stage" class="stage" aria-label="Room layout preview"></div>
+      <div class="sum-row"><span style="color:var(--muted)">Audience</span><span id="preview-count">3 guests</span></div>
+      <div id="audience-summary" style="display:grid;gap:8px;margin-top:4px"></div>
+      <div class="sum-row" style="margin-top:12px"><span style="color:var(--muted)">Pacing</span><span id="preview-pacing">3 min · Normal</span></div>
+      <div class="sum-row"><span style="color:var(--muted)">Microphone</span><span id="preview-input">Hold to talk</span></div>
+      <p class="hint" style="font-size:12px">Personas are fictional. Pause and Skip are never scored against you.</p>
+    </aside>
   </main>
-  <script type="module" src="/js/setup.js"></script>
+</div>
+<style>
+.wizard-foot { position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin:0;padding:16px max(24px,calc((100vw - 1184px)/2));padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));background:#13191b;border-top:1px solid #3a4943;box-shadow:0 -12px 36px #0007; }
+.wizard-progress { flex:1 1 180px;min-width:0; }
+.wizard-step-label { display:block;color:#8be4a7;font:600 12px var(--mono,monospace);text-transform:uppercase;letter-spacing:.06em; }
+.wizard-hint { margin:6px 0 0;max-width:560px;color:#d4dcda;font:500 14px/1.45 Urbanist,system-ui,sans-serif; }
+.wizard-foot button { min-height:52px;padding:14px 22px;border-radius:12px;cursor:pointer;touch-action:manipulation;transition:background .12s,box-shadow .12s,transform .08s; }
+.wizard-foot .btn-mint { min-height:56px;min-width:236px;border:1px solid #a4efbc;background:#8be4a7;color:#07120b;font:800 17px/1.3 Urbanist,system-ui,sans-serif;box-shadow:0 4px 16px #8be4a724; }
+.wizard-foot .btn-mint:hover:not(:disabled) { background:#a8f1bf;box-shadow:0 4px 24px #8be4a744; }
+.wizard-foot .btn-mint:active:not(:disabled) { transform:translateY(2px);background:#6bce8c;box-shadow:none; }
+.wizard-foot .btn-ghost { border:1px solid #4d5e57;background:#1b2420;color:#e5eee9;font-size:15px;font-weight:600; }
+.wizard-foot .btn-ghost:hover:not(:disabled) { background:#293a30; }
+.wizard-foot button:focus-visible { outline:3px solid #edfff2;outline-offset:4px; }
+.wizard-foot button:disabled { opacity:1;background:#303b36;border-color:#54645a;color:#b5c2ba;box-shadow:none;cursor:not-allowed;transform:none; }
+.wizard-foot button[aria-busy="true"] { cursor:progress; }
+.wiz-main { padding-bottom:180px; }
+html { scroll-padding-top:140px;scroll-padding-bottom:180px; }
+.wiz-main h1 { scroll-margin-top:140px; }
+@media (max-width:800px) {
+ .wizard-foot { display:grid;grid-template-columns:1fr 1fr;padding:14px 18px;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));gap:10px; }
+ .wizard-progress { grid-column:1/-1; }
+ .wizard-foot .btn-mint { grid-column:1/-1;width:100%;min-width:0; }
+ .wizard-foot button { width:100%;padding:12px 14px; }
+ .wiz-main { padding-bottom:300px!important; }
+ html { scroll-padding-bottom:300px; }
+}
+@media (prefers-reduced-motion:reduce) { .wizard-foot button { transition:none; } .wizard-foot .btn-mint:active:not(:disabled) { transform:none; } }
+button:focus-visible, a:focus-visible { outline:2px solid var(--mint);outline-offset:4px; }
+.preview #audience-summary > div { background:var(--bg);border-color:var(--border);border-radius:12px; }
+#roster > article { background:var(--surface);border-radius:12px; }
+#roster input[type=checkbox] { accent-color:var(--mint); }
+#pdf-drop:focus-within { outline:2px solid var(--mint);outline-offset:4px; }
+.sr-only { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0; }
+@media (max-width:650px) { .wiz-head { padding:12px 18px; } .steps { gap:0; } .steps button { font-size:12px;padding:6px; } .wiz-main { padding:28px 18px;gap:24px; } .preview { position:static; } }
+</style>
+<script type="module" src="/js/setup.js?v=optimized-room-1"></script>
 </body>
 </html>

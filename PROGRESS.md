@@ -288,3 +288,32 @@ Gate: release code and handoff ready to push under standing user authorization; 
 Files outside my paths: Makefile/bootstrap regression, README/current handoff/demo/setup status; necessary packaging checks requested for collaborator readiness
 Proposed decision changes (not implemented): none
 Next: collaborators clone yang and follow COLLABORATOR_HANDOFF.md. Preserve PTT/audio safeguards; migrate alternate voice-room engine deliberately instead of blind-merging it. Complete deferred human presentation certification when time permits.
+
+
+## New design integration · 2026-10-24 · user requested
+Built: adapted main/feat-frontend design9df73d3 into the existing verified voice branch: homepage, profile/slides/room/audience/curveball wizard, room stage/gallery layouts and report. Retained safe text rendering, real report loading/retry, static portrait ownership, and every tested audio/control lifecycle. Setup retains the original model/controller and adds bounded local profile preferences; imported unsupported context/clone/photo controls are omitted. All presets remain selectable; obsolete profiles cannot loop; PDF upload remains keyboard-accessible. Versioned changed entry modules/styles prevent the old design surviving a reload.
+Tests:299 backend +173 frontend/audio tests passed with Ruff, Pyright, schema/mocks and whitespace checks. Added meaningful wizard/profile/preset and room-layout regressions. Actual local HTML/CSS/import graph returned200 and matched disk. Voice/room/report controllers and microphone/voice transport modules remain byte-identical to the verified checkpoint. No additional provider calls were needed for UI verification.
+Gate: user-requested visual integration is local and unpublished; P0-13 stays open. Boson voice/reasoning, default hold-to-talk and videos-off remain. No credentials, private sessions or recording data are included.
+Files outside my paths: frontend design files and focused frontend regressions, required by the user's explicit request; source docs updated for continuity
+Proposed decision changes (not implemented): none
+Next: review the new local homepage/setup/room/report; complete final human recorded presentations when available. Publish this integration only as requested; do not overwrite the alternate native-panel branch.
+
+
+## File-preview setup recovery · 2026-10-24
+Built: opening frontend/setup.html directly as a file now redirects to the working loopback app before external modules load, preserving preset/profile query and hash. A self-contained visible Open PresAI fallback link remains for inert file previews; normal HTTP setup hides it. Opened the verified running HTTP setup URL in Google Chrome for the user's manual test.
+Tests:174 frontend/audio tests passed, including the actual inline startup script under file and HTTP protocols; served setup bytes match disk and HTTP200 CSS/module checks passed. Backend/audio behavior and hold-to-talk/videos-off are unchanged. No provider calls, commits, pushes or credential changes.
+Gate: manual presentation acceptance remains open; this fixes a file-preview entry error, not live voice acceptance.
+
+
+## Visible Continue actions · 2026-10-24 · user requested
+Built: setup actions stay fixed at the viewport bottom with a solid high-contrast primary button, 56px target, explicit next-step labels, hover/press/focus feedback and clear disabled/uploading state. Current-step and upload/seat validation stay next to the action. Desktop/mobile bottom padding and safe-area spacing reserve content space. Actual step changes move focus/scroll to the new heading; typing and upload updates leave focus in place. No new audio/provider behavior.
+Tests:175 frontend/audio checks pass, including focus stability and error/loading/removal state. Actual HTTP setup and versioned navigation module match disk. Opened updated setup in Chrome for manual review; human presentation acceptance stays open. No keys, commits or pushes.
+
+
+## Optimized branch release · 2026-10-24 · user requested
+Built: created feat/optimized-presentation-room from1392f74 with all reviewed local UI work. Added whole static portraits with contain framing, dimmed blurred backdrops, overlay stacking and paired-image failure fallback in room and preview. Retained homepage/setup/report redesign, visible Continue actions, safe profiles/preset routes and file-preview redirect. Versioned changed modules/styles. Backend/contracts/dependencies remain byte-identical to the verified base; the alternative most-recent-update engine is not merged.
+Tests:299 backend +178 frontend/audio tests pass, plus Ruff/Pyright/schema/mocks. A bounded real Boson test synthesized fictional speech, transcribed it via Higgs, generated one verbatim-grounded question with zero fallback/rejection and returned valid response PCM. Offline safety tests cover actual PTT and socket-loss state transitions. Private evidence contains no publication requirement; keys, sessions and recordings remain excluded.
+Gate: user authorized new-branch publication and post-push verification. P0-13 remains open; no physical microphone/audible playback or new two-run acceptance is claimed. Reviewed older-build local backup remains preserved for P0-14.
+Files outside my paths: frontend integration, meaningful frontend regressions and handoff/readme/demo/decision records, all required by requested optimized release
+Proposed decision changes (not implemented): none
+Next: push the reviewed commit to the new branch, verify its remote SHA and test a fresh checkout; provide the exact branch link and any remaining human acceptance limits.

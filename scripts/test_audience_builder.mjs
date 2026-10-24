@@ -2,11 +2,14 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { audienceSummary, buildSessionRequest, createSetupState, validateSetup }
   from '../frontend/js/setup_model.js';
 import { createSetupController } from '../frontend/js/setup_controller.js';
 import { createSetupView } from '../frontend/js/setup_view.js';
 import { assignPortraits } from '../frontend/js/portraits.js';
+import { createSetupWizard } from '../frontend/js/setup_wizard.js';
+import { loadSetupProfiles } from '../frontend/js/setup_profiles.js';
 
 const data = JSON.parse(await readFile(new URL('../frontend/mocks/presets.json', import.meta.url), 'utf8'));
 const fresh = () => structuredClone(data);
@@ -235,4 +238,150 @@ test('selected roster portraits match the actual audience and broken images show
     assert.equal(images(card).length, 0);
     assert.ok(card.textContent.includes(run.controller.state.roster.get(selectedId).name[0]));
   }
+});
+
+function memoryStorage(initial = []) {
+  const values = new Map([['presai.profiles', JSON.stringify(initial)]]);
+  return { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+}
+async function wizardHarness({ storage = memoryStorage(), initialProfile = '', ...overrides } = {}) {
+  const env = await setupDocument(), routes = [];
+  const view = createSetupWizard({ document: env.document,
+    view: createSetupView({ document: env.document, assignPortraits }), assignPortraits,
+    storage, presets: fresh().presets, initialProfile, navigate: (url) => routes.push(url) });
+  return { ...env, ...harness({ view, ...overrides }), storage, profileRoutes: routes, view };
+}
+
+test('design wizard navigates real steps and blocks Continue until the current PDF is ready', async () => {
+  const pending = deferred();
+  const env = await wizardHarness({ uploadSlides: () => pending.promise });
+  const el = (id) => env.elements.get(id);
+  assert.equal(el('wizard-panel-0').hidden, false);
+  assert.equal(el('wizard-step-4').disabled, true);
+  el('wizard-step-4').click(); assert.equal(el('wizard-panel-4').hidden, true);
+  el('profile-name').value = 'My research rehearsal'; el('profile-continue').click();
+  assert.equal(el('wizard-panel-1').hidden, false);
+  const upload = env.controller.upload({ name: 'research.pdf', size: 1200 });
+  assert.equal(el('wizard-next-1').disabled, true);
+  el('wizard-next-1').click(); assert.equal(el('wizard-panel-2').hidden, true);
+  pending.resolve({ deck_id: 'new-design-deck', page_count: 3 }); await upload;
+  assert.equal(el('wizard-next-1').disabled, false);
+  el('wizard-next-1').click(); assert.equal(el('wizard-panel-2').hidden, false);
+  assert.equal(el('profile-name').value, 'My research rehearsal');
+  assert.equal(el('preview-input').textContent, 'Hold to talk');
+  assert.equal(el('preview-stage').children.length, 4);
+  el('wizard-next-2').click(); el('wizard-next-3').click();
+  assert.equal(el('wizard-panel-4').hidden, false);
+  await env.controller.submit();
+  assert.equal(env.calls[0][0].input_mode, 'push_to_talk');
+  assert.equal(env.calls[0][0].deck_id, 'new-design-deck');
+});
+
+test('saved design profiles restore safe preferences with hold-to-talk and no stale deck', async () => {
+  const storage = memoryStorage(), env = await wizardHarness({ storage });
+  const el = (id) => env.elements.get(id);
+  const name = '<img src=x onerror="unexpected()">';
+  el('profile-name').value = name;
+  env.controller.option('duration_minutes', '7'); env.controller.option('qna_questions', '1');
+  env.controller.option('input_mode', 'live');
+  await env.controller.upload({ name: 'private-deck.pdf', size: 100 });
+  el('save-profile').click();
+  const profiles = loadSetupProfiles(storage);
+  assert.equal(profiles.length, 1); assert.equal(profiles[0].name, name);
+  assert.equal(profiles[0].options.input_mode, 'push_to_talk');
+  assert.equal(profiles[0].options.duration_minutes, 7);
+  assert.equal('deckId' in profiles[0], false); assert.equal('deck_id' in profiles[0], false);
+  assert.equal(el('profiles').children[0].children[0].textContent, name);
+  const restored = await wizardHarness({ storage, initialProfile: profiles[0].id });
+  assert.equal(restored.controller.state.options.input_mode, 'push_to_talk');
+  assert.equal(restored.controller.state.options.duration_minutes, 7);
+  assert.equal(restored.controller.state.options.qna_questions, 1);
+  assert.equal(restored.controller.state.deckId, null);
+  assert.equal(restored.elements.get('wizard-panel-1').hidden, false);
+});
+
+test('malformed or unavailable profile storage cannot prevent a real rehearsal', async () => {
+  for (const value of ['null', '{}', '"wrong type"', '{bad']) {
+    assert.deepEqual(loadSetupProfiles({ getItem: () => value }), []);
+  }
+  const storage = { getItem() { throw new Error('private mode'); }, setItem() { throw new Error('quota'); } };
+  const env = await wizardHarness({ storage });
+  env.elements.get('save-profile').click();
+  assert.match(env.elements.get('start-status').textContent, /could not save/);
+  await env.controller.submit(); assert.equal(env.calls.length, 1);
+});
+
+test('restoring old or hostile profiles clamps seats, modes and curveballs to the current contract', () => {
+  const env = harness();
+  env.controller.profile({ chosen: ['unknown', 'vc', 'vc', 'student', 'professor'],
+    customDescription: 'A fictional skeptical methods chair',
+    skepticism: { vc: 3, student: 0.25 }, options: { input_mode: 'live', difficulty: 'evil',
+      duration_minutes: 90, qna_questions: 20, curveball_mode: 'choose' },
+    chosenCurveballs: ['not-supported'] });
+  const { config, custom_personas } = buildSessionRequest(env.controller.state);
+  assert.equal(config.input_mode, 'push_to_talk'); assert.equal(config.personas.length, 2);
+  assert.equal(config.personas[1].skepticism, 0.25); assert.equal(config.difficulty, 'normal');
+  assert.equal(config.duration_target_s, 180); assert.equal(config.qna_questions, 2);
+  assert.equal(config.curveballs.mode, 'surprise'); assert.equal(custom_personas.length, 1);
+});
+
+test('all current presets remain reachable and unknown saved presets never redirect in a loop', async () => {
+  const profile = { id: 'old-profile', name: 'Old', presetId: 'deleted-preset', chosen: ['vc', 'student'] };
+  const env = await wizardHarness({ storage: memoryStorage([profile]), initialProfile: profile.id });
+  assert.deepEqual(env.profileRoutes, []);
+  const choice = env.elements.get('preset-choice');
+  assert.deepEqual(choice.children.map((o) => o.value), [...data.presets.map((p) => p.id), 'custom']);
+  choice.value = 'class_presentation'; choice.onchange();
+  assert.deepEqual(env.profileRoutes, ['/setup.html?preset=class_presentation']);
+  const classroom = await wizardHarness({ presetId: 'class_presentation' });
+  assert.equal(classroom.elements.get('preset-choice').value, 'class_presentation');
+  assert.equal(classroom.controller.state.options.duration_minutes, 5);
+  assert.equal(classroom.elements.get('preview-room-name').textContent, 'Classroom');
+  assert.equal(classroom.elements.get('pdf').classList.contains('hidden'), false);
+  assert.match(classroom.html, /id="pdf"[^>]+class="sr-only"[^>]+aria-describedby="pdf-status"/);
+});
+
+test('opening setup as a file redirects to the working app while HTTP setup stays in place', async () => {
+  const html = await readFile(new URL('../frontend/setup.html', import.meta.url), 'utf8');
+  const inline = html.match(/<script>\s*([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(inline, 'File startup must work before any app module loads.');
+  const replaced = [], attributes = new Map();
+  const document = { documentElement: { setAttribute: (k, v) => attributes.set(k, v) } };
+  const location = { protocol: 'file:', search: '?preset=research_defense', hash: '#slides',
+    replace: (url) => replaced.push(url) };
+  runInNewContext(inline, { window: { location }, document });
+  assert.deepEqual(replaced, ['http://127.0.0.1:8000/setup.html?preset=research_defense#slides']);
+  assert.equal(attributes.has('data-local-app'), false);
+  location.protocol = 'http:';
+  runInNewContext(inline, { window: { location }, document });
+  assert.equal(replaced.length, 1); assert.equal(attributes.get('data-local-app'), 'true');
+  assert.match(html, /id="file-open-help"[\s\S]*?href="http:\/\/127\.0\.0\.1:8000\/setup\.html"/);
+});
+
+test('Continue announces why it is blocked and focuses new headings only on step changes', async () => {
+  const pending = deferred(), env = await wizardHarness({ uploadSlides: () => pending.promise });
+  const el = (id) => env.elements.get(id), focus = [], scroll = [];
+  for (const id of ['slides-heading', 'room-heading', 'title', 'pacing-heading']) {
+    el(id).focus = () => focus.push(id);
+  }
+  env.document.defaultView = { scrollTo: (options) => scroll.push(options.top) };
+  assert.equal(el('profile-continue').disabled, false);
+  assert.match(el('wizard-hint-0').textContent, /optional/);
+  el('profile-continue').click(); assert.deepEqual(focus, ['slides-heading']);
+  const upload = env.controller.upload({ name: 'slides.pdf', size: 100 });
+  assert.match(el('wizard-hint-1').textContent, /Reading your PDF/);
+  assert.equal(el('wizard-next-1').attributes.get('aria-busy'), 'true');
+  assert.deepEqual(focus, ['slides-heading'], 'Upload updates must not move keyboard focus.');
+  pending.reject(new Error('unreadable')); await upload;
+  assert.equal(el('wizard-next-1').disabled, true);
+  assert.match(el('wizard-hint-1').textContent, /Remove the file or choose another PDF/);
+  await env.controller.upload(null); assert.equal(el('wizard-next-1').disabled, false);
+  assert.match(el('wizard-hint-1').textContent, /optional/);
+  el('wizard-next-1').click(); assert.deepEqual(focus, ['slides-heading', 'room-heading']);
+  env.controller.option('duration_minutes', 5);
+  assert.deepEqual(focus, ['slides-heading', 'room-heading']); assert.deepEqual(scroll, [0, 0]);
+  env.controller.custom('A fictional committee chair');
+  assert.match(el('wizard-hint-3').textContent, /exactly two/);
+  env.view.failed(); assert.equal(el('profile-continue').disabled, true);
+  assert.match(el('wizard-hint-0').textContent, /could not load/);
 });

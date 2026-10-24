@@ -5,9 +5,16 @@ import test from 'node:test';
 
 const portraits = await readFile(new URL('../frontend/js/portraits.js', import.meta.url), 'utf8');
 const portraitUrl = `data:text/javascript;base64,${Buffer.from(portraits).toString('base64')}`;
+const rooms = await readFile(new URL('../frontend/js/rooms.js', import.meta.url), 'utf8');
+const roomsUrl = `data:text/javascript;base64,${Buffer.from(rooms).toString('base64')}`;
 const source = (await readFile(new URL('../frontend/js/room_view.js', import.meta.url), 'utf8'))
-  .replace("'./portraits.js'", `'${portraitUrl}'`);
+  .replace("'./portraits.js'", `'${portraitUrl}'`)
+  .replace("'./rooms.js'", `'${roomsUrl}'`);
 const { createRoomView } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const { assignPortraits } = await import(portraitUrl);
+const previewSource = (await readFile(new URL('../frontend/js/setup_preview.js', import.meta.url), 'utf8'))
+  .replace("'./rooms.js'", `'${roomsUrl}'`);
+const { createSetupPreview } = await import(`data:text/javascript;base64,${Buffer.from(previewSource).toString('base64')}`);
 const controller = await readFile(new URL('../frontend/js/room_controller.js', import.meta.url), 'utf8');
 const { bootRoom } = await import(`data:text/javascript;base64,${Buffer.from(controller).toString('base64')}`);
 
@@ -202,16 +209,84 @@ test('moderator captions and speaking cues work under host independently of pers
 test('unavailable portraits show safe initials without losing the person or their fictional label', () => {
   const env = setup({ config: { personas: [{ id: 'vc', name: 'Dana Reviewer', role: 'VC' }] } });
   const person = env.node('tiles').children[0], image = find(person, 'portrait-image');
-  const fallback = find(person, 'portrait-fallback');
+  const fill = find(person, 'portrait-fill'), fallback = find(person, 'portrait-fallback');
   assert.equal(fallback.hidden, true); assert.equal(image.alt, 'Dana Reviewer · fictional audience member');
   image.onerror();
-  assert.equal(image.hidden, true); assert.equal(fallback.hidden, false); assert.equal(fallback.textContent, 'DR');
+  assert.equal(image.hidden, true); assert.equal(fill.hidden, true);
+  assert.equal(fallback.hidden, false); assert.equal(fallback.textContent, 'DR');
   assert.equal(person.classList.contains('portrait-unavailable'), true);
   assert.equal(find(person, 'seat-name').textContent, 'Dana Reviewer');
   assert.equal(find(person, 'fiction-label').textContent, 'Fictional audience member');
   env.view.caption('vc', '<b>This remains literal.</b>');
   assert.equal(find(person, 'bubble-text').textContent, '<b>This remains literal.</b>');
   env.view.dispose();
+});
+
+test('static portrait layers use trusted local cast images and either failure reveals initials', () => {
+  for (const failedLayer of ['portrait-image', 'portrait-fill']) {
+    const env = setup({ config: { personas: [{ id: 'vc', name: 'Dana Reviewer', role: 'VC',
+      image_url: 'https://untrusted.example/image.jpg', portrait: 'url(javascript:alert(1))',
+    }] } });
+    for (const person of [env.node('host').children[0], env.node('tiles').children[0]]) {
+      const fill = find(person, 'portrait-fill'), image = find(person, 'portrait-image');
+      assert.match(image.src, /^\/demo\/faces\/.+\.jpg$/);
+      assert.equal(fill.src, image.src); assert.equal(fill.alt, '');
+      assert.equal(fill['aria-hidden'], 'true', 'The fill must not repeat the accessible image description.');
+      find(person, failedLayer).onerror();
+      assert.equal(image.hidden, true); assert.equal(fill.hidden, true);
+      assert.equal(find(person, 'portrait-fallback').hidden, false);
+      env.view.speaking(person.dataset.persona);
+      assert.equal(person.classList.contains('speaking'), true, 'A missing picture must not disable speaker feedback.');
+    }
+    env.view.dispose();
+  }
+});
+
+test('portrait framing contains the whole static image and keeps labels and speaking cues above it', async () => {
+  const html = await readFile(new URL('../frontend/room.html', import.meta.url), 'utf8');
+  assert.match(html, /\.portrait-image\s*\{[^}]*object-fit:contain/);
+  assert.match(html, /\.portrait-fill\s*\{[^}]*filter:blur\([^)]*\) brightness\(\.45\)/);
+  assert.match(html, /\.portrait-image\s*\{[^}]*z-index:1/);
+  assert.match(html, /\.seat-label\s*\{[^}]*z-index:2/);
+  assert.match(html, /\.speaking-waves\s*\{[^}]*z-index:2/);
+  assert.match(html, /prefers-reduced-motion:reduce/);
+});
+
+function previewEnvironment(portraits = assignPortraits) {
+  const nodes = new Map(), document = {
+    getElementById(id) {
+      if (!nodes.has(id)) nodes.set(id, new Element());
+      return nodes.get(id);
+    },
+    createElement: (name) => new Element(name),
+  };
+  const preview = createSetupPreview({ document, assignPortraits: portraits });
+  const state = { audience: [{ id: 'vc', name: '<b>Dana Reviewer</b>',
+    image_url: 'https://untrusted.example/image.jpg' }],
+  options: { duration_minutes: 5, difficulty: 'standard', input_mode: 'push_to_talk' } };
+  preview.render(state, 'video');
+  return { tile: document.getElementById('preview-stage').children.find((child) => child.classList.contains('tile')) };
+}
+
+test('wizard preview preserves whole portraits, safe names and initials when either image layer fails', () => {
+  for (const failedLayer of ['preview-portrait-image', 'preview-portrait-fill']) {
+    const { tile } = previewEnvironment();
+    const image = find(tile, 'preview-portrait-image'), fill = find(tile, 'preview-portrait-fill');
+    assert.match(image.style, /object-fit:contain/); assert.match(fill.style, /filter:blur/);
+    assert.match(image.src, /^\/demo\/faces\/.+\.jpg$/); assert.equal(fill.src, image.src);
+    assert.equal(fill.alt, ''); assert.equal(fill['aria-hidden'], 'true');
+    assert.equal(tile.children.at(-1).textContent, '<b>Dana Reviewer</b>');
+    assert.match(tile.children.at(-1).style, /z-index:2/);
+    assert.equal(find(tile, 'preview-portrait-fallback').hidden, true);
+    find(tile, failedLayer).onerror();
+    assert.equal(image.hidden, true); assert.equal(fill.hidden, true);
+    assert.equal(find(tile, 'preview-portrait-fallback').hidden, false);
+    assert.equal(tile.children.at(-1).textContent, '<b>Dana Reviewer</b>');
+  }
+  const { tile } = previewEnvironment(() => new Map());
+  assert.equal(find(tile, 'preview-portrait-image'), null);
+  assert.equal(find(tile, 'preview-portrait-fill'), null);
+  assert.equal(find(tile, 'preview-portrait-fallback').hidden, false);
 });
 
 test('curveball states and ending preserve the live-room view contract', () => {
@@ -457,5 +532,50 @@ test('paused Q&A early finish remains an intentional escape while Resume waits f
   } finally {
     resolveVoice({ stop: async () => {}, cancelTurn() {}, setPaused() {}, active: true, listening: true });
     await resume; await env.app.stop();
+  }
+});
+
+test('saved room setting changes the stage while authoritative personas and static portraits stay intact', () => {
+  const previous = globalThis.sessionStorage;
+  globalThis.sessionStorage = { getItem(key) {
+    assert.equal(key, 'presai.session.designed-room');
+    return JSON.stringify({ setting: 'boardroom', config: { personas: [{ id: 'stale', name: 'Stale guest' }] } });
+  } };
+  try {
+    const env = setup({ session_id: 'designed-room', config: { preset_id: 'startup_pitch', personas: [
+      { id: 'vc', name: 'Dana', role: 'Skeptical VC' },
+      { id: 'student', name: 'Sam', role: 'Student' },
+    ] } });
+    assert.equal(env.node('room-setting').textContent, 'Boardroom');
+    assert.equal(env.node('guest-count').textContent, '2 guests');
+    assert.equal(env.node('slide-viewer').style.left, '32%');
+    const people = env.node('tiles').children;
+    assert.equal(people.length, 2);
+    assert.deepEqual(people.map((person) => person.dataset.persona), ['vc', 'student']);
+    assert.notEqual(people[0].style.left, people[1].style.left);
+    for (const person of people) assert.match(find(person, 'portrait-image').src, /^\/demo\/faces\/.+\.jpg$/);
+    env.view.dispose();
+  } finally {
+    if (previous === undefined) delete globalThis.sessionStorage; else globalThis.sessionStorage = previous;
+  }
+});
+
+test('missing room metadata falls back to the preset layout and retains visible turn feedback', () => {
+  const previous = globalThis.sessionStorage;
+  globalThis.sessionStorage = { getItem() { return null; } };
+  try {
+    const env = setup({ session_id: 'new-room', config: { preset_id: 'class_presentation', personas: [
+      { id: 'professor', name: 'Professor', role: 'Reviewer' },
+    ] } });
+    assert.equal(env.node('room-setting').textContent, 'Classroom');
+    assert.equal(env.node('slide-viewer').style.left, '27%');
+    assert.equal(env.node('guest-count').textContent, '1 guest');
+    env.view.phase('recovering'); assert.equal(env.node('phase').classList.contains('hot'), true);
+    env.view.phase('answering'); assert.equal(env.node('phase').classList.contains('hot'), false);
+    assert.equal(env.node('phase').classList.contains('mint'), true);
+    assert.equal(env.node('room-state').textContent, 'Your turn to answer the audience.');
+    env.view.dispose();
+  } finally {
+    if (previous === undefined) delete globalThis.sessionStorage; else globalThis.sessionStorage = previous;
   }
 });

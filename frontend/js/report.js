@@ -1,6 +1,6 @@
 import { getReport, getSession } from '/js/api.js';
 import { bootReport } from '/js/report_controller.js';
-import { createReportView } from '/js/report_view.js';
+import { createReportView } from '/js/report_view.js?v=optimized-room-1';
 
 const page = new AbortController();
 window.addEventListener('pagehide', () => page.abort(), { once: true });

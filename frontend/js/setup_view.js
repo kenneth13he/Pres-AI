@@ -10,10 +10,10 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
     return element;
   };
   function portrait(person, image) {
-    const frame = node('div', 'h-12 w-12 shrink-0 overflow-hidden rounded-full border border-slate-700 bg-slate-800');
+    const frame = node('div', 'h-12 w-12 shrink-0 overflow-hidden rounded-full border border-[var(--border)] bg-slate-800');
     const fallback = () => {
       frame.replaceChildren();
-      frame.classList.add('grid', 'place-items-center', 'text-lg', 'text-cyan-300');
+      frame.classList.add('grid', 'place-items-center', 'text-lg', 'text-[var(--mint)]');
       frame.textContent = person.custom ? '+' : String(person.name ?? '?').slice(0, 1);
     };
     if (image?.src) {
@@ -26,10 +26,10 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
   function buildRoster(state) {
     let index = 0;
     for (const person of state.roster.values()) {
-      const card = node('article', 'rounded-xl border border-slate-700 bg-slate-950/50 p-4 transition');
+      const card = node('article', 'rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition');
       card.setAttribute('data-persona', person.id);
       const top = node('div', 'flex items-start gap-3');
-      const checkbox = node('input', 'mt-4 h-4 w-4 shrink-0 accent-cyan-400');
+      const checkbox = node('input', 'mt-4 h-4 w-4 shrink-0 accent-[var(--mint)]');
       checkbox.type = 'checkbox'; checkbox.id = `roster-person-${index}`;
       checkbox.onchange = () => controller.choosePersona(person.id, checkbox.checked);
       const label = node('label', 'min-w-0 flex-1 cursor-pointer'); label.htmlFor = checkbox.id;
@@ -40,11 +40,11 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
       const focus = node('p', 'mt-3 text-xs leading-relaxed text-slate-400', person.focus.join(' · '));
       const setting = node('div', 'mt-3 flex items-center gap-3');
       const sliderLabel = node('label', 'text-xs text-slate-400', 'Skepticism');
-      const slider = node('input', 'min-w-0 flex-1 accent-cyan-400');
+      const slider = node('input', 'min-w-0 flex-1 accent-[var(--mint)]');
       slider.type = 'range'; slider.min = '0'; slider.max = '1'; slider.step = '0.05';
       slider.id = `roster-skepticism-${index++}`; sliderLabel.htmlFor = slider.id;
       slider.oninput = () => controller.skepticism(person.id, slider.value);
-      const amount = node('output', 'w-10 text-right text-xs tabular-nums text-cyan-300');
+      const amount = node('output', 'w-10 text-right text-xs tabular-nums text-[var(--mint)]');
       amount.setAttribute('for', slider.id);
       setting.append(sliderLabel, slider, amount); card.append(top, focus, setting);
       rows.set(person.id, { card, checkbox, slider, amount, avatar }); $('roster').append(card);
@@ -52,8 +52,8 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
   }
   function buildCurveballs(state) {
     state.allowed.forEach((kind, index) => {
-      const label = node('label', 'flex cursor-pointer items-start gap-2 rounded-lg border border-slate-700 bg-slate-950/40 p-3');
-      const input = node('input', 'mt-1 accent-cyan-400');
+      const label = node('label', 'flex cursor-pointer items-start gap-2 rounded-lg border border-[var(--border)] bg-slate-950/40 p-3');
+      const input = node('input', 'mt-1 accent-[var(--mint)]');
       input.type = 'checkbox'; input.id = `curveball-${index}`;
       input.onchange = () => controller.curveball(kind, input.checked);
       const text = node('span', 'text-sm');
@@ -85,10 +85,10 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
       };
       $('remove-pdf').onclick = () => { $('pdf').value = ''; void controller.upload(null); };
       const drop = $('pdf-drop');
-      drop.ondragover = (event) => { event.preventDefault(); drop.classList.add('border-cyan-500'); };
-      drop.ondragleave = () => drop.classList.remove('border-cyan-500');
+      drop.ondragover = (event) => { event.preventDefault(); drop.classList.add('border-[var(--mint-line)]'); };
+      drop.ondragleave = () => drop.classList.remove('border-[var(--mint-line)]');
       drop.ondrop = (event) => {
-        event.preventDefault(); drop.classList.remove('border-cyan-500');
+        event.preventDefault(); drop.classList.remove('border-[var(--mint-line)]');
         void controller.upload(event.dataTransfer?.files?.[0]);
       };
       $('start').onclick = () => controller.submit();
@@ -103,7 +103,7 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
       const people = state.audience, images = assignPortraits(people);
       $('audience-summary').replaceChildren(...people.map((person) => {
         const card = node('div', `flex min-w-0 items-center gap-3 rounded-xl border p-3 ${person.custom
-          ? 'border-dashed border-cyan-700 bg-cyan-950/20' : 'border-slate-700 bg-slate-900'}`);
+          ? 'border-dashed border-[var(--mint-line)] bg-[var(--mint-tint)]' : 'border-[var(--border)] bg-[var(--bg)]'}`);
         card.setAttribute('data-persona', person.id);
         const text = node('div', 'min-w-0');
         text.append(node('p', 'truncate text-sm font-semibold text-slate-100', person.custom ? 'Custom · fictional' : person.name),
@@ -112,7 +112,7 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
       }));
       $('seat-count').textContent = people.length > 3 ? `${people.length} requested · maximum 3`
         : `${people.length} of 3 audience seats`;
-      $('seat-count').classList.toggle('text-amber-300', people.length > 3 || people.length < 2);
+      $('seat-count').classList.toggle('text-[var(--coral)]', people.length > 3 || people.length < 2);
       $('selection-help').textContent = state.customDescription.trim()
         ? 'Your custom person takes one seat. Keep exactly two roster people checked.'
         : 'Choose two or three fictional audience members. The moderator hosts separately.';
@@ -125,8 +125,8 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
         const selected = state.chosen.has(id), person = state.roster.get(id);
         row.checkbox.checked = selected;
         row.checkbox.disabled = state.submitting || (!selected && state.chosen.size >= limit);
-        row.card.classList.toggle('border-cyan-500', selected);
-        row.card.classList.toggle('border-slate-700', !selected);
+        row.card.classList.toggle('border-[var(--mint-line)]', selected);
+        row.card.classList.toggle('border-[var(--border)]', !selected);
         row.slider.value = String(state.skepticism.get(id) ?? person.skepticism);
         row.slider.disabled = state.submitting || !selected;
         row.amount.textContent = `${Math.round(Number(row.slider.value) * 100)}%`;
@@ -151,7 +151,7 @@ export function createSetupView({ document, assignPortraits = () => new Map() })
           : o.curveball_mode === 'choose' ? `${state.chosenCurveballs.size} kinds selected. Each kind can happen at most once.`
             : 'The room picks from this preset’s curveballs when a natural moment comes.';
       $('pdf-status').textContent = state.upload.message || 'Optional · PDF only · up to 50 MB';
-      $('pdf-status').classList.toggle('text-amber-300', state.upload.status === 'error');
+      $('pdf-status').classList.toggle('text-[var(--coral)]', state.upload.status === 'error');
       $('remove-pdf').classList.toggle('hidden', !state.upload.filename);
       $('setup-fields').disabled = state.submitting;
       $('start').disabled = state.submitting || state.errors.length > 0;

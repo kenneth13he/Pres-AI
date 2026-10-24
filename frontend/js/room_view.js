@@ -1,4 +1,5 @@
 import { assignPortraits } from './portraits.js';
+import { layout, loadSessionMeta, PRESET_SETTING, settingById } from './rooms.js';
 
 // Room rendering and accessible controls. All audience/transcript text is plain text.
 export function createRoomView(doc = document, win = doc.defaultView) {
@@ -78,6 +79,22 @@ export function createRoomView(doc = document, win = doc.defaultView) {
     },
     configure(value) {
       session = value; notice(''); text('preset-name', value.preset?.name || 'Presentation room');
+      const peopleCount = value.config?.personas?.length || 0;
+      const setting = settingById(loadSessionMeta(value.session_id)?.setting
+        || PRESET_SETTING[value.config?.preset_id] || 'video');
+      const arrangement = layout(setting.id, Math.max(1, peopleCount));
+      text('guest-count', `${peopleCount} ${peopleCount === 1 ? 'guest' : 'guests'}`);
+      text('room-setting', setting.name); $('stage').style.background = arrangement.bg;
+      const position = (node, box) => {
+        Object.assign(node.style, { left: `${box.x}%`, top: `${box.y}%`,
+          width: `${box.w}%`, height: `${box.h}%` });
+      };
+      position($('slide-viewer'), arrangement.slide); $('stage-decor').replaceChildren();
+      for (const decoration of arrangement.decor) {
+        const node = doc.createElement('div'); position(node, decoration);
+        node.style.borderRadius = decoration.r; node.style.background = decoration.c;
+        $('stage-decor').append(node);
+      }
       activeSpeaker = null; tiles.clear(); bubbles.clear(); $('tiles').replaceChildren(); $('host').replaceChildren();
       const portraits = assignPortraits(value.config?.personas || []);
       const people = [{ id: 'moderator', name: 'Moderator', role: 'Guides the room' }, ...(value.config?.personas || [])];
@@ -86,10 +103,11 @@ export function createRoomView(doc = document, win = doc.defaultView) {
         if (content != null) node.textContent = content;
         return node;
       };
-      for (const person of people) {
+      for (const [index, person] of people.entries()) {
         const host = person.id === 'moderator', face = portraits.get(person.id);
         const tile = element('article', host ? 'seat tile host-seat' : 'seat tile');
         tile.dataset.persona = person.id;
+        if (!host) position(tile, arrangement.seats[index - 1]);
         const slot = element('div', 'speech-slot'), bubble = element('div', 'speech-bubble');
         const tag = element('small', 'bubble-tag'), line = element('p', 'bubble-text');
         bubble.hidden = true; tag.hidden = true; bubble.append(tag, line); slot.append(bubble);
@@ -99,14 +117,17 @@ export function createRoomView(doc = document, win = doc.defaultView) {
         const fallback = element('div', 'portrait-fallback', initials);
         fallback.hidden = Boolean(face?.src); portrait.append(fallback);
         if (face?.src) {
-          const image = element('img', 'portrait-image'); image.src = face.src;
+          const fill = element('img', 'portrait-fill');
+          fill.alt = ''; fill.setAttribute('aria-hidden', 'true'); fill.decoding = 'async';
+          const image = element('img', 'portrait-image');
           image.alt = `${person.name} · fictional ${host ? 'moderator' : 'audience member'}`;
           image.decoding = 'async'; tile.dataset.character = face.character;
-          image.onerror = () => {
-            image.hidden = true; fallback.hidden = false;
+          image.onerror = fill.onerror = () => {
+            image.hidden = fill.hidden = true; fallback.hidden = false;
             tile.classList.add('portrait-unavailable');
           };
-          portrait.append(image);
+          // Both layers use the same trusted local cast image, never API-provided URLs.
+          fill.src = image.src = face.src; portrait.append(fill, image);
         }
         const waves = element('div', 'speaking-waves');
         waves.setAttribute('aria-hidden', 'true');
@@ -124,7 +145,9 @@ export function createRoomView(doc = document, win = doc.defaultView) {
     phase(value) {
       phase = value; text('phase', value === 'qna' ? 'Q&A' : value);
       text('btn-pause', value === 'paused' ? 'Resume' : 'Pause');
-      doc.body.classList.toggle('room-paused', value === 'paused'); controls();
+      doc.body.classList.toggle('room-paused', value === 'paused');
+      $('phase').classList.toggle('hot', ['curveball', 'recovering'].includes(value));
+      $('phase').classList.toggle('mint', ['presenting', 'answering', 'interruption', 'qna', 'report'].includes(value)); controls();
     },
     controls, notice,
     connection: (value) => text('conn', value),
@@ -145,7 +168,7 @@ export function createRoomView(doc = document, win = doc.defaultView) {
       const person = session?.config?.personas?.find((p) => p.id === speaker);
       const name = person?.name || (speaker === 'presenter' || speaker === 'you' ? 'You'
         : speaker === 'moderator' ? 'Moderator' : speaker || 'Moderator');
-      const row = doc.createElement('div'); row.className = 'caption';
+      const row = doc.createElement('div'); row.className = `caption ${speaker === 'presenter' || speaker === 'you' ? 'presenter' : speaker === 'moderator' ? 'moderator' : 'audience'}`;
       row.textContent = `${name}: ${value}${tag ? ` [${tag}]` : ''}`;
       $('captions').append(row); $('captions').scrollTop = $('captions').scrollHeight;
       const entry = bubbles.get(speaker);

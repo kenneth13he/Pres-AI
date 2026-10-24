@@ -4,7 +4,7 @@ Current local mode uses **live Boson/Higgs speech and audience reasoning** with 
 Boson key and balance. Hold-to-talk is the default; static portraits are used and avatar
 video is off. The Claude adapter remains available but was not used for these local runs.
 
-Last updated: 2026-10-24. Current checkpoint gate: **299 backend + 166 frontend/audio tests**,
+Last updated: 2026-10-24. Current checkpoint gate: **299 backend + 178 frontend/audio tests**,
 plus lint, type, schema and mock checks. Two earlier human flows had clear audio and
 automatic Q&A/report finish, with 12 reasoning successes and zero recorded errors or
 fallbacks, but incomplete final-build coverage. A subsequent recorded blackout run measured
@@ -169,3 +169,15 @@ Local mode is now real Boson/Higgs audience reasoning with the existing key/bala
 User confirmed bb1e3b93 (natural blackout) and ff575163 (natural countdown→Q&A) completed with clear audio and automatic report finish. Together:12 real reasoning successes; zero failures/fallbacks/rejections, room errors, skips or unanswered questions. Reports remain available after restart.
 
 Strict clean-demo coverage remains open. Run1 correctly has no measured blackout recovery because speech began after restoration. Run2 revealed an ungraded closing turn submitted after zero and an AI warning saying five minutes while the timer allowed60s. Both code issues are fixed locally: canonical60s speech and bounded once-only delayed-final assessment with explicit overrun/word-timing caveat.240 backend/133 frontend tests and a separate real Boson timing replay pass; the replay is synthetic delivery/clock, not a new human run. Original reports remain unchanged. P0-13/P0-14 are not closed.
+
+
+### New design integrated locally · 24 October 2026
+
+The main/feat-frontend redesign9df73d3 is now adapted to the tested voice implementation:
+premium dark homepage, five-step setup with reusable local profiles and all presets,
+five static room layouts, and the report's real evidence/metrics. PTT is the default,
+Boson voice/reasoning remains selected, and videos remain off. Unsupported context imports,
+voice cloning and talking-head controls are omitted.299 backend and178 frontend/audio
+checks plus lint/type/schema/mocks pass; served local assets match the new sources.
+This UI integration is included in `feat/optimized-presentation-room`. P0-13 remains open; no new human run
+or same-build backup is claimed.

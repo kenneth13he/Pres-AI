@@ -1,13 +1,40 @@
 # Voice-room handoff — 24 October 2026
 
-This is the verified voice-room integration for **`yang`**. Start here before
+This is the optimized voice-room integration on **`feat/optimized-presentation-room`**. Start here before
 continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
 `DECISIONS.md` entries for the user-approved local choices.
 
-## Deadline handoff
+## Optimized release integration
+
+The user requested the new design now on `main` / `feat/frontend` at `9df73d3`.
+It is adapted across the homepage, five-step setup wizard, live room and report.
+The new dark/mint/coral design uses Urbanist and JetBrains Mono, five room layouts,
+static portraits, profile preferences and the existing real report data. The release branch starts from the verified `yang` checkpoint `1392f74`; `yang` and the
+collaborators’ branches are preserved. The whole-face portrait treatment from
+`most-recent-update` (`5274a12`) is selectively adapted for static portraits: contain
+framing, a dimmed/blurred backdrop, safe image-failure fallback, and name/speaker overlays.
+Its alternate conversation engine, webcam and live-avatar pool are not imported.
+
+The setup keeps the tested controller/model: PDF-only upload limits and race cancellation,
+explicit failed-file recovery, validated 2–3-person audiences, generated fictional custom
+third seats, preset timing, and duplicate-Start protection. Profiles restore bounded
+preferences with hold-to-talk; no decks, credentials or microphone audio are stored in
+profiles. All presets remain reachable, file upload remains keyboard-accessible, and
+obsolete profiles cannot cause a redirect loop. Continue actions now stay in a fixed,
+high-contrast bottom bar with large targets, step labels and nearby validation feedback. Unconnected import/context/photo/clone
+controls are omitted. Room and report controllers and all audio/transcription safeguards
+are unchanged. Boson reasoning/voice and videos-off remain the active local configuration.
+
+Validation: **299 backend + 178 frontend/audio tests** pass, with Ruff, Pyright, generated
+schema and mock checks. The actual local server returns the new HTML/CSS/module bytes
+for all checked resources; changed entry points/styles are versioned to avoid stale UI.
+New regressions exercise wizard navigation, upload gating, safe profiles and preset routes,
+and room-layout selection. These checks do not close P0-13's human presentation gate.
+
+## Earlier deadline handoff
 
 The user requested publication with final human tests left open, then asked to finish the
-remaining important work automatically. The current gate is 299 backend and 166 frontend/audio
+remaining important work automatically. The gate at that checkpoint was 299 backend and 166 frontend/audio
 tests plus lint/type/schema/mocks. Report/clock fixes and two bounded live report replays
 were already verified. Hold-to-talk stays default; talking-head videos stay off.
 P0-13 remains unsigned. P0-14's local backup-file requirement is met: see
@@ -85,7 +112,7 @@ fresh human pair of this final build is still unverified.
 | Evidence | Result and limit |
 | --- | --- |
 | Offline backend gate | 299 tests; Ruff, Pyright, generated schema and mock fixtures passed, including Make/launcher setup, disconnect pause, ownership, teardown, clocks, report preparation and persistence. Re-run commands below on your checkout. |
-| Offline frontend/audio gate | 166 tests passed, including actual STT idle → voice close → room pause, frozen timers, pending-input discard, reconnect-before-Resume and control races. No microphone or vendor calls are used by these tests. |
+| Offline frontend/audio gate | 178 tests passed, including actual STT idle → voice close → room pause, frozen timers, pending-input discard, reconnect-before-Resume and control races. No microphone or vendor calls are used by these tests. |
 | Voice hardware | User confirmed microphone transcription, distinct clear voices, complete PTT turns through pauses, and automatic closing/report handoff. Earlier voice-lab latency sign-off is not a full-room acoustic latency guarantee. |
 | Two real-audience human flows | Natural blackout and natural countdown → Q&A runs both reached reports automatically with clear audio. Together: 12 real Boson reasoning successes; zero recorded model failures/fallbacks/rejections, room errors, skips or unanswered questions. |
 | Boson structured-output preflight | Decisions, follow-ups, recovery grading and custom-persona expansion all passed a bounded live check. Responses use grounding/validation and explicit diagnostics. |
@@ -145,7 +172,7 @@ make the original runs clean final-build demonstrations.
 ## Run it on your machine
 
 Use Python 3.12, the pinned `requirements.txt`, Make, and Node for the browser tests.
-From a clean checkout of `yang`:
+From a clean checkout of `feat/optimized-presentation-room`:
 
 ```sh
 make setup
@@ -221,17 +248,27 @@ may require it; those are not evidence of a naturally scheduled clean demo.
   coverage from truthful unassessed recovery. API simulations/replays never count as
   human microphone/playback acceptance.
 
-The tested backend base is `302c44b`. The room UI was selectively adapted from
-`feat/voice-room` at `4b508ee`; this is not a merge of that branch's later avatar/call
-experiments. When bringing in further UI changes, retain the tested PTT floor,
+The verified backend lineage is `302c44b` → `yang` checkpoint `1392f74`. The UI includes
+selective adaptations of `feat/voice-room` at `4b508ee`, the main redesign at `9df73d3`,
+and portrait framing at `5274a12`; the alternate avatar/call engine is not merged. When bringing in further UI changes, retain the tested PTT floor,
 playback acknowledgements, cancellation/reconnect guards and videos-off setting.
 
 ## Checkpoint and branch history
 
-The verified implementation is recorded in `1cde6c7` (room integration and handoff)
-and `8e03068` (grounded report coaching and terminal lifecycle), followed by this
-documentation update. Publication targets `yang` through authenticated local Git,
-preserving the branch's existing history with a normal fast-forward update.
-The earlier GitHub app write refusal is superseded by the user's completed local
-GitHub sign-in. Collaborators should pull `yang`, run the offline checks above,
-and configure their own private credentials before continuing the open acceptance work.
+The optimized branch starts from `1392f74` on `yang`, retaining the report/clock fixes,
+local report persistence, Boson reasoning, audio-loss Pause, ownership guards and portable
+setup. It adds the reviewed redesign and prominent Continue actions, plus the whole-face
+portrait improvement from `5274a12`. This is a selective source integration; it does not
+claim Git ancestry from the alternate native-panel implementation.
+
+The user explicitly requested creating and publishing a new branch. Publication targets
+`feat/optimized-presentation-room` through authenticated local Git with a normal push;
+`yang`, `main` and teammate branches are not rewritten. Collaborators should check out
+this branch, run the commands above, and configure their own private credentials.
+
+The release gate is **299 backend + 178 frontend/audio tests**, lint/type/schema/mocks,
+private-credential checks and served asset verification. A bounded live Boson provider
+smoke synthesized fictional speech, transcribed it, generated a verbatim-grounded question
+without fallback and produced response PCM. This is API/audio-byte evidence, not a physical
+microphone or audible playback check. **P0-13 remains open.** The previously reviewed local
+backup satisfies P0-14's file criterion with the older-build limitations in its manifest.
