@@ -12,11 +12,14 @@ How it fits together, per panelist (one `LiveAvatarRoom` each):
 
 Measured 24 Oct on one key: three avatars run at once, but only one per LiveKit room (a
 second avatar in the same room is accepted and never joins), and creating them back to back
-is rate-limited (429). One room each, started ~15 s apart: all three go live. Until a seat is
-live its lines play over the still face.
+is rate-limited (429). Starting one is also flaky: "avatar_id was not found" and "every
+realtime avatar slot is in use" come and go, so a face can take a minute or more to come up.
+That is why the faces live in `FacePool`: started when the server boots, kept up across
+calls, so a call never waits on Higgs. Until a face is live its lines play over the still.
 
-Money: ~$0.07/min per live face. Every session has a hard `max_duration_seconds` and is
-released in `close()` (call end, server shutdown, or the room left empty).
+Money: ~$0.07/min per live face, ~$12/h for three while the pool is up. Every avatar has a
+hard `max_duration_seconds`; the pool replaces each before it expires, shuts down after
+POOL_IDLE_S with no call, and releases everything on server shutdown.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -34,11 +37,14 @@ if TYPE_CHECKING:
     from livekit.agents.voice.avatar import DataStreamAudioOutput
 
 BASE_URL = "https://api.boson.ai/v1"
-MAX_CALL_S = int(os.environ.get("BOSON_AVATAR_MAX_S", "900"))  # 15 min hard stop per face
+MAX_CALL_S = int(os.environ.get("BOSON_AVATAR_MAX_S", "3600"))  # hard stop per face
 SAMPLE_RATE = 24_000
 FRAME_SAMPLES = 480  # 20 ms
 JOIN_TIMEOUT_S = 20  # an accepted avatar that hasn't published video by then never will
 STAGGER_S = 15       # between avatar starts (faster gets 429 rate_limit_exceeded)
+RETRY_S = 8          # after a refused start ("not found" / "slots in use" pass quickly)
+REFRESH_S = 120      # replace a face this long before its max_duration runs out
+POOL_IDLE_S = int(os.environ.get("BOSON_AVATAR_IDLE_S", "7200"))  # no call this long: stop
 
 
 def livekit_configured() -> bool:
@@ -159,6 +165,12 @@ class LiveAvatarRoom:
             pass
         return pushed
 
+    def alive(self, persona_id: str) -> bool:
+        """Still connected and the avatar still in the room."""
+        seat = self.seats.get(persona_id)
+        return (seat is not None and self._room is not None and not self._closed
+                and seat.identity in self._room.remote_participants)
+
     def interrupt(self) -> None:
         for seat in self.seats.values():
             if seat.output is not None:
@@ -184,3 +196,106 @@ class LiveAvatarRoom:
             except Exception:
                 pass
             self._room = None
+
+
+async def open_face(character: str) -> LiveAvatarRoom:
+    """A new room with Higgs's built-in `character` avatar live in it; raises if refused."""
+    room = LiveAvatarRoom("pool")
+    try:
+        await room.connect()
+        await room.add_seat(character, f"builtin_{character}_v1")
+    except BaseException:
+        await room.close()
+        raise
+    return room
+
+
+class FacePool:
+    """The panel's live faces, one per character, kept up across calls.
+
+    One keeper task walks the characters: a face that is missing, gone from its room or near
+    its max duration gets a new room (started STAGGER_S apart, retried every RETRY_S); the new
+    room goes live first, then listeners hear about it, then the old one closes. Sessions
+    borrow faces (`room`) and listen for new ones; they never close them.
+    """
+
+    def __init__(self, characters: list[str],
+                 opener: Callable[[str], Awaitable[LiveAvatarRoom]] = open_face,
+                 clock: Callable[[], float] | None = None) -> None:
+        self.characters = characters
+        self.rooms: dict[str, LiveAvatarRoom] = {}
+        self.errors: dict[str, str] = {}
+        self.listeners: set[Callable[[str], Awaitable[None]]] = set()
+        self._born: dict[str, float] = {}
+        self._opener = opener
+        self._clock = clock
+        self._task: asyncio.Task[None] | None = None
+        self._last_used = 0.0
+
+    def _now(self) -> float:
+        return self._clock() if self._clock else asyncio.get_running_loop().time()
+
+    def start(self) -> None:
+        self._last_used = self._now()
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._keep())
+
+    def room(self, character: str) -> LiveAvatarRoom | None:
+        room = self.rooms.get(character)
+        return room if room is not None and room.alive(character) else None
+
+    def status(self) -> dict[str, str]:
+        return {c: "live" if self.room(c) else self.errors.get(c, "starting")
+                for c in self.characters}
+
+    def _due(self, character: str) -> bool:
+        if self.room(character) is None:
+            return True
+        return self._now() - self._born[character] > MAX_CALL_S - REFRESH_S
+
+    async def _keep(self) -> None:
+        while True:
+            if self.listeners:
+                self._last_used = self._now()
+            elif self._now() - self._last_used > POOL_IDLE_S:
+                await self.close()  # nobody has called in a while: stop paying
+                return
+            due = [c for c in self.characters if self._due(c)]
+            if not due:
+                await asyncio.sleep(5)
+                continue
+            for character in due:
+                if await self.refresh(character):
+                    await asyncio.sleep(STAGGER_S)
+                else:
+                    await asyncio.sleep(RETRY_S)
+
+    async def refresh(self, character: str) -> bool:
+        """One attempt at a new face for `character`; True if it went live."""
+        try:
+            new = await self._opener(character)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.errors[character] = f"{type(exc).__name__}: {exc}"[:300]
+            return False
+        old = self.rooms.get(character)
+        self.rooms[character] = new
+        self._born[character] = self._now()
+        self.errors.pop(character, None)
+        for listener in list(self.listeners):
+            try:
+                await listener(character)
+            except Exception:
+                pass
+        if old is not None:
+            await old.close()
+        return True
+
+    async def close(self) -> None:
+        task, self._task = self._task, None
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+        rooms, self.rooms = self.rooms, {}
+        for room in rooms.values():
+            await room.close()

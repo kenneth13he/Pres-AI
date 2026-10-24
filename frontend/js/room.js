@@ -180,29 +180,36 @@ function loadScript(src) {
     document.head.append(s);
   });
 }
-// One LiveKit room per live face (Higgs runs one avatar per room).
+// One LiveKit room per live face (Higgs runs one avatar per room). A face can be replaced
+// by a fresh one (the server renews them); the new room takes over the tile, then the old
+// one is left.
 async function joinLive(p) {
   state.live ??= {};
+  state.seatRoom ??= {};
   if (state.live[p.room]) return;
   state.live[p.room] = 'joining';
   if (!window.LivekitClient) await loadScript('https://cdn.jsdelivr.net/npm/livekit-client@2.15.0/dist/livekit-client.umd.js');
   const { Room, RoomEvent, Track } = window.LivekitClient;
   const room = new Room({ adaptiveStream: false });
-  room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
-    const tile = seat(participant.identity.replace(/^avatar-/, ''));
+  const tile = () => seat(p.speaker);
+  room.on(RoomEvent.TrackSubscribed, (track) => {
     const el = track.attach();
-    if (track.kind === Track.Kind.Video && tile) {
+    el.dataset.room = p.room;
+    if (track.kind === Track.Kind.Video && tile()) {
       el.className = 'live-feed'; el.muted = true; el.playsInline = true;
-      tile.querySelector('.live-feed')?.remove();
-      tile.prepend(el);
-      tile.classList.add('live-on');
+      tile().querySelectorAll('.live-feed').forEach((old) => old.remove());
+      tile().prepend(el);
+      tile().classList.add('live-on');
+      const before = state.seatRoom[p.speaker];
+      state.seatRoom[p.speaker] = room;
+      if (before && before !== room) before.disconnect();
     } else if (track.kind === Track.Kind.Audio) {
       el.style.display = 'none'; document.body.append(el);
     }
   });
-  room.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
+  room.on(RoomEvent.TrackUnsubscribed, (track) => {
     track.detach().forEach((el) => el.remove());
-    seat(participant.identity.replace(/^avatar-/, ''))?.classList.remove('live-on');
+    if (!tile()?.querySelector('.live-feed')) tile()?.classList.remove('live-on');
   });
   addEventListener('click', () => room.startAudio().catch(() => {}));
   await room.connect(p.url, p.token);

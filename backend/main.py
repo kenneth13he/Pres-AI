@@ -35,7 +35,13 @@ from .services import slides
 from .services.audience import ClaudeOrchestrator, MockOrchestrator, Orchestrator
 from .services.curveballs import CATALOG
 from .services.voice_base import VoiceAdapter
-from .services.voice_higgs import HiggsVoice, SpendCounter, seat_characters
+from .services.voice_higgs import (
+    POOL,
+    HiggsVoice,
+    SpendCounter,
+    live_faces_enabled,
+    seat_characters,
+)
 from .services.voice_mock import MockVoice
 
 load_dotenv()
@@ -118,11 +124,14 @@ def make_voice() -> VoiceAdapter:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     presets.presets()  # fail fast on a bad YAML
+    if os.environ.get("VOICE_ADAPTER") == "higgs" and live_faces_enabled():
+        POOL.start()  # warm the live faces before anyone joins
     yield
     for room in ROOMS.values():
         if room.ticker:
             room.ticker.cancel()
-        await _release_live(room)  # live faces bill per minute: never leave them running
+        await _release_live(room)
+    await POOL.close()  # live faces bill per minute: never leave them running
 
 
 async def _release_live(room: Room) -> None:
@@ -132,7 +141,7 @@ async def _release_live(room: Room) -> None:
 
 
 async def _release_if_abandoned(room: Room, after_s: float = 60) -> None:
-    """Everyone closed the tab without ending the call: release the live faces."""
+    """Everyone closed the tab without ending the call: it lets go of the live faces."""
     await asyncio.sleep(after_s)
     if not room.sockets:
         await _release_live(room)
@@ -154,6 +163,7 @@ def health() -> dict[str, Any]:
             "boson_key": bool(os.environ.get("BOSON_API_KEY")),
             "anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
             "avatar": os.environ.get("BOSON_AVATAR_ENABLED", "false") == "true",
+            "faces": POOL.status() if live_faces_enabled() else None,
         },
         "spend": {"tts_chars": SpendCounter.tts_chars, "realtime_ms": SpendCounter.realtime_ms,
                   "estimate_usd": round(SpendCounter.estimate_usd(), 3),
