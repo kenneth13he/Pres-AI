@@ -247,3 +247,12 @@ Demo path: reports now include real source-grounded content coaching; formal P0-
 Files outside my paths: spec internal rubric models/schema, backend report/audience/engine/main and regressions, frontend API/room/report lifecycle and tests; necessary completion of the user-authorized integrated presentation room
 Proposed decision changes (not implemented): none; evidence/coaching formulas and provider choices documented in DECISIONS.md
 Next: refresh local server and source checkpoint; when user returns, test the complete final build and restore GitHub write authentication for publishing yang
+
+## Authenticated yang publication checkpoint · 2026-10-24 · B (user requested)
+Built: latest verified implementation is committed in1cde6c7 and8e03068. Updated COLLABORATOR_HANDOFF.md to direct collaborators to the current code, reproducible checks, private credential setup and remaining acceptance work.
+Tests: the implementation retains281 passing backend tests and151 passing frontend/audio tests, with Ruff/Pyright/schema/mocks passing. This final update changes documentation only; whitespace checks pass. Independent source/docs/privacy audit found no publication blocker and no private runtime files included.
+Gate: user explicitly requested publication to yang and completed GitHub CLI sign-in after the connected app still refused writes. Refetched origin/yang and confirmed it is an ancestor of the verified checkpoint; publication uses a normal fast-forward push without force.
+Demo path: hold-to-talk, accepted voices and videos-off remain. Final-build human microphone/recovery validation, two recorded unaided demonstrations and backup recording remain P0-13/P0-14; prior guided runs and automated/model checks do not replace them.
+Files outside my paths: collaborator handoff and this append-only progress record, both requested for collaborator continuity
+Proposed decision changes (not implemented): none
+Next: collaborators pull yang and start with COLLABORATOR_HANDOFF.md; continue the documented final-build acceptance and recording work when the user returns.

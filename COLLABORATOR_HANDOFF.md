@@ -1,10 +1,7 @@
 # Voice-room handoff — 24 October 2026
 
-This is the verified integration prepared for **`yang`**. GitHub publication is still
-blocked by missing local sign-in and the connected app's HTTP 403 write refusal.
-The complete source and commits are saved locally; do not assume `yang` already has them.
-Start here
-before continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
+This is the verified voice-room integration for **`yang`**. Start here before
+continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
 `DECISIONS.md` entries for the user-approved local choices.
 
 ## What is ready
@@ -167,10 +164,12 @@ The tested backend base is `302c44b`. The room UI was selectively adapted from
 experiments. When bringing in further UI changes, retain the tested PTT floor,
 playback acknowledgements, cancellation/reconnect guards and videos-off setting.
 
-## Publication status
+## Checkpoint and branch history
 
-The local Git checkpoint is ready, but remote `yang` has not been updated. Native Git
-has no authenticated credential, and the connected GitHub app refused writes with
-`403 Resource not accessible by integration`. No force update or partial publication
-was used. After GitHub write authentication is available, fetch the branch again,
-confirm its changes are included, and push the verified checkpoint to `yang` normally.
+The verified implementation is recorded in `1cde6c7` (room integration and handoff)
+and `8e03068` (grounded report coaching and terminal lifecycle), followed by this
+documentation update. Publication targets `yang` through authenticated local Git,
+preserving the branch's existing history with a normal fast-forward update.
+The earlier GitHub app write refusal is superseded by the user's completed local
+GitHub sign-in. Collaborators should pull `yang`, run the offline checks above,
+and configure their own private credentials before continuing the open acceptance work.
