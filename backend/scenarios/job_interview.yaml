@@ -1,0 +1,7 @@
+id: job_interview
+name: Job Interview Talk
+tagline: Present your project to the people deciding whether to hire you.
+personas: [hiring_manager, senior_eng, recruiter]
+curveballs_allowed: [time_crunch, bait, vip_arrives, elevator]
+default_difficulty: normal
+duration_target_s: 180

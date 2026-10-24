@@ -1,0 +1,17 @@
+# Pinned exactly (CLAUDE.md §13 "Hackathon tooling"); resolved 23 Oct 2026. Bump deliberately, in its own commit.
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+python-multipart==0.0.32
+pyyaml==6.0.3
+pymupdf==2.0
+anthropic==2.3.0
+httpx==0.28.1
+websockets==17.3
+python-dotenv==1.2.4
+
+# dev / gate
+pytest==9.1.1
+pytest-asyncio==1.4.0
+ruff==0.17.2
+pyright==1.1.414

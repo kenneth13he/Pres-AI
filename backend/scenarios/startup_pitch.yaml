@@ -1,0 +1,7 @@
+id: startup_pitch
+name: Startup Pitch
+tagline: A VC, a student and a professor. Three minutes. Make the case.
+personas: [vc, student, professor]
+curveballs_allowed: [time_crunch, slides_down, heckler, latecomer, distraction, vip_arrives]
+default_difficulty: normal
+duration_target_s: 180

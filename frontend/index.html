@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PresAI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="min-h-screen">
+  <main class="mx-auto max-w-5xl px-4 py-12">
+    <header class="mb-10">
+      <h1 class="text-4xl font-semibold tracking-tight">PresAI</h1>
+      <p class="mt-2 text-lg text-slate-300">
+        Practise in front of an audience that talks back — and throws curveballs.
+      </p>
+      <p class="mt-1 text-sm text-slate-500">Three clicks to a live room: pick a preset, drop your slides, press Start.</p>
+    </header>
+
+    <section>
+      <h2 class="mb-3 text-sm uppercase tracking-wide text-slate-400">1 · Who is in the room?</h2>
+      <div id="presets" class="grid gap-4 sm:grid-cols-2">
+        <p class="text-slate-500">Loading presets…</p>
+      </div>
+    </section>
+
+    <footer class="mt-12 text-xs text-slate-600">
+      Personas are fictional. Curveballs challenge the idea, never the person. You can pause or skip at any time.
+      · <a class="underline" href="/room.html?mock=1">Watch a mocked session</a>
+    </footer>
+  </main>
+
+  <script type="module">
+    import { getPresets } from '/js/api.js';
+    const el = document.getElementById('presets');
+    const { presets, personas } = await getPresets();
+    const byId = Object.fromEntries(personas.map(p => [p.id, p]));
+    el.innerHTML = presets.map(p => `
+      <a href="/setup.html?preset=${p.id}"
+         class="block rounded-xl border border-slate-800 bg-slate-900/60 p-5 hover:border-cyan-400">
+        <div class="text-xl font-medium">${p.name}</div>
+        <div class="mt-1 text-sm text-slate-400">${p.tagline ?? ''}</div>
+        <div class="mt-3 flex flex-wrap gap-2 text-xs">
+          ${p.personas.map(id => `<span class="rounded-full bg-slate-800 px-2 py-1">${byId[id]?.role ?? id}</span>`).join('')}
+        </div>
+        <div class="mt-3 text-xs text-slate-500">${p.curveballs_allowed.length} curveball kinds · ${Math.round(p.duration_target_s/60)} min</div>
+      </a>`).join('') + `
+      <a href="/setup.html?preset=custom"
+         class="block rounded-xl border border-dashed border-slate-700 p-5 hover:border-cyan-400">
+        <div class="text-xl font-medium">Custom audience</div>
+        <div class="mt-1 text-sm text-slate-400">Pick anyone from the roster, or describe your own.</div>
+      </a>`;
+  </script>
+</body>
+</html>

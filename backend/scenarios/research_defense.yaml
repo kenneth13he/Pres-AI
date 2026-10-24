@@ -1,0 +1,7 @@
+id: research_defense
+name: Research Defense
+tagline: Defend the method, not just the result.
+personas: [professor, methods, mentor]
+curveballs_allowed: [time_crunch, slides_down, bait, heckler, fact_check]
+default_difficulty: normal
+duration_target_s: 300

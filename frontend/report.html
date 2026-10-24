@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PresAI · Report</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="min-h-screen">
+  <main class="mx-auto max-w-4xl px-4 py-10">
+    <a href="/" class="text-sm text-slate-500 hover:text-slate-300">← new session</a>
+    <h1 class="mt-2 text-3xl font-semibold">Report card</h1>
+    <p id="caveats" class="mt-2 text-xs text-slate-500"></p>
+
+    <section id="dimensions" class="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5"></section>
+    <section id="metrics" class="mt-4 flex flex-wrap gap-3 text-sm text-slate-300"></section>
+
+    <section class="mt-10">
+      <h2 class="text-sm uppercase tracking-wide text-slate-400">Recovery</h2>
+      <div id="curveballs" class="mt-3 space-y-3"></div>
+    </section>
+
+    <section class="mt-10">
+      <h2 class="text-sm uppercase tracking-wide text-slate-400">Key moments</h2>
+      <ol id="moments" class="mt-3 space-y-2 text-sm"></ol>
+    </section>
+
+    <section class="mt-10">
+      <h2 class="text-sm uppercase tracking-wide text-slate-400">What to fix next time</h2>
+      <div id="improvements" class="mt-3 space-y-3"></div>
+    </section>
+
+    <section class="mt-10">
+      <h2 class="text-sm uppercase tracking-wide text-slate-400">From the audience</h2>
+      <div id="personas" class="mt-3 space-y-2 text-sm"></div>
+    </section>
+  </main>
+  <script type="module" src="/js/report.js"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+[project]
+name = "presai"
+version = "0.0.1"
+description = "An AI audience that listens, interrupts, throws curveballs and grades your recovery."
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pyright]
+include = ["backend", "spec", "scripts"]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "standard"
+reportMissingImports = true
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+asyncio_mode = "auto"

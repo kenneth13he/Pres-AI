@@ -1,0 +1,7 @@
+id: class_presentation
+name: Class Presentation
+tagline: Your professor is picky, one classmate is lost and one is bored.
+personas: [professor, student, classmate]
+curveballs_allowed: [time_crunch, slides_down, latecomer, distraction, plain_language]
+default_difficulty: normal
+duration_target_s: 300

@@ -1,0 +1,24 @@
+/* Small additions on top of Tailwind (CDN). Keep it tiny; Tailwind does the rest. */
+:root { color-scheme: dark; }
+body { background: #0b0d12; color: #e7e9ee; }
+
+.tile { transition: box-shadow .2s, transform .2s, opacity .3s; }
+.tile.speaking { box-shadow: 0 0 0 3px #22d3ee, 0 0 30px #22d3ee55; transform: translateY(-2px); }
+.tile.flash { animation: flash .6s ease-in-out 3; }
+.tile.blank { opacity: .35; filter: grayscale(1); }
+@keyframes flash { 0%,100% { box-shadow: none } 50% { box-shadow: 0 0 0 3px #f59e0b } }
+
+.slide-viewer { position: relative; aspect-ratio: 16/9; background: #111; }
+.slide-viewer.black img, .slide-viewer.black .slide-text { visibility: hidden; }
+.slide-viewer.dim img, .slide-viewer.dim .slide-text { opacity: .15; }
+.overlay { position: absolute; inset: 0; display: none; place-items: center; text-align: center; }
+.slide-viewer.black .overlay, .slide-viewer.dim .overlay { display: grid; }
+
+.timer.urgent { color: #ef4444; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .5 } }
+
+.caption { animation: rise .25s ease-out; }
+@keyframes rise { from { transform: translateY(6px); opacity: 0 } }
+
+.meter { height: 6px; background: #1f2937; border-radius: 3px; overflow: hidden; }
+.meter > div { height: 100%; width: 0; background: #22d3ee; transition: width .08s; }

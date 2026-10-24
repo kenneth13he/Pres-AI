@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PresAI · Setup</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="min-h-screen">
+  <main class="mx-auto max-w-4xl px-4 py-10">
+    <a href="/" class="text-sm text-slate-500 hover:text-slate-300">← presets</a>
+    <h1 id="title" class="mt-2 text-3xl font-semibold">Setup</h1>
+
+    <!-- 2 · slides -->
+    <section class="mt-8 rounded-xl border border-slate-800 p-5">
+      <h2 class="text-sm uppercase tracking-wide text-slate-400">2 · Your slides (PDF)</h2>
+      <input id="pdf" type="file" accept="application/pdf" class="mt-3 block text-sm" />
+      <p id="pdf-status" class="mt-2 text-xs text-slate-500">Optional. Without a deck the room listens only.</p>
+    </section>
+
+    <!-- audience builder (P0-3b) -->
+    <section class="mt-6 rounded-xl border border-slate-800 p-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm uppercase tracking-wide text-slate-400">Audience</h2>
+        <button id="customise" class="text-sm text-cyan-400 hover:underline">Customise</button>
+      </div>
+      <div id="audience-summary" class="mt-3 flex flex-wrap gap-2 text-sm"></div>
+
+      <div id="builder" class="mt-4 hidden space-y-4">
+        <div>
+          <div class="text-xs text-slate-400">Pick two or three from the roster</div>
+          <div id="roster" class="mt-2 grid gap-2 sm:grid-cols-2"></div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">…or describe someone (fictional, labelled "Custom")</div>
+          <textarea id="custom-persona" rows="2" placeholder="e.g. my thesis committee chair who hates jargon"
+                    class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900 p-2 text-sm"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- advanced -->
+    <details class="mt-6 rounded-xl border border-slate-800 p-5">
+      <summary class="cursor-pointer text-sm uppercase tracking-wide text-slate-400">Advanced</summary>
+      <div class="mt-4 grid gap-4 sm:grid-cols-2 text-sm">
+        <label>Difficulty
+          <select id="difficulty" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
+            <option value="friendly">Friendly — no curveballs</option>
+            <option value="normal" selected>Normal — 2 questions, 1 curveball</option>
+            <option value="brutal">Brutal — 3 questions, 2 curveballs</option>
+          </select>
+        </label>
+        <label>Interruptions
+          <select id="frequency" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
+            <option value="rare">Rare</option><option value="normal" selected>Normal</option><option value="often">Often</option>
+          </select>
+        </label>
+        <label>Curveballs
+          <select id="cb-mode" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
+            <option value="surprise" selected>Surprise me</option><option value="choose">Let me choose</option><option value="off">Off</option>
+          </select>
+        </label>
+        <label>Target length (minutes)
+          <input id="duration" type="number" min="1" max="20" value="3" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2" />
+        </label>
+        <div id="cb-choose" class="hidden sm:col-span-2 flex flex-wrap gap-2"></div>
+        <label>Q&amp;A questions at the end
+          <input id="qna" type="number" min="0" max="3" value="2" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2" />
+        </label>
+        <label>Input
+          <select id="input-mode" class="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2">
+            <option value="live" selected>Live microphone</option><option value="push_to_talk">Push to talk (hold Space)</option>
+          </select>
+        </label>
+      </div>
+    </details>
+
+    <!-- 3 · start -->
+    <div class="mt-8 flex items-center gap-4">
+      <button id="start" class="rounded-xl bg-cyan-500 px-6 py-3 text-lg font-medium text-black hover:bg-cyan-400">3 · Start</button>
+      <span id="start-status" class="text-sm text-slate-500"></span>
+    </div>
+    <p class="mt-6 text-xs text-slate-600">We ask for your microphone when the room opens. Nothing is recorded or stored by default; the transcript lives in this session only.</p>
+  </main>
+  <script type="module" src="/js/setup.js"></script>
+</body>
+</html>

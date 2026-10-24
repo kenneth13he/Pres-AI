@@ -1,0 +1,29 @@
+{
+  "_comment": "Illustrative values only (CLAUDE.md §10). Never hardcode demo scores as if measured.",
+  "session_id": "demo-001",
+  "overall_score": null,
+  "dimensions": {"clarity": null, "evidence": null, "structure": null, "question_handling": null, "recovery": 71},
+  "metrics": {"filler_words": 4, "words_per_minute": 143, "unanswered_questions": 0, "curveballs_faced": 2, "skipped": 0},
+  "metric_caveats": [
+    "Filler count depends on recognition accuracy; treat as approximate.",
+    "Content dimensions are scored by the orchestrator's rubric pass (P0-12); null until it runs."
+  ],
+  "strengths": ["Clearly explained the problem"],
+  "improvements": [
+    {"observation": "Growth claim lacked supporting evidence", "evidence": "We can get 100,000 customers in six months", "suggestion": "Add acquisition assumptions and early traction"}
+  ],
+  "curveballs": [
+    {"kind": "slides_down", "at_ms": 22000, "resolution": "auto_restored", "recovery": {"resume_after_ms": 3400, "notes": "Resumed by restating the problem", "score": 71, "evidence": "So, the problem again is onboarding.", "suggestion": "Memorise a 3-point outline so you can present without slides."}},
+    {"kind": "time_crunch", "at_ms": 36000, "resolution": "timed_out", "recovery": {"resume_after_ms": null, "notes": "timing not measured", "score": null, "evidence": null, "suggestion": null}}
+  ],
+  "key_moments": [
+    {"at_ms": 4000, "type": "question", "persona_id": "vc", "summary": "Asked for evidence on growth claim", "kind": null},
+    {"at_ms": 22000, "type": "curveball", "persona_id": null, "summary": "Projector died", "kind": "slides_down"},
+    {"at_ms": 32000, "type": "curveball", "persona_id": null, "summary": "resumed after 3.4 s", "kind": "slides_down"}
+  ],
+  "persona_feedback": [
+    {"persona_id": "vc", "score": null, "comment": "Market argument needs proof."},
+    {"persona_id": "student", "score": null, "comment": "Listened; had no question this time."},
+    {"persona_id": "custom_1", "score": null, "comment": "Less jargon on slide 3, please."}
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "_comment": "Fallback for /api/presets when the backend is down. Keep in sync with backend/scenarios/*.yaml.",
+  "presets": [
+    {"id": "startup_pitch", "name": "Startup Pitch", "tagline": "A VC, a student and a professor. Three minutes. Make the case.", "personas": ["vc", "student", "professor"], "curveballs_allowed": ["time_crunch", "slides_down", "heckler", "latecomer", "distraction", "vip_arrives"], "default_difficulty": "normal", "duration_target_s": 180},
+    {"id": "class_presentation", "name": "Class Presentation", "tagline": "Your professor is picky, one classmate is lost and one is bored.", "personas": ["professor", "student", "classmate"], "curveballs_allowed": ["time_crunch", "slides_down", "latecomer", "distraction", "plain_language"], "default_difficulty": "normal", "duration_target_s": 300},
+    {"id": "research_defense", "name": "Research Defense", "tagline": "Defend the method, not just the result.", "personas": ["professor", "methods", "mentor"], "curveballs_allowed": ["time_crunch", "slides_down", "bait", "heckler", "fact_check"], "default_difficulty": "normal", "duration_target_s": 300},
+    {"id": "job_interview", "name": "Job Interview Talk", "tagline": "Present your project to the people deciding whether to hire you.", "personas": ["hiring_manager", "senior_eng", "recruiter"], "curveballs_allowed": ["time_crunch", "bait", "vip_arrives", "elevator"], "default_difficulty": "normal", "duration_target_s": 180}
+  ],
+  "personas": [
+    {"id": "vc", "name": "Dana", "role": "Skeptical VC", "focus": ["market size", "traction", "acquisition cost"], "skepticism": 0.85, "style_hint": "impatient", "plays": ["heckler", "fact_check", "vip_arrives"], "custom": false},
+    {"id": "student", "name": "Sam", "role": "Confused Student", "focus": ["plain-language definitions", "examples"], "skepticism": 0.3, "style_hint": "confused", "plays": ["latecomer", "plain_language"], "custom": false},
+    {"id": "professor", "name": "Prof. Okafor", "role": "Picky Professor", "focus": ["assumptions", "methodology", "evidence"], "skepticism": 0.75, "style_hint": "thoughtful", "plays": ["bait", "heckler", "fact_check"], "custom": false},
+    {"id": "methods", "name": "Dr. Lind", "role": "Methods Skeptic", "focus": ["sample size", "controls"], "skepticism": 0.8, "style_hint": "thoughtful", "plays": ["bait", "fact_check", "heckler"], "custom": false},
+    {"id": "mentor", "name": "Alex", "role": "Friendly Mentor", "focus": ["structure", "clarity"], "skepticism": 0.2, "style_hint": "neutral", "plays": ["plain_language", "latecomer"], "custom": false},
+    {"id": "classmate", "name": "Jordan", "role": "Bored Classmate", "focus": ["why should I care", "real examples"], "skepticism": 0.4, "style_hint": "confused", "plays": ["latecomer", "plain_language"], "custom": false},
+    {"id": "hiring_manager", "name": "Priya", "role": "Hiring Manager", "focus": ["impact", "ownership", "trade-offs"], "skepticism": 0.6, "style_hint": "neutral", "plays": ["bait", "vip_arrives"], "custom": false},
+    {"id": "senior_eng", "name": "Marcus", "role": "Senior Engineer", "focus": ["architecture", "failure modes", "scale"], "skepticism": 0.7, "style_hint": "thoughtful", "plays": ["heckler", "bait", "fact_check"], "custom": false},
+    {"id": "recruiter", "name": "Casey", "role": "Recruiter", "focus": ["the elevator version", "team fit"], "skepticism": 0.3, "style_hint": "neutral", "plays": ["latecomer", "plain_language"], "custom": false},
+    {"id": "customer", "name": "Riley", "role": "Potential Customer", "focus": ["what it costs me", "switching pain"], "skepticism": 0.6, "style_hint": "neutral", "plays": ["plain_language", "bait"], "custom": false},
+    {"id": "journalist", "name": "Morgan", "role": "Journalist", "focus": ["the headline", "numbers you can source"], "skepticism": 0.7, "style_hint": "impatient", "plays": ["fact_check", "heckler"], "custom": false},
+    {"id": "exec", "name": "The Sponsor", "role": "Executive Sponsor", "focus": ["the ask", "the why-now", "risk"], "skepticism": 0.5, "style_hint": "impatient", "plays": ["vip_arrives", "elevator"], "custom": false}
+  ],
+  "curveballs": [
+    {"kind": "time_crunch", "speaker": "moderator", "priority": "P0"},
+    {"kind": "slides_down", "speaker": "moderator", "priority": "P0"},
+    {"kind": "heckler", "speaker": "persona", "priority": "P0"},
+    {"kind": "latecomer", "speaker": "persona", "priority": "P1"},
+    {"kind": "bait", "speaker": "persona", "priority": "P1"},
+    {"kind": "distraction", "speaker": "ui", "priority": "P1"},
+    {"kind": "vip_arrives", "speaker": "moderator", "priority": "P1"},
+    {"kind": "crosstalk", "speaker": "persona", "priority": "P2"},
+    {"kind": "fact_check", "speaker": "persona", "priority": "P2"},
+    {"kind": "elevator", "speaker": "moderator", "priority": "P2"},
+    {"kind": "plain_language", "speaker": "persona", "priority": "P2"},
+    {"kind": "dead_room", "speaker": "ui", "priority": "P2"}
+  ]
+}
