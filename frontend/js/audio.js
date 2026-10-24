@@ -25,13 +25,19 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
     const done = () => {
       if (current?.audio !== audio) return;
       current = null;
-      // The clip ends at rest (silent tail), so rewind the listening loop to its rest pose
-      // and blend into it slowly. Without a loop, hold the last frame (never the still).
-      const portrait = clip.el?.closest('.tile-call');
-      if (portrait?.classList.contains('idle-on')) {
-        const idle = portrait.querySelector('video.idle');
-        if (idle) { idle.currentTime = 0; idle.play().catch(() => {}); }
-        portrait.classList.remove('live');
+      // Keep the face exactly where the line ended: switch to this clip's own rest loop,
+      // which starts on its last frame. Until it's ready, hold the last frame. The tile never
+      // goes back to the photo.
+      const tile = clip.el?.closest('.tile-call');
+      const idle = tile?.querySelector('video.idle');
+      if (tile && idle && clip.rest) {
+        idle.src = clip.rest;
+        idle.addEventListener('loadeddata', () => {
+          idle.currentTime = 0;
+          idle.play().catch(() => {});
+          tile.classList.add('idle-on');
+          tile.classList.remove('live');
+        }, { once: true });
       }
       onClipEnd(clip);
       next();
@@ -51,8 +57,7 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
     queue.length = 0;
     if (current) {
       const { audio, clip } = current; current = null; audio.pause();
-      const portrait = clip.el?.closest('.tile-call');
-      if (portrait?.classList.contains('idle-on')) portrait.classList.remove('live');
+      // Skip/Pause mid-line: freeze on the current frame rather than jumping anywhere.
       onClipEnd(clip);
     }
     onIdle();

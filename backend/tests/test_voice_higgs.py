@@ -307,3 +307,74 @@ async def test_idle_loop_is_rendered_once_per_face_and_announced(tmp_path):
     v2.on_event(on_event)
     await v2.start_voice_session("s2", make_config())
     assert len(idles) == 2 and posts == ["video"]
+
+
+# ---- one fixed voice per character; the face continues from where it is -----------------
+
+
+async def test_cloned_voice_is_used_with_emotion_only(tmp_path):
+    seen: list[dict] = []
+    v = higgs(tmp_path, seen=seen)
+    await v.start_voice_session("s1", make_config())
+    v._voice_ids["vc"] = "voice_abc"
+    await v.request_persona_turn("vc", "Isn't this a wrapper?", "impatient")
+    assert seen[-1]["voice"] == "voice_abc"
+    assert seen[-1]["input"] == "<|emotion:anger|>Isn't this a wrapper?"  # no pace/pitch re-roll
+
+
+async def test_clone_registers_once_and_is_remembered(tmp_path, monkeypatch):
+    import backend.services.voice_higgs as vh
+
+    monkeypatch.setattr(vh, "VOICE_REGISTRY", tmp_path / "voices.json")
+    posts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        posts.append(request.url.path)
+        if request.url.path.endswith("/audio/voices"):
+            return httpx.Response(200, json={"voice_id": "voice_123"}, request=request)
+        return httpx.Response(200, content=b"ID3", request=request)
+
+    v = HiggsVoice(client=httpx.AsyncClient(base_url="https://api.boson.ai/v1",
+                                           transport=httpx.MockTransport(handler)),
+                   audio_dir=tmp_path, faces_dir=faces(tmp_path, ["vc--layla.jpg"]),
+                   background=False)
+    await v.start_voice_session("s1", make_config())
+    await v._clone_voice("vc")
+    assert v._voice_ids["vc"] == "voice_123"
+    assert json.loads((tmp_path / "voices.json").read_text()) == {"layla|eleanor|": "voice_123"}
+    v.custom_voices = True
+    v2 = HiggsVoice(client=v._client, audio_dir=tmp_path,
+                    faces_dir=tmp_path / "faces", background=False)
+    v2.custom_voices = True
+    await v2.start_voice_session("s2", make_config())
+    assert v2._voice_ids["vc"] == "voice_123"  # from the registry, no second registration
+    assert posts.count("/v1/audio/voices") == 1
+
+
+async def test_next_line_starts_from_the_last_frame_not_the_photo(tmp_path):
+    refs: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/audio/speech"):
+            return httpx.Response(200, content=b"ID3", request=request)
+        if path.endswith("/videos") and request.method == "POST":
+            body = request.content
+            refs.append("last" if b'filename="clip.last.jpg"' in body else "photo")
+            return httpx.Response(200, json={"id": "video_1"}, request=request)
+        if path.endswith("/videos/video_1"):
+            return httpx.Response(200, json={"status": "completed"}, request=request)
+        return httpx.Response(200, content=b"mp4", request=request)
+
+    v = HiggsVoice(client=httpx.AsyncClient(base_url="https://api.boson.ai/v1",
+                                           transport=httpx.MockTransport(handler)),
+                   audio_dir=tmp_path / "a", faces_dir=faces(tmp_path, ["vc--layla.jpg"]),
+                   background=False)
+    v.avatar_enabled = True
+    await v.start_voice_session("s1", make_config())
+    await v.request_persona_turn("vc", "first", None)
+    last = tmp_path / "clip.last.jpg"
+    last.write_bytes(b"\xff\xd8jpeg")
+    v._last_frame["vc"] = last  # what _carry_on records after a real clip
+    await v.request_persona_turn("vc", "second", None)
+    assert refs == ["photo", "last"]

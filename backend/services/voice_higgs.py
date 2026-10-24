@@ -17,6 +17,7 @@ Money: $0.015 per 1K characters; a 20-word line is ~$0.0015. SpendCounter feeds 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 import uuid
@@ -38,7 +39,18 @@ FACE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 # Measured 24 Oct: a 4 s line renders in ~5 s. Past this budget the voice plays over the
 # still portrait instead, so a slow or throttled render never delays the room.
 AVATAR_BUDGET_S = float(os.environ.get("BOSON_AVATAR_BUDGET_S", "10"))
-TAIL_S = 1.5  # silence after each line: the head settles back to rest before the clip ends
+TAIL_S = 2.0  # silence after each line: the face settles, and this tail becomes its rest loop
+VOICE_REGISTRY = AUDIO_DIR.parent / "voices.json"
+# Each character's voice is cloned once from this neutral line, then reused by ID for every
+# line, so timbre can't drift between lines (preset + tags re-rolls it every time).
+VOICE_SCRIPT = ("Thanks for having me on this call. I'll be listening closely, and I'll probably "
+                "have a few questions about your numbers, your customers, and your plan.")
+# With a cloned voice only the emotion moves; pitch and pace live in the reference itself.
+MOOD_EMOTION: dict[str, str] = {
+    "impatient": "<|emotion:anger|>", "confused": "<|emotion:confusion|>",
+    "thoughtful": "<|emotion:contemplation|>", "pressing": "<|emotion:determination|>",
+    "warm": "<|emotion:contentment|>", "neutral": "",
+}
 PRESET_VOICES = ["marcus", "eleanor", "jake", "chloe", "oliver", "nora"]
 MODERATOR_VOICE = "nora"
 
@@ -186,6 +198,12 @@ class HiggsVoice:
         self.avatar_enabled = os.environ.get("BOSON_AVATAR_ENABLED", "false") == "true"
         self.avatar_budget_s = AVATAR_BUDGET_S
         self._faces: dict[str, Path] = {}
+        self._last_frame: dict[str, Path] = {}   # speaker → where their face is right now
+        self._voice_ids: dict[str, str] = {}     # speaker → cloned voice id
+        self._voice_jobs: list[str] = []
+        # Cloned voices are on for real use; injected test clients keep the preset path.
+        self.custom_voices = (client is None
+                              and os.environ.get("BOSON_CUSTOM_VOICES", "true") == "true")
         self._on_event: OnEvent | None = None
         self._on_transcript: OnTranscript | None = None
         self._session_id = ""
@@ -207,8 +225,11 @@ class HiggsVoice:
     async def _render(self, speaker: str, text: str, style: str | None) -> None:
         """Render one line to an mp3 clip and announce it. A failure is an audio_status with
         status "tts_failed": the caption already showed the line, so the room carries on."""
-        voice = self._voices.get(speaker) or PRESET_VOICES[0]
-        tagged = delivery_tags(character_of(self._faces.get(speaker)), style) + text
+        cloned = self._voice_ids.get(speaker)
+        voice = cloned or self._voices.get(speaker) or PRESET_VOICES[0]
+        tags = (MOOD_EMOTION.get(style or "neutral", "") if cloned
+                else delivery_tags(character_of(self._faces.get(speaker)), style))
+        tagged = tags + text
         SpendCounter.tts_chars += len(tagged)
         try:
             resp = await self._client.post("/audio/speech", json={
@@ -225,8 +246,10 @@ class HiggsVoice:
         (out / f"{stem}.mp3").write_bytes(resp.content)
         video = await self._talking_head(speaker, resp.content, out / f"{stem}.mp4")
         if video:
+            rest = await self._carry_on(speaker, out / f"{stem}.mp4")
             await self._status("clip", speaker=speaker, voice=voice, text=text, kind="video",
-                               url=f"/audio/{self._session_id}/{stem}.mp4")
+                               url=f"/audio/{self._session_id}/{stem}.mp4",
+                               rest_url=f"/audio/{self._session_id}/{rest.name}" if rest else None)
         else:
             await self._status("clip", speaker=speaker, voice=voice, text=text, kind="audio",
                                url=f"/audio/{self._session_id}/{stem}.mp3")
@@ -241,9 +264,26 @@ class HiggsVoice:
         # A silent tail lets the face finish the sentence, close its mouth and settle back to
         # rest by itself, so the clip ends in the pose the idle loop starts from — no snap.
         audio = await _with_silent_tail(mp3, TAIL_S)
-        ok = await self._avatar_video(face, audio, dest,
+        # Start from where this person's face is now (their last frame), not the photo.
+        ref = self._last_frame.get(speaker) or face
+        ok = await self._avatar_video(ref, audio, dest,
                                       budget_s=self.avatar_budget_s, speaker=speaker)
         return ok
+
+    async def _carry_on(self, speaker: str, video: Path) -> Path | None:
+        """After a line: keep the face exactly where it ended. Saves the last frame (the next
+        line starts from it) and makes a rest loop from the silent tail — reversed then forward,
+        so it begins on the very last frame and loops with no seam. Never the original photo."""
+        frame = video.with_suffix(".last.jpg")
+        rest = video.with_suffix(".rest.mp4")
+        if await _ffmpeg("-sseof", "-0.25", "-i", str(video), "-update", "1", "-frames:v", "1",
+                         "-q:v", "2", str(frame)):
+            self._last_frame[speaker] = frame
+        ok = await _ffmpeg(
+            "-sseof", f"-{TAIL_S - 0.2:.1f}", "-i", str(video), "-an", "-filter_complex",
+            "[0:v]split[a][b];[a]reverse[r];[r][b]concat=n=2:v=1:a=0[v]",
+            "-map", "[v]", "-movflags", "+faststart", str(rest))
+        return rest if ok else None
 
     async def _avatar_video(self, face: Path, audio: tuple[str, bytes, str], dest: Path,
                             budget_s: float, speaker: str = "") -> bool:
@@ -280,6 +320,14 @@ class HiggsVoice:
         self._voices = assign_voices(config, self._faces)
         await self._status("ready", voices=self._voices, avatars=self.avatar_enabled,
                            faces={pid: f"/demo/faces/{p.name}" for pid, p in self._faces.items()})
+        if self.custom_voices:
+            registry = _load_registry()
+            for speaker in [*self._voices]:
+                key = self._voice_key(speaker)
+                if key in registry:
+                    self._voice_ids[speaker] = registry[key]
+                elif self.background:
+                    self._voice_jobs.append(speaker)
         if self.avatar_enabled:
             for pid, face in self._faces.items():
                 cached = self._idle_path(face)
@@ -287,8 +335,41 @@ class HiggsVoice:
                     await self._status("idle", speaker=pid, url=self._idle_url(face))
                 elif self.background:
                     self._idle_jobs.append((pid, face))
-            if self._idle_jobs and (self._worker is None or self._worker.done()):
-                self._worker = asyncio.create_task(self._work())
+        if (self._idle_jobs or self._voice_jobs) and (self._worker is None or self._worker.done()):
+            self._worker = asyncio.create_task(self._work())
+
+    # ---- one fixed voice per character ----------------------------------------------------
+
+    def _voice_key(self, speaker: str) -> str:
+        character = character_of(self._faces.get(speaker)) or speaker
+        base, signature = CHARACTER_VOICES.get(character, (self._voices.get(speaker, ""), ""))
+        return f"{character}|{base}|{signature}"
+
+    async def _clone_voice(self, speaker: str) -> None:
+        """Say VOICE_SCRIPT once in the character's preset + signature, register it as a
+        custom voice, remember the id (registry on disk, so every later session reuses it)."""
+        key = self._voice_key(speaker)
+        _, base, signature = key.split("|", 2)
+        tts = await self._client.post("/audio/speech", json={
+            "model": self.tts_model, "input": signature + VOICE_SCRIPT,
+            "voice": base or self._voices.get(speaker, PRESET_VOICES[0]), "response_format": "mp3",
+        })
+        tts.raise_for_status()
+        SpendCounter.tts_chars += len(VOICE_SCRIPT)
+        reg = await self._client.post("/audio/voices", data={
+            "ref_text": VOICE_SCRIPT, "title": f"PresAI {key}"},
+            files={"ref_audio": ("ref.mp3", tts.content, "audio/mpeg")})
+        reg.raise_for_status()
+        body = reg.json()
+        voice_id = body.get("voice_id") or body["voice"]  # live API: voice_id; one doc says voice
+        registry = _load_registry()
+        registry[key] = voice_id
+        VOICE_REGISTRY.parent.mkdir(parents=True, exist_ok=True)
+        VOICE_REGISTRY.write_text(json.dumps(registry, indent=2))
+        for s in self._voices:
+            if self._voice_key(s) == key:
+                self._voice_ids[s] = voice_id
+        await self._status("voice_ready", speaker=speaker, voice=voice_id)
 
     # ---- idle loops: the face is alive while listening, never a frozen photo ---------------
 
@@ -338,8 +419,15 @@ class HiggsVoice:
 
     async def _work(self) -> None:
         """Spoken lines always go first; idle loops fill the gaps between them."""
-        while not self._queue.empty() or self._idle_jobs:
-            if not self._queue.empty():
+        while not self._queue.empty() or self._idle_jobs or self._voice_jobs:
+            if self._voice_jobs:
+                speaker = self._voice_jobs.pop(0)
+                try:
+                    if speaker not in self._voice_ids:
+                        await self._clone_voice(speaker)
+                except Exception as exc:  # keeps the preset voice for this speaker
+                    await self._status("voice_failed", speaker=speaker, detail=str(exc)[:200])
+            elif not self._queue.empty():
                 speaker, text, style = self._queue.get_nowait()
                 try:
                     await self._render(speaker, text, style)
@@ -442,3 +530,23 @@ async def _with_silent_tail(mp3: bytes, seconds: float) -> tuple[str, bytes, str
     if proc.returncode != 0 or len(out) < 100:
         return ("line.mp3", mp3, "audio/mpeg")
     return ("line.mp3", out, "audio/mpeg")
+
+
+def _load_registry() -> dict[str, str]:
+    try:
+        return json.loads(VOICE_REGISTRY.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+async def _ffmpeg(*args: str) -> bool:
+    import shutil
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return False
+    proc = await asyncio.create_subprocess_exec(
+        ffmpeg, "-y", "-loglevel", "error", *args,
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    await proc.communicate()
+    return proc.returncode == 0

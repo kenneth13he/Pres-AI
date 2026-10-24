@@ -3,7 +3,7 @@
 // Works against the mock (/room.html?mock=1) and against a live session (/room.html?session=ID).
 
 import { connect, getSession, isMock } from '/js/api.js';
-import { createPlayer } from '/js/audio.js?v=call3';
+import { createPlayer } from '/js/audio.js?v=call6';
 import { startMic } from '/js/mic.js';
 import { playMock } from '/js/mock_player.js';
 
@@ -51,7 +51,7 @@ function startIdle(id) {
   const url = state.idle[id];
   if (!el || !url) return;
   if (!el.src.endsWith(url)) el.src = url;
-  el.currentTime = Math.random() * 3; // people don't blink in unison
+  if (!el.src.includes('.rest.')) el.currentTime = Math.random() * 3; // don't blink in unison
   el.playbackRate = 0.9;               // a calmer, more natural listening pace
   el.play().then(() => el.closest('.tile-call')?.classList.add('idle-on')).catch(() => {});
 }
@@ -176,7 +176,8 @@ function onEvent(ev) {
       if (p.status === 'clip' && state.joinedAtMs != null && ev.timestamp_ms < state.joinedAtMs - 3000) break;
       if (p.status === 'clip' && state.voices) {
         seat(p.speaker)?.classList.remove('thinking');
-        player.playClip({ url: p.url, speaker: p.speaker, text: p.text, kind: p.kind,
+        if (p.rest_url) state.idle[p.speaker] = p.rest_url; // their resting pose from now on
+        player.playClip({ url: p.url, speaker: p.speaker, text: p.text, kind: p.kind, rest: p.rest_url,
                           el: p.kind === 'video' ? seat(p.speaker)?.querySelector('video.talk') : null });
       } else if (p.status === 'tts_failed') {
         seat(p.speaker)?.classList.remove('thinking');
