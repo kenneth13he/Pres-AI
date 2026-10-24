@@ -26,3 +26,13 @@ Open question for the team: none
 Fixed: cooldown values moved inside the 30–45 s band the rules state (rare 45 s, normal 40 s, often 30 s); choose-mode kinds deduplicated. Review notes carried to P0-9/P0-5: slides_down should also be able to fire on a slide change (needs_pause blocks it today); heckler's "value proposition detected" trigger belongs to the orchestrator; at_pause needs a speech_started/stopped signal once Higgs is wired (final-only transcripts).
 Evidence: test_scheduler.py 10/10, ruff, pyright
 Gate: green at the fix commit (pytest 17/9 as before)
+
+## P0-9 · 2026-10-23 · C · session 2
+Built: the curveball engine — `trigger` (record + `curveball_triggered` payload per §7, persona kept only for persona speakers, default line when none generated, sfx_url for clips), `active`, `due_for_auto_resolve`, `resolve` (`skipped` → recovery None), and `measure_recovery` (resume_after_ms from the earliest presenter segment after the event; None with a note when there is none — never 0). Closed the review note: a slide change now counts as a pause for 1.5–6 s after it, so `slides_down` can fire "on a slide change" (§6.2).
+Tests: test_curveballs.py 10/10 (3 new: speaker/persona rule, generated line + sfx, out-of-order/AI segments); test_scheduler.py 13/13 (3 new: slide-change pause window, curveballs_enabled=False, budget exhaustion)
+Gate: ruff, pyright, schema, mocks green; pytest 27 passed / 5 failed (remaining red = the e2e spec for P0-5/6/12)
+Demo path: unchanged (engine wiring is P0-5/6)
+Files outside my paths: none
+Proposed decision changes (not implemented): none
+Next: P0-5 + P0-6 — engine.py start/slide_changed/presenter_transcript/tick/_maybe_interrupt/_ask/_handle_answer/_speak/_fire_curveball/_resolve and MockOrchestrator.decide/follow_up/assess_recovery, because P0-8 and P0-9 now pass
+Open question for the team: none

@@ -27,7 +27,8 @@ COOLDOWN_MS: dict[InterruptionFrequency, int] = {"rare": 45_000, "normal": 40_00
 FIRST_QUESTION_MS = 30_000
 FIRST_CURVEBALL_MS = 45_000
 PAUSE_SILENCE_MS = 1_500  # no presenter speech for this long counts as a natural pause
-SLIDE_TRANSITION_MS = 1_500
+SLIDE_TRANSITION_MS = 1_500  # nothing fires while the slide is changing
+SLIDE_CHANGE_PAUSE_MS = 6_000  # ...but the moment right after counts as a pause
 
 
 @dataclass
@@ -48,6 +49,12 @@ class SchedulerSnapshot:
 
     @property
     def at_pause(self) -> bool:
+        """Silent for PAUSE_SILENCE_MS, or just past a slide change (a slide change is a
+        natural pause, which is how slides_down fires "on a slide change" per §6.2)."""
+        if self.slide_changed_at_ms is not None:
+            since_change = self.now_ms - self.slide_changed_at_ms
+            if SLIDE_TRANSITION_MS <= since_change < SLIDE_CHANGE_PAUSE_MS:
+                return True
         if self.last_presenter_speech_ms is None:
             return False
         return self.now_ms - self.last_presenter_speech_ms >= PAUSE_SILENCE_MS

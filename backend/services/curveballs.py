@@ -149,8 +149,10 @@ class CurveballEngine:
 
     @property
     def active(self) -> CurveballRecord | None:
-        # TODO(C): the most recent record without a resolution, else None.
-        raise NotImplementedError
+        for rec in reversed(self.records):
+            if rec.resolution is None:
+                return rec
+        return None
 
     @property
     def fired_kinds(self) -> list[CurveballKind]:
@@ -162,12 +164,38 @@ class CurveballEngine:
         """Create the record and the `curveball_triggered` event (payload shape: CLAUDE.md §7:
         curveball_id, kind, speaker, persona_id, line, ui_effect, auto_resolve_after_ms,
         sfx_url). persona_id is kept only when spec.speaker == "persona"."""
-        # TODO(C)
-        raise NotImplementedError
+        spec = CATALOG[kind]
+        self._counter += 1
+        rec = CurveballRecord(
+            curveball_id=f"cb-{self._counter}",
+            kind=kind,
+            at_ms=now_ms,
+            line=line or spec.default_line,
+            persona_id=persona_id if spec.speaker == "persona" else None,
+        )
+        self.records.append(rec)
+        event = SessionEvent(
+            type="curveball_triggered",
+            session_id=self.session_id,
+            timestamp_ms=now_ms,
+            payload={
+                "curveball_id": rec.curveball_id,
+                "kind": kind,
+                "speaker": spec.speaker,
+                "persona_id": rec.persona_id,
+                "line": rec.line,
+                "ui_effect": spec.ui_effect,
+                "auto_resolve_after_ms": spec.auto_resolve_ms,
+                "sfx_url": f"/demo/sfx/{spec.sfx}.mp3" if spec.sfx else None,
+            },
+        )
+        return rec, event
 
     def due_for_auto_resolve(self, now_ms: int) -> CurveballRecord | None:
-        # TODO(C): the active record if its spec.auto_resolve_ms has elapsed since at_ms.
-        raise NotImplementedError
+        rec = self.active
+        if rec is None or rec.spec.auto_resolve_ms is None:
+            return None
+        return rec if now_ms - rec.at_ms >= rec.spec.auto_resolve_ms else None
 
     def resolve(
         self,
@@ -179,12 +207,32 @@ class CurveballEngine:
         """Mark resolved and return the `curveball_resolved` event. `skipped` → recovery None;
         otherwise recovery = measure_recovery(...). Rubric scores are added later by the
         orchestrator's recovery assessment (engine._resolve)."""
-        # TODO(C)
-        raise NotImplementedError
+        rec.resolution = resolution
+        rec.resolved_at_ms = now_ms
+        rec.recovery = None if resolution == "skipped" else measure_recovery(rec, transcript)
+        return SessionEvent(
+            type="curveball_resolved",
+            session_id=self.session_id,
+            timestamp_ms=now_ms,
+            payload={
+                "curveball_id": rec.curveball_id,
+                "kind": rec.kind,
+                "resolution": resolution,
+                "recovery": rec.recovery.model_dump() if rec.recovery else None,
+            },
+        )
 
 
 def measure_recovery(rec: CurveballRecord, transcript: list[TranscriptSegment]) -> Recovery:
     """Timing only: resume_after_ms = first presenter segment after rec.at_ms minus rec.at_ms.
     No speech after the event → resume_after_ms=None with a note saying so. Never 0 by default."""
-    # TODO(C)
-    raise NotImplementedError
+    after = [s for s in transcript if s.speaker == "presenter" and s.start_ms > rec.at_ms]
+    if not after:
+        return Recovery(resume_after_ms=None,
+                        notes="no presenter speech recorded after the event; timing not measured")
+    first = min(after, key=lambda s: s.start_ms)
+    return Recovery(
+        resume_after_ms=first.start_ms - rec.at_ms,
+        notes=f"resumed with: {first.text[:80]!r}",
+        evidence=first.text,
+    )

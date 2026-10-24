@@ -53,3 +53,36 @@ def test_auto_resolve_due():
     rec, _ = eng.trigger("slides_down", 0, None, None)
     assert eng.due_for_auto_resolve(29_999) is None
     assert eng.due_for_auto_resolve(30_000) is rec
+
+
+def test_trigger_keeps_persona_only_for_persona_speakers():
+    eng = CurveballEngine("s")
+    rec, ev = eng.trigger("slides_down", 60_000, None, "vc")
+    assert rec.persona_id is None and ev.payload["speaker"] == "moderator"
+    rec2, ev2 = eng.trigger("heckler", 61_000, None, "vc")
+    assert rec2.persona_id == "vc" and ev2.payload["speaker"] == "persona"
+    assert ev2.payload["line"] == CATALOG["heckler"].default_line  # default line when none given
+    assert eng.fired_kinds == ["slides_down", "heckler"]
+
+
+def test_trigger_uses_generated_line_and_sfx_url():
+    eng = CurveballEngine("s")
+    _, ev = eng.trigger("heckler", 60_000, "Isn't this just a wrapper around an API?", "vc")
+    assert ev.payload["line"] == "Isn't this just a wrapper around an API?"
+    _, sfx = eng.trigger("distraction", 61_000, None, None)
+    assert sfx.payload["sfx_url"] == "/demo/sfx/phone_ring.mp3"
+    assert sfx.payload["ui_effect"] == "sfx"
+
+
+def test_resume_gap_ignores_ai_speech_and_earlier_segments():
+    eng = CurveballEngine("s")
+    rec, _ = eng.trigger("slides_down", 100_000, None, None)
+    transcript = [
+        seg(99, "right before"),
+        seg(101, "moderator line", 2.0).model_copy(update={"speaker": "ai"}),
+        seg(106, "later presenter speech"),
+        seg(104.5, "earlier presenter speech, listed out of order"),
+    ]
+    done = eng.resolve(rec, 130_000, "presenter_restored", transcript)
+    assert done.payload["recovery"]["resume_after_ms"] == 4_500
+    assert done.payload["recovery"]["evidence"] == "earlier presenter speech, listed out of order"

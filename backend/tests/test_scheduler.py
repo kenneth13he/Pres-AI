@@ -68,3 +68,28 @@ def test_choose_mode_restricts_kinds():
 def test_off_mode_disables_curveballs():
     sch = Scheduler("brutal", "often", CurveballMode(mode="off"), ALLOWED)  # type: ignore[arg-type]
     assert sch.eligible(snap(elapsed_ms=100_000, now_ms=100_000)).curveball_kinds == []
+
+
+def test_slide_change_counts_as_a_pause_after_the_transition():
+    # mid-speech otherwise (spoke 200 ms ago), slide changed 3 s ago → pause-only kinds may fire
+    e = normal().eligible(snap(elapsed_ms=90_000, now_ms=90_000, slide_changed_at_ms=87_000,
+                               last_presenter_speech_ms=89_800))
+    assert "slides_down" in e.curveball_kinds
+    # still inside the 1.5 s transition → nothing at all
+    e = normal().eligible(snap(elapsed_ms=90_000, now_ms=90_000, slide_changed_at_ms=89_000))
+    assert not e.anything
+    # transition long over and the presenter is talking → not a pause
+    e = normal().eligible(snap(elapsed_ms=90_000, now_ms=90_000, slide_changed_at_ms=80_000,
+                               last_presenter_speech_ms=89_800))
+    assert "slides_down" not in e.curveball_kinds
+
+
+def test_curveballs_disabled_flag_wins_over_mode():
+    sch = Scheduler("brutal", "often", CurveballMode(mode="surprise"), ALLOWED,  # type: ignore[arg-type]
+                    curveballs_enabled=False)
+    assert sch.eligible(snap(elapsed_ms=120_000, now_ms=120_000)).curveball_kinds == []
+
+
+def test_curveball_budget_exhaustion():
+    assert normal().eligible(snap(elapsed_ms=120_000, now_ms=120_000,
+                                  curveballs_fired=1)).curveball_kinds == []
