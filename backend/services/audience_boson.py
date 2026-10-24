@@ -51,6 +51,10 @@ def prompt_schema(schema: type[BaseModel]) -> dict[str, Any]:
         if isinstance(value, dict):
             if isinstance(value.get("properties"), dict):
                 value["required"] = list(value["properties"])
+                if schema is ReportAssessment and "evidence_ids" in value["properties"]:
+                    # Ask for one representative citation, not every answered turn.
+                    # The admission model still allows two; we never trim its output.
+                    value["properties"]["evidence_ids"]["maxItems"] = 1
             for child in value.values():
                 visit(child)
         elif isinstance(value, list):
@@ -58,6 +62,9 @@ def prompt_schema(schema: type[BaseModel]) -> dict[str, Any]:
                 visit(child)
 
     visit(result)
+    if schema is ReportAssessment:
+        result["properties"]["strengths"]["maxItems"] = 1
+        result["properties"]["improvements"]["maxItems"] = 1
     return result
 
 
@@ -74,14 +81,41 @@ def report_shape_prompt() -> str:
         "top-level scores. Each dimension has exactly score, evidence_ids, observation. "
         "score is an integer 0..100 or null, never a string/object/decimal. Use [] for empty "
         "arrays; only score may be null. Replace the template values with supported coaching; "
-        "use null and explain when unsupported. evidence_ids is an array of existing source ID "
-        "strings, not evidence text. A strength item has evidence_ids and observation; an "
+        "use null and explain when unsupported. Every numeric dimension and every finding or "
+        "persona row must select EXACTLY ONE representative evidence ID. Never list every "
+        "answered turn: choose the strongest one for that observation. A null dimension uses "
+        "evidence_ids:[]. evidence_ids is an array of existing source ID strings, not evidence "
+        "text. Question handling must choose one answer_evidence_id; a persona must choose one "
+        "of that same persona's answer_evidence_ids. At most ONE strength, ONE improvement, and "
+        "THREE persona rows (one per participating persona); empty arrays are allowed. "
+        "A strength item has evidence_ids and observation; an "
         "improvement also has suggestion; a persona item has evidence_ids, observation, score, "
         "persona_id. Keep observations <=100 characters and suggestions <=120 characters. "
         "Do not add overall_score, metrics, explanations outside JSON, or extra item fields.\n"
         "VALID EMPTY TEMPLATE (fill supported scores/findings from context):\n"
         + json.dumps(template, separators=(",", ":"))
     )
+
+
+def validation_summary(error: ValidationError, schema: type[BaseModel]) -> dict[str, Any]:
+    """Expose only schema-known field paths and error types, never input or vendor text."""
+    known_fields = set(get_args(ReportDimension))
+
+    def fields(value: Any) -> None:
+        if isinstance(value, dict):
+            known_fields.update(value.get("properties", {}))
+            for child in value.values():
+                fields(child)
+        elif isinstance(value, list):
+            for child in value:
+                fields(child)
+
+    fields(schema.model_json_schema())
+    errors = error.errors(include_input=False, include_url=False)
+    return {"error_count": len(errors), "errors": [
+        {"loc": [part if isinstance(part, int) or part in known_fields else "[field]"
+                 for part in item["loc"]], "type": item["type"]}
+        for item in errors[:8]]}
 
 
 def grounding_prompt(user: str, schema: type[BaseModel]) -> str:
@@ -123,6 +157,7 @@ class BosonOrchestrator(StructuredOrchestrator):
         self._usage_unknown = 0
         self._cached_tokens = 0
         self._cached_reports = 0
+        self._last_validation: dict[str, Any] | None = None
 
     def diagnostics(self) -> dict[str, Any]:
         result = super().diagnostics()
@@ -134,6 +169,7 @@ class BosonOrchestrator(StructuredOrchestrator):
             self._cached_tokens if self._cached_reports else None)
         result["usage_reported_responses"] = self._usage_reports
         result["usage_unknown_requests"] = self._usage_unknown
+        result["last_response_validation"] = copy.deepcopy(self._last_validation)
         return result
 
     def _account(self, usage: dict[str, Any] | None) -> None:
@@ -158,6 +194,7 @@ class BosonOrchestrator(StructuredOrchestrator):
                      timeout_s: float | None = None) -> T | None:
         operation = self._operation(schema)
         self._reasoning_counts[operation]["attempts"] += 1
+        self._last_validation = None
         ws = None
         reserved = accounted = False
         try:
@@ -226,6 +263,11 @@ class BosonOrchestrator(StructuredOrchestrator):
         except asyncio.CancelledError:
             self._reasoning_error(operation, "cancelled", "CancelledError", fallback=False)
             raise
+        except ValidationError as exc:
+            self._last_validation = {"operation": operation,
+                                     **validation_summary(exc, cast(type[BaseModel], schema))}
+            self._reasoning_error(operation, "invalid_structured_response", "ValidationError")
+            return None
         except Exception as exc:
             kind = str(exc) if isinstance(exc, BosonReasoningError) else (
                 "timeout" if isinstance(exc, TimeoutError) else

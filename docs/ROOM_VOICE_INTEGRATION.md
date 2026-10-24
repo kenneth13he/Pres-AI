@@ -113,7 +113,7 @@ Use Node from your normal PATH for the browser checks. The macOS setup launcher 
 also use an existing bundled runtime on Codex installations. No Node runtime is
 required by the running app.
 
-Current checks: **281 backend tests and 151 frontend/audio tests pass**, plus lint, types,
+Current checks: **285 backend tests and 151 frontend/audio tests pass**, plus lint, types,
 schema consistency and mock fixtures. Coverage includes real ASGI event/binary socket flows
 with simulated vendor HTTP, standalone deterministic frontend controllers, audience
 configuration/upload races, report rendering and portrait/speaker lifecycle. These are

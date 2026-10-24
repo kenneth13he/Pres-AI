@@ -211,6 +211,60 @@ def test_report_prompt_expands_four_required_dimension_properties_without_mutati
                for value in dimensions["properties"].values())
     assert ReportAssessment.model_json_schema() == original
     assert ReportAssessment.model_validate_json(report_shape_prompt().splitlines()[-1])
+    for definition in shaped["$defs"].values():
+        if "evidence_ids" in definition.get("properties", {}):
+            assert definition["properties"]["evidence_ids"]["maxItems"] == 1
+    assert original["$defs"]["ReportDimensionAssessment"]["properties"]["evidence_ids"][
+        "maxItems"] == 2  # Strict admission cap is preserved; no trimming or permissive repair.
+    assert shaped["properties"]["strengths"]["maxItems"] == 1
+    assert shaped["properties"]["improvements"]["maxItems"] == 1
+
+
+async def test_three_answer_report_failure_preserves_strict_caps_and_safe_paths(monkeypatch):
+    monkeypatch.setenv("BOSON_API_KEY", "fake-offline-key")
+    session = prepared()
+    session.transcript.append(seg(60, "We will compare the pilot findings before expanding."))
+    session.questions[1]["persona_id"] = "vc"
+    session.questions.append({
+        "question_id": "q3", "persona_id": "vc", "question": "What happens before expansion?",
+        "answer": session.transcript[3].text, "answer_after_ms": 55_000, "skipped": False,
+        "follow_up_of": None, "curveball_id": None, "cited_excerpt": None, "slide_number": 1})
+    context = service.build_context(session)
+    assert len(context.questions) == 3
+    assert {question.persona_id for question in context.questions} == {"vc"}
+    assert [question.answer_evidence_ids for question in context.questions] == [
+        ["t1"], ["t2"], ["t3"]]
+    output = rubric().model_dump()
+    for item in (output["dimensions"]["question_handling"], output["improvements"][0],
+                 output["persona_feedback"][0]):
+        item["evidence_ids"] = ["t1", "t2", "t3"]
+    h = Harness(completed(output))
+    assert await h.orch.assess_report(context.model_dump_json()) is None
+    diagnostic = h.orch.diagnostics()
+    assert diagnostic["operations"]["assess_report"]["failures"] == 1
+    assert diagnostic["operations"]["assess_report"]["fallbacks"] == 1
+    assert diagnostic["operations"]["assess_report"]["successes"] == 0
+    assert diagnostic["last_response_validation"] == {
+        "operation": "assess_report", "error_count": 3, "errors": [
+            {"loc": ["dimensions", "question_handling", "evidence_ids"], "type": "too_long"},
+            {"loc": ["improvements", 0, "evidence_ids"], "type": "too_long"},
+            {"loc": ["persona_feedback", 0, "evidence_ids"], "type": "too_long"},
+        ]}
+    assert len(h.connections) == len(h.reservations) == 1  # No automatic retry hides the failure.
+    instructions = h.socket.sent[1]["response"]["instructions"]
+    assert "EXACTLY ONE representative evidence ID" in instructions
+    assert "Never list every answered turn" in instructions
+
+
+async def test_report_validation_metadata_hides_unknown_fields_and_response_text(monkeypatch):
+    monkeypatch.setenv("BOSON_API_KEY", "fake-offline-key")
+    output = rubric().model_dump()
+    output["private response field"] = "private response content"
+    h = Harness(completed(output))
+    assert await h.orch.assess_report("{}") is None
+    metadata = h.orch.diagnostics()["last_response_validation"]
+    assert metadata["errors"] == [{"loc": ["[field]"], "type": "extra_forbidden"}]
+    assert "private response" not in str(metadata)
 
 
 def test_non_report_prompt_shapes_keep_the_original_nullable_required_transformation():

@@ -180,7 +180,11 @@ class Room:
     async def tick_forever(self) -> None:
         while not self.session.ended:
             await asyncio.sleep(TICK_S)
-            await self.run(self.session.tick(self.now_ms()))
+            await self.run(self._tick())
+
+    async def _tick(self) -> None:
+        # This body runs inside Room.run's lock, after any model/audio work ahead of it.
+        await self.session.tick(self.now_ms())
 
 
 ROOMS: dict[str, Room] = {}

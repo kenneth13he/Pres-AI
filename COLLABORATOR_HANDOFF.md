@@ -40,13 +40,15 @@ continuing A/B/C work. Read `CLAUDE.md` for the team rules and the latest
 
 | Evidence | Result and limit |
 | --- | --- |
-| Offline backend gate | 281 tests; Ruff, Pyright, generated schema and mock fixtures passed, including setup, grading, terminal clock, preparing responses and final-only persistence. Re-run commands below on your checkout. |
+| Offline backend gate | 285 tests; Ruff, Pyright, generated schema and mock fixtures passed, including setup, grading, queued terminal clock, preparing responses and final-only persistence. Re-run commands below on your checkout. |
 | Offline frontend/audio gate | 151 tests passed, including PTT, cancellation, setup, portraits, terminal guards, safe API errors and bounded report-preparation polling. |
 | Voice hardware | User confirmed microphone transcription, distinct clear voices, complete PTT turns through pauses, and automatic closing/report handoff. Earlier voice-lab latency sign-off is not a full-room acoustic latency guarantee. |
 | Two real-audience human flows | Natural blackout and natural countdown → Q&A runs both reached reports automatically with clear audio. Together: 12 real Boson reasoning successes; zero recorded model failures/fallbacks/rejections, room errors, skips or unanswered questions. |
 | Boson structured-output preflight | Decisions, follow-ups, recovery grading and custom-persona expansion all passed a bounded live check. Responses use grounding/validation and explicit diagnostics. |
 | Delayed-closing fix | Exact-timing regression tests and a separate real Boson grading replay passed. The replay used saved text with synthetic delivery/clock and mock audio; it is not a new human presentation. |
 | New content-coaching pass | One live Boson report call passed using fictional text, injected Q&A and silent mock audio. An initial formatting failure was fixed and retained in private diagnostic evidence; this is not a new human run. |
+| Recorded final-build blackout attempt | Human confirmed complete clear audio, automatic finish and readable recording. Natural blackout recovery measured 7.140 seconds; two grounded questions and two follow-ups completed. Final content coaching failed validation, so the recording is a local candidate and the attempt is not clean. |
+| Report-failure fix | One saved-context live call reproduced excess evidence references; two independent fixed calls passed schema and grounding, including the report service. Original report/metrics/recovery were preserved. These text replays do not replace fresh human runs. |
 
 Private keys, transcripts, session reports, uploaded decks, diagnostic audio and raw
 acceptance artifacts are **not included** in this branch. The table is an aggregate
@@ -63,16 +65,26 @@ record of local evidence; another machine cannot open those local session links.
    overrun and unknown individual-word timing; no on-time close is invented.
 3. Repeat clicks on the old End/Finish control could cut off Q&A accidentally. Starting
    Q&A and deliberately finishing early now have separate controls.
+4. A recorded final-build attempt exposed a report response citing more than two sources
+   per item. Boson generation now requests one representative reference and one strength
+   and improvement. Admission limits, source ownership and quote validation remain strict;
+   invalid responses are never trimmed or silently retried. Safe diagnostics expose only
+   schema field paths and error types.
+5. A timer tick queued behind closing audio sampled its clock too early, backdating the
+   finish by about two seconds. Live ticks now sample time after acquiring the room lock;
+   the regression verifies event order, frozen duration, persistence and cancellation.
 
 Original reports were preserved. Subsequent fixes and replay tests do not retroactively
 make the original runs clean final-build demonstrations.
 
 ### Still open
 
-- **P0-13 is not signed off:** two consecutive unaided, recorded runs of the final build
-  still need acceptance. The blackout run had no presenter speech before automatic
-  restoration, so its recovery gap/evidence/score correctly stayed unassessed.
-- **P0-14 is not done:** no backup screen recording has been shared.
+- **P0-13 is not signed off:** two consecutive unaided, recorded runs of the corrected
+  frozen build still need acceptance. The latest blackout recovery was measured, but its
+  report fallback prevents clean-run sign-off. Historical incomplete attempts are retained.
+- **P0-14 is not signed off:** a six-minute recording candidate exists locally in `demo/`,
+  with the original preserved. It includes the report fallback; select the final backup
+  after the clean pair. Recordings remain excluded from Git.
 - Content coaching is implemented, but scores can remain `null`/“Not assessed” when
   captured evidence is insufficient. Scores are subjective text estimates, not verified
   factual accuracy, acoustic measurements or psychological judgments. Overall averages

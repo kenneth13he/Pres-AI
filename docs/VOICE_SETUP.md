@@ -70,9 +70,11 @@ unavailable after 45 seconds. A genuinely unfinished session still directs you t
 Content coaching references captured source IDs; the server supplies the exact quotes.
 Unsupported judgments stay unassessed. Overall averages only assessed content dimensions
 and explains its coverage; measured recovery and event metrics remain separate. Saved
-historical reports are not regenerated. Current checks are 281 backend and 151 frontend
+historical reports are not regenerated. Current checks are 285 backend and 151 frontend
 tests, plus a separate live Boson preflight using fictional text and silent mock audio.
-New microphone acceptance is deferred until the user is ready.
+A recorded human blackout run measured recovery, but its coaching response exceeded the
+citation limit and used fallback. Corrected generation passed two saved-context checks;
+two fresh clean recorded runs of the frozen fixes remain pending.
 
 The optional report-only preflight consumes one bounded Boson reasoning request:
 

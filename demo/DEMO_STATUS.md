@@ -4,19 +4,23 @@ Current local mode uses **live Boson/Higgs speech and audience reasoning** with 
 Boson key and balance. Hold-to-talk is the default; static portraits are used and avatar
 video is off. The Claude adapter remains available but was not used for these local runs.
 
-Last updated: 2026-10-24. Prepared checkpoint gate: **281 backend + 151 frontend/audio tests**,
-plus lint, type, schema and mock checks. Two full human flows completed with clear audio
-and automatic Q&A/report finish: 12 real reasoning successes, zero recorded errors or
-fallbacks. **Formal two-clean-demo acceptance (P0-13) and backup recording (P0-14) remain open.**
+Last updated: 2026-10-24. Current checkpoint gate: **285 backend + 151 frontend/audio tests**,
+plus lint, type, schema and mock checks. Two earlier human flows had clear audio and
+automatic Q&A/report finish, with 12 reasoning successes and zero recorded errors or
+fallbacks, but incomplete final-build coverage. A subsequent recorded blackout run measured
+7.140-second recovery; its content-coaching validation failure prevents clean acceptance.
+**P0-13 and P0-14 remain open pending two fresh clean recorded runs after the fixes.**
 
 The table distinguishes live local behavior from remaining demo evidence. Historical
 checkpoints below retain the provider and test state that applied at the time.
 
 Content coaching now uses a bounded real-model pass with verified source references;
 unsupported dimensions remain unassessed. Audio stops before feedback preparation, and
-the report automatically waits for the result. Its live synthetic preflight passed;
-new microphone acceptance is deferred at the user's request. GitHub publication remains
-blocked on write authentication; the full source and collaborator handoff are saved locally.
+the report automatically waits for the result. The recorded attempt exposed excess source
+references in generated feedback; explicit representative-reference limits now pass two
+saved-context live checks without weakening admission. Queued finish timestamps are also
+corrected. Historical reports stay unchanged. The earlier checkpoint was published to
+`yang` at `2bde30b`; these fixes require fresh human acceptance before clean-demo sign-off.
 
 | # | Demo step (CLAUDE.md §13 script) | State | Notes |
 |---|---|---|---|
@@ -26,10 +30,10 @@ blocked on write authentication; the full source and collaborator handoff are sa
 | 4 | Persona asks a grounded question in its own voice | live Boson; human flow confirmed | Real Higgs reasoning and speech used microphone transcript evidence; moderator and persona voices passed earlier human listening |
 | 5 | Presenter answers, persona follows up once | live Boson; human flow confirmed | Spoken answers, one follow-up per question and acknowledgement/hand-back completed in both full flows |
 | 6 | `slides_down` fires, viewer goes black | live locally; natural trigger and auto-restore verified | Natural blackout and countdown each fired once in the human runs. Guided tests separately covered blackout/Restore, heckler/Skip and frozen Pause timer |
-| 7 | Presenter resumes; recovery seconds measured | partial demo coverage | Earlier guided mock-audience test measured 5.331 s. Natural blackout run had no speech during the effect, so timing/evidence/score correctly remain null. Measured natural blackout recovery is still undemonstrated |
-| 8 | Q&A, then report with evidence quotes | human automatic finish confirmed; new coaching pass awaits microphone retest | Original flows had zero skips/unanswered questions. Countdown fixes passed tests/replay. New source-ID coaching, preparing/retry handling and final-only persistence passed offline checks plus a separate live Boson preflight; final-build human acceptance remains open |
-| — | Two clean final-build demos | open | Two human flows completed, but missing recovery coverage and findings fixed afterward prevent P0-13 sign-off. Supplemental replay is separate from human demo evidence |
-| — | Backup recording exists in `demo/` | no | P0-14 remains open |
+| 7 | Presenter resumes; recovery seconds measured | live natural blackout recovery observed | Recorded attempt measured 7.140 s with an exact recovery quote and automatic restoration. Human confirmed clear speech. Its separate report-coaching fallback still prevents whole-run clean acceptance |
+| 8 | Q&A, then report with evidence quotes | human automatic finish confirmed; corrected coaching awaits fresh run | Recorded attempt completed two grounded questions and two follow-ups. Coaching response exceeded citation limits and fell back; fixed generation passes two saved-context live checks. No historical report was changed |
+| — | Two clean final-build demos | open | Fresh pair required after report-generation and queued-clock fixes. Supplemental replays are separate from human evidence |
+| — | Backup recording exists in `demo/` | candidate only | Local six-minute room/blackout/Q&A/report recording is hash-verified and human-reviewed. It contains the coaching fallback; final clean backup selection remains open. Video is excluded from Git |
 
 ## Hour gates
 

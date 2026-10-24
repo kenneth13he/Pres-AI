@@ -1,10 +1,111 @@
 """Finished durations freeze; the full session clock and pause accounting stay separate."""
+import asyncio
+import inspect
+from contextlib import suppress
 from pathlib import Path
+from typing import Literal
+
+import pytest
 
 from backend import main
 from backend.services.voice_mock import MockVoice
 from backend.session_records import SessionRecords
 from backend.tests.conftest import make_session
+
+
+class ObservedLock(asyncio.Lock):
+    """Let the test advance its clock only after the ticker is waiting for the room."""
+
+    def __init__(self):
+        super().__init__()
+        self.waiting = asyncio.Event()
+
+    async def acquire(self) -> Literal[True]:
+        if self.locked():
+            self.waiting.set()
+        return await super().acquire()
+
+
+async def test_queued_tick_samples_clock_after_final_ack_releases_the_room(
+    monkeypatch, tmp_path: Path,
+):
+    clock = {"now": 321_297}
+    monkeypatch.setattr(main, "wall_ms", lambda: clock["now"])
+    monkeypatch.setattr(main, "TICK_S", 0)
+    monkeypatch.setattr(main, "SESSION_RECORDS", SessionRecords(tmp_path))
+    session = make_session(qna_questions=1)
+    room = main.Room(session)
+    room.t0 = 0
+    room.lock = lock = ObservedLock()
+    await session.start(0)
+    session.in_qna = True
+    session.qna_asked = 1
+    session._set_phase("answering", 321_069)
+    ticker = None
+    try:
+        # The answer handler owns this lock while its closing acknowledgment plays.
+        async with lock:
+            ticker = asyncio.create_task(room.tick_forever())
+            await asyncio.wait_for(lock.waiting.wait(), 1)
+            clock["now"] = 323_285
+            session._emit("ai_speech_ended", clock["now"], {"speaker": "vc"})
+            session.last_event_end_ms = clock["now"]
+            session._set_phase("qna", clock["now"])
+        await asyncio.wait_for(ticker, 1)
+    finally:
+        if ticker is not None and not ticker.done():
+            ticker.cancel()
+            with suppress(asyncio.CancelledError):
+                await ticker
+
+    ended = next(event for event in session.events if event.type == "session_ended")
+    assert ended.timestamp_ms == session.finished_at_ms == 323_285
+    timeline = [event.timestamp_ms for event in session.events]
+    assert timeline == sorted(timeline)
+    clock["now"] = 403_000
+    assert main.session_snapshot(room)["elapsed_ms"] == 323_285
+    saved = main.SESSION_RECORDS.load(session.session_id)
+    assert saved is not None and saved["snapshot"]["elapsed_ms"] == 323_285
+
+
+async def test_cancelling_tick_waiting_for_room_closes_unstarted_work(
+    monkeypatch, tmp_path: Path,
+):
+    monkeypatch.setattr(main, "TICK_S", 0)
+    monkeypatch.setattr(main, "SESSION_RECORDS", SessionRecords(tmp_path))
+    session = make_session()
+    room = main.Room(session)
+    room.lock = lock = ObservedLock()
+    await session.start(0)
+    work = []
+    original_run = room.run
+
+    async def capture(coro):
+        work.append(coro)
+        await original_run(coro)
+
+    monkeypatch.setattr(room, "run", capture)
+    ticker = None
+    try:
+        async with lock:
+            ticker = asyncio.create_task(room.tick_forever())
+            await asyncio.wait_for(lock.waiting.wait(), 1)
+            ticker.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await ticker
+            assert len(work) == 1
+            assert inspect.getcoroutinestate(work[0]) == inspect.CORO_CLOSED
+            assert room.active_task is None
+        await room.run(session.finish(323_285))
+        events = list(session.events)
+        await room.tick_forever()
+        assert session.phase == "report" and session.events == events
+        assert len(work) == 2  # only the explicit finish ran after ticker cancellation
+    finally:
+        if ticker is not None and not ticker.done():
+            ticker.cancel()
+            with suppress(asyncio.CancelledError):
+                await ticker
 
 
 async def test_finished_elapsed_freezes_at_the_session_ended_timestamp():
