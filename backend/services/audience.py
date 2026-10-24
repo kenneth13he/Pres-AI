@@ -207,7 +207,7 @@ class MockOrchestrator:
 # Claude: the real orchestrator. Structured outputs, adaptive thinking, low effort live.
 # ---------------------------------------------------------------------------------
 
-TURN_PROMPT = """You run a panel of two or three fictional people on a live video call, listening
+TURN_PROMPT = """You run a panel of one to three fictional people on a live video call, listening
 to someone rehearse a presentation. Each time the presenter finishes a sentence, or goes quiet,
 you decide what the panel does next, the way real people on a call would.
 

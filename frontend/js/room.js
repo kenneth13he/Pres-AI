@@ -11,7 +11,7 @@ import { createPlayer } from '/js/audio.js';
 import { startMic } from '/js/mic.js';
 import { playMock } from '/js/mock_player.js';
 import {
-  CORAL, MINT, PRESET_SETTING, YOU_AT, cq, esc, fmtS, kindName, layout, loadSessionMeta, rect,
+  CORAL, MINT, PRESET_SETTING, cq, esc, fmtS, kindName, layout, loadSessionMeta, rect,
   saveSessionMeta, settingById, tileBg,
 } from '/js/rooms.js';
 
@@ -49,13 +49,13 @@ const tiles = () => state.personas.concat(state.vip ? [VIP] : []);
 
 // ---- render ---------------------------------------------------------------------------------
 function buildStage() {
-  const T = tiles(), L = layout(state.setting, T.length);
+  const T = tiles(), L = layout(state.setting, T.length, !!state.deck);
   const st = $('stage');
   st.style.background = L.bg;
   st.innerHTML = `
     ${L.decor.map((d) => `<div style="${rect(d)};border-radius:${d.r};background:${d.c}"></div>`).join('')}
-    <div id="slide" class="slide" style="${rect(L.slide)}"></div>
-    <div class="black" style="${rect(L.slide)}"><div><div style="font-size:${cq(L.slide.w, 0.05, 13)};font-weight:700">Projector disconnected</div><div style="margin-top:4%;color:#8a9190;font-size:${cq(L.slide.w, 0.022, 10)}">Keep going.</div></div></div>
+    ${L.slide ? `<div id="slide" class="slide" style="${rect(L.slide)}"></div>
+    <div class="black" style="${rect(L.slide)}"><div><div style="font-size:${cq(L.slide.w, 0.05, 13)};font-weight:700">Projector disconnected</div><div style="margin-top:4%;color:#8a9190;font-size:${cq(L.slide.w, 0.022, 10)}">Keep going.</div></div></div>` : ''}
     ${L.seats.map((t, i) => {
       const p = T[i]; if (!p) return '';
       const img = state.images[p.id] ?? state.faces[p.id];
@@ -63,13 +63,13 @@ function buildStage() {
       const face = img ? `<div class="tile-fill" style="background-image:url('${esc(img)}')"></div><div class="tile-img" style="background-image:url('${esc(img)}')"></div>` : '';
       return `<div class="tile ${img ? 'photo' : ''} ${p.id === VIP.id ? 'vip-in' : ''}" data-id="${esc(p.id)}" style="${rect(t)};border-radius:0.8cqw;background:${img ? '#0e1012' : tileBg(null, i + 1)}">
         ${face}
-        <span class="tile-tag hidden" style="font-size:${cq(t.w, 0.055, 8)}"></span>
+        <span class="tile-tag hidden" style="font-size:${cq(t.w, 0.055, 8, 13)}"></span>
         <div style="position:absolute;left:5%;right:5%;bottom:6%;display:flex;justify-content:space-between;align-items:flex-end;gap:6px">
-          <div style="min-width:0;text-shadow:0 1px 4px rgba(0,0,0,.6)"><div style="font-size:${cq(t.w, 0.075, 9)};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</div><div style="font-size:${cq(t.w, 0.055, 8)};color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.role)}${p.custom && p.role !== 'Custom guest' ? ' · Custom' : ''}</div></div>
-          <div class="bars" style="height:1.2cqw">${'<span style="height:20%"></span>'.repeat(4)}</div>
+          <div style="min-width:0;text-shadow:0 1px 4px rgba(0,0,0,.6)"><div style="font-size:${cq(t.w, 0.075, 9, 20)};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</div><div style="font-size:${cq(t.w, 0.055, 8, 14)};color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.role)}${p.custom && p.role !== 'Custom guest' ? ' · Custom' : ''}</div></div>
+          <div class="bars" style="height:min(1.2cqw, 14px)">${'<span style="height:20%"></span>'.repeat(4)}</div>
         </div></div>`;
     }).join('')}
-    <div class="tile you ${state.cam ? 'cam-on' : ''}" style="${rect(YOU_AT[state.setting] ?? YOU_AT.video)};border-radius:0.8cqw;background:#181b1e">
+    <div class="tile you ${state.cam ? 'cam-on' : ''}" style="${rect(L.you)};border-radius:0.8cqw;background:#181b1e">
       <video id="selfcam" autoplay playsinline muted></video>
       <div class="cam-off" style="font-size:${cq(14, 0.07, 8)}">You</div>
     </div>
@@ -82,11 +82,11 @@ function buildStage() {
 }
 
 function renderSlide() {
+  $('slide-nav').style.visibility = state.deck ? '' : 'hidden'; // no deck: the guests have the stage
   const el = $('slide'); if (!el) return;
   const s = state.deck?.slides?.[state.slide - 1];
   const w = parseFloat(el.style.width);
-  if (!state.deck) el.innerHTML = `<div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--faint);font-size:${cq(w, 0.022, 10)}">Listening · no slides</div>`;
-  else if (s?.image_url) el.innerHTML = `<img src="${esc(s.image_url)}" alt="Slide ${state.slide}">`;
+  if (s?.image_url) el.innerHTML = `<img src="${esc(s.image_url)}" alt="Slide ${state.slide}">`;
   else {
     const title = (s?.text || '').trim().split('\n')[0] || `Slide ${state.slide}`;
     el.innerHTML = `<div style="position:absolute;inset:0;padding:8%;display:flex;flex-direction:column;justify-content:center">
@@ -366,6 +366,7 @@ addEventListener('click', () => Object.values(state.live).forEach((room) => room
 const togglePause = () => { if (!state.done && state.started) control(state.paused ? 'resume' : 'pause'); };
 const skip = () => { if (!state.done && state.started) { player.cancel(); control('skip'); } };
 function moveSlide(d) {
+  if (!state.deck) return;
   const max = state.deck ? state.deck.page_count : 99;
   const n = Math.min(max, Math.max(1, state.slide + d));
   if (n === state.slide) return;

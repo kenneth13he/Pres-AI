@@ -224,8 +224,8 @@ async def create_session(body: CreateSession) -> dict[str, Any]:
         for i, text in enumerate(body.custom_personas)
     ]
     config = body.config.model_copy(update={"personas": (body.config.personas + extra)[:3]})
-    if len(config.personas) < 2:
-        raise HTTPException(400, "pick at least two personas")
+    if not config.personas:
+        raise HTTPException(400, "pick at least one persona")
     session_id = uuid.uuid4().hex[:8]
     session = Session(
         session_id, config, preset, orchestrator, make_voice(),

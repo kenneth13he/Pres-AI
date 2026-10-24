@@ -83,7 +83,7 @@ class CurveballMode(BaseModel):
 
 class SessionConfig(BaseModel):
     preset_id: str  # "startup_pitch" | ... | "custom"
-    personas: list[Persona] = Field(min_length=2, max_length=3)
+    personas: list[Persona] = Field(min_length=1, max_length=3)
     difficulty: Difficulty = "normal"
     interruption_frequency: InterruptionFrequency = "normal"
     curveballs: CurveballMode = CurveballMode()

@@ -61,6 +61,7 @@ ECHO_OVERLAP = 0.6          # this share of the words were the panelist's own: i
 ECHO_TAIL_MS = 4_000        # speech recognition returns text a few seconds late
 WORD_MS = 350               # speech-length estimate when the voice can't say
 SLIDE_CURVEBALLS: set[CurveballKind] = {"slides_down", "elevator"}
+PANEL_CURVEBALLS: set[CurveballKind] = {"crosstalk"}  # needs two guests to disagree
 # Curveballs that are a question in disguise: the presenter's next words answer them.
 ANSWERABLE: set[CurveballKind] = {
     "heckler", "latecomer", "bait", "fact_check", "plain_language", "vip_arrives", "crosstalk",
@@ -100,8 +101,10 @@ class Session:
         self.open_question: dict[str, Any] | None = None
         self.followups_used = 0
         self.curveballs = CurveballEngine(session_id)
-        allowed: list[CurveballKind] = [k for k in preset.curveballs_allowed
-                                        if deck is not None or k not in SLIDE_CURVEBALLS]
+        allowed: list[CurveballKind] = [
+            k for k in preset.curveballs_allowed
+            if (deck is not None or k not in SLIDE_CURVEBALLS)
+            and (len(config.personas) > 1 or k not in PANEL_CURVEBALLS)]
         self.scheduler = Scheduler(config.difficulty, config.interruption_frequency,
                                    config.curveballs, allowed, curveballs_enabled)
         self.start_ms: int | None = None

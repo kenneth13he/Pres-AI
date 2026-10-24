@@ -4,7 +4,7 @@ import asyncio
 
 from backend.services.audience import MockOrchestrator
 from backend.services.voice_mock import MockVoice
-from backend.tests.conftest import make_session, s, seg
+from backend.tests.conftest import make_config, make_session, s, seg
 from spec.contracts import Deck, PanelTurn, Slide
 
 FULL_ANSWER = "Weekly retention: forty percent of our pilot users still come back every week."
@@ -144,6 +144,30 @@ async def test_no_deck_means_no_slide_curveballs():
     session = make_session(curveballs={"mode": "choose", "kinds": ["slides_down", "heckler"]})
     assert "slides_down" not in session.scheduler.allowed_kinds
     assert "heckler" in session.scheduler.allowed_kinds
+
+
+async def test_one_guest_runs_the_whole_call():
+    session = make_session(personas=[make_config().personas[0].model_dump()])
+    await session.start(0)
+    assert {who for who, _ in spoken(session)} == {session.config.personas[0].id}
+    await session.control("end", s(40))
+    await session.control("end", s(41))
+    assert session.phase == "report"
+
+
+def test_crosstalk_needs_two_guests():
+    from backend import presets
+    from backend.engine import Session
+    preset = presets.presets()["startup_pitch"]
+    preset = preset.model_copy(
+        update={"curveballs_allowed": [*preset.curveballs_allowed, "crosstalk"]})
+
+    def allowed(config):
+        return Session("t", config, preset, MockOrchestrator(), MockVoice()).scheduler.allowed_kinds
+
+    solo = make_config(personas=[make_config().personas[0].model_dump()])
+    assert "crosstalk" not in allowed(solo)
+    assert "crosstalk" in allowed(make_config())
 
 
 async def test_time_crunch_countdown_moves_to_qna_then_report():

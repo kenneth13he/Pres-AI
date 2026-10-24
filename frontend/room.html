@@ -13,7 +13,8 @@
     .room-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--raised-2); }
     .room-grid { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
     @media (max-width: 900px) { .room-grid { grid-template-columns: 1fr; } .captions-pane { border-left: 0 !important; border-top: 1px solid var(--raised-2); max-height: 50vh !important; } }
-    #stage { border-radius: 16px; border: 1px solid #1f2326; max-height: calc(100vh - 170px); }
+    /* the largest 16:9 stage that fits the window both ways (seat layouts are % of a 16:9 stage) */
+    #stage { border-radius: 16px; border: 1px solid #1f2326; width: min(100%, calc((100vh - 170px) * 16 / 9)); margin: 0 auto; }
     #stage .slide { border-radius: 1cqw; overflow: hidden; background: #181b1e; border: 1px solid #2c3134; transition: opacity .4s; }
     #stage .slide img { width: 100%; height: 100%; object-fit: contain; }
     #stage.dim .slide { opacity: .15; }
@@ -66,7 +67,7 @@
     <section style="padding:20px;display:flex;flex-direction:column;gap:12px;min-width:0">
       <div id="stage" class="stage"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:14px;color:var(--muted);flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:8px">
+        <div id="slide-nav" style="display:flex;align-items:center;gap:8px">
           <button id="prev" style="width:34px;height:30px;border-radius:8px;border:1px solid var(--border-input);background:var(--surface);cursor:pointer">←</button>
           <span id="slide-no" style="min-width:96px;text-align:center">Slide 1</span>
           <button id="next" style="width:34px;height:30px;border-radius:8px;border:1px solid var(--border-input);background:var(--surface);cursor:pointer">→</button>

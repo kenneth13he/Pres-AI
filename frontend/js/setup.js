@@ -294,7 +294,7 @@ function renderFoot() {
 }
 
 function renderPreview() {
-  const P = people(), n = P.length, L = layout(S.setting, n);
+  const P = people(), n = P.length, L = layout(S.setting, n, !!S.deck);
   const prof = S.profileId === null ? 'Default (neutral)' : S.profileId === 'new' ? (S.pname.trim() || 'New profile') : S.pname;
   const ctx = [S.ctx.trim() ? 'Notes' : null, S.ctxFiles.length ? `${S.ctxFiles.length} ${S.ctxFiles.length === 1 ? 'file' : 'files'}` : null].filter(Boolean).join(' · ') || 'None';
   const count = DIFFS.find((d) => d[0] === S.difficulty)[3];
@@ -309,8 +309,8 @@ function renderPreview() {
     <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 4px 12px"><span style="font:500 12px var(--mono);color:var(--muted);letter-spacing:.06em">LIVE PREVIEW</span><span style="font-size:14px;font-weight:600">${settingById(S.setting).name} · ${n} ${n === 1 ? 'guest' : 'guests'}</span></div>
     <div class="stage" style="background:${L.bg}">
       ${L.decor.map((d) => `<div style="${rect(d)};border-radius:${d.r};background:${d.c}"></div>`).join('')}
-      <div style="${rect(L.slide)};border-radius:1.2cqw;background:#1d2124;border:1px solid #2c3134;display:grid;place-items:center"><span style="font:500 max(8px,1.4cqw) var(--mono);color:var(--faint)">${esc(S.deck ? S.deck.filename : 'no slides')}</span></div>
-      ${L.seats.map((t, i) => `<div class="tile ${P[i]?.img ? 'photo' : ''}" style="${rect(t)};border-radius:0.9cqw;background:${tileBg(P[i]?.img, P[i]?.idx ?? 0)}"><div style="position:absolute;left:6%;bottom:6%;font-weight:700;font-size:${cq(t.w, 0.075, 7)};white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,.6)">${esc(P[i]?.name ?? '')}</div></div>`).join('')}
+      ${L.slide ? `<div style="${rect(L.slide)};border-radius:1.2cqw;background:#1d2124;border:1px solid #2c3134;display:grid;place-items:center"><span style="font:500 max(8px,1.4cqw) var(--mono);color:var(--faint)">${esc(S.deck.filename)}</span></div>` : ''}
+      ${L.seats.map((t, i) => `<div class="tile ${P[i]?.img ? 'photo' : ''}" style="${rect(t)};border-radius:0.9cqw;background:${tileBg(P[i]?.img, P[i]?.idx ?? 0)}"><div style="position:absolute;left:6%;bottom:6%;font-weight:700;font-size:${cq(t.w, 0.075, 7, 14)};white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,.6)">${esc(P[i]?.name ?? '')}</div></div>`).join('')}
     </div>
     <div style="margin-top:14px;display:flex;flex-direction:column">${rows.map(([k, v]) => `<div class="sum-row"><span style="color:var(--muted)">${k}</span><span style="font-weight:600;text-align:right">${esc(v)}</span></div>`).join('')}</div>`;
 }
