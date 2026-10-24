@@ -7,6 +7,7 @@ __pycache__/
 .DS_Store
 data/sessions/
 data/decks/
+data/audio/
 demo/*.mp4
 demo/*.mov
 node_modules/

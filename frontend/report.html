@@ -26,7 +26,10 @@
   </header>
   <main style="width:100%;max-width:960px;margin:0 auto;padding:44px 28px 72px">
     <div id="meta" class="mono" style="font-size:12px;color:var(--muted);letter-spacing:.06em"></div>
-    <h1 style="margin:10px 0 0;font-size:40px;font-weight:800;letter-spacing:-0.03em">Report card</h1>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-top:10px">
+      <h1 style="margin:0;font-size:40px;font-weight:800;letter-spacing:-0.03em">Report card</h1>
+      <div id="overall" class="mono" style="font-size:48px;font-weight:500;color:var(--mint)"></div>
+    </div>
     <p id="caveats" style="margin:10px 0 0;font-size:13px;line-height:1.5;color:var(--faint);max-width:680px"></p>
     <section id="dimensions" style="margin-top:32px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px"></section>
     <section id="metrics" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px"></section>
@@ -34,6 +37,8 @@
     <div id="curveballs" style="display:flex;flex-direction:column;gap:10px"></div>
     <h2 class="sec">Key moments</h2>
     <ol id="moments" style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column"></ol>
+    <h2 class="sec">What worked</h2>
+    <div id="strengths" style="display:flex;flex-direction:column;gap:10px"></div>
     <h2 class="sec">What to fix next time</h2>
     <div id="improvements" style="display:flex;flex-direction:column;gap:10px"></div>
     <h2 class="sec">From the audience</h2>

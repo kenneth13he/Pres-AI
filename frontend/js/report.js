@@ -2,7 +2,7 @@
 // Owner: Person A with C (P0-12). Shape: spec/contracts.schema.json (Report).
 // Design: docs/design/Pres AI App.dc.html (report step). Nulls render as "—", never 0.
 
-import { createSession, getReport, isMock } from '/js/api.js';
+import { createSession, getReport, getSession, isMock } from '/js/api.js';
 import { CORAL, MINT, esc, fmtMs, fmtS, kindName, loadSessionMeta, saveSessionMeta, settingById } from '/js/rooms.js';
 
 const qs = new URLSearchParams(location.search);
@@ -10,17 +10,26 @@ const sessionId = qs.get('session') ?? '';
 const $ = (id) => document.getElementById(id);
 const dash = '<span style="color:var(--off)">—</span>';
 
+// The panel grades the talk after the call ends (up to ~30 s); wait for it.
 let r;
-try { r = await getReport(sessionId); }
-catch (e) {
-  $('meta').textContent = 'NO REPORT YET';
-  $('caveats').innerHTML = `The session hasn't produced a report (${esc(e.message.slice(0, 160))}). <a href="/setup.html" style="color:var(--mint)">Start a new session</a>.`;
-  throw e;
+for (let i = 0; ; i++) {
+  try { r = await getReport(sessionId); break; }
+  catch (e) {
+    if (i >= 25) {
+      $('meta').textContent = 'NO REPORT YET';
+      $('caveats').innerHTML = `The session hasn't produced a report (${esc(e.message.slice(0, 160))}). <a href="/setup.html" style="color:var(--mint)">Start a new session</a>.`;
+      throw e;
+    }
+    $('meta').textContent = 'GRADING';
+    $('caveats').textContent = 'The panel is writing your report…';
+    await new Promise((ok) => setTimeout(ok, 2000));
+  }
 }
 
 const meta = loadSessionMeta(isMock() ? 'mock' : sessionId);
 let config = meta?.config;
 if (!config && isMock()) config = (await (await fetch('/mocks/demo_session.json')).json()).config;
+if (!config && !isMock()) config = await getSession(sessionId).then((s) => s.config).catch(() => null); // opened without /setup (another tab, a shared link)
 const personas = config?.personas ?? [];
 const nameOf = (id) => personas.find((p) => p.id === id) ?? { name: id, role: '' };
 
@@ -29,6 +38,7 @@ const lastMoment = Math.max(0, ...r.key_moments.map((m) => m.at_ms));
 const duration = meta?.elapsed_s != null ? fmtS(meta.elapsed_s) : fmtMs(lastMoment);
 $('meta').textContent = `${settingById(meta?.setting ?? 'video').name.toUpperCase()} · ${n} ${n === 1 ? 'GUEST' : 'GUESTS'} · ${duration}`;
 $('caveats').textContent = r.metric_caveats.join(' ');
+$('overall').innerHTML = r.overall_score == null ? '' : `${r.overall_score}<span style="font-size:18px;color:var(--muted)">/100</span>`;
 
 const DIMS = [['clarity', 'Clarity'], ['evidence', 'Evidence'], ['structure', 'Structure'], ['question_handling', 'Question handling'], ['recovery', 'Recovery']];
 $('dimensions').innerHTML = DIMS.map(([k, label]) => {
@@ -58,7 +68,11 @@ $('moments').innerHTML = r.key_moments.length ? r.key_moments.map((m) => `<li cl
   <span>${m.persona_id ? `${esc(nameOf(m.persona_id).name)}: ` : ''}${esc(m.summary)}</span></li>`).join('')
   : '<li class="moment" style="grid-template-columns:1fr;color:var(--muted)">Nothing to show yet.</li>';
 
-$('improvements').innerHTML = r.improvements.length ? r.improvements.map((i) => `<div class="card">
+$('strengths').innerHTML = r.strengths.length
+  ? r.strengths.map((s) => `<div class="card" style="font-size:15px;line-height:1.45;color:#d6dad9">${esc(s)}</div>`).join('')
+  : '<div class="card" style="font-size:15px;color:var(--muted)">Nothing assessed.</div>';
+
+$('improvements').innerHTML =r.improvements.length ? r.improvements.map((i) => `<div class="card">
   <div style="font-size:17px;font-weight:700">${esc(i.observation)}</div>
   <div class="quote" style="margin-top:10px">“${esc(i.evidence)}”</div>
   <div style="margin-top:10px;font-size:14px;color:#c5cac9">${esc(i.suggestion)}</div></div>`).join('')

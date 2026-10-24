@@ -124,40 +124,6 @@
       "title": "Deck",
       "type": "object"
     },
-    "FollowUpVerdict": {
-      "properties": {
-        "line": {
-          "title": "Line",
-          "type": "string"
-        },
-        "missing_detail": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Missing Detail"
-        },
-        "verdict": {
-          "enum": [
-            "satisfied",
-            "follow_up"
-          ],
-          "title": "Verdict",
-          "type": "string"
-        }
-      },
-      "required": [
-        "verdict",
-        "line"
-      ],
-      "title": "FollowUpVerdict",
-      "type": "object"
-    },
     "Improvement": {
       "properties": {
         "evidence": {
@@ -248,12 +214,13 @@
       "title": "KeyMoment",
       "type": "object"
     },
-    "OrchestratorDecision": {
+    "PanelTurn": {
+      "description": "The one decision the brain makes each time the presenter speaks (or goes quiet):\nstay quiet, or one panelist says one thing \u2014 a reply, a reaction, a question, a\nfollow-up, or a curveball.",
       "properties": {
         "action": {
           "enum": [
-            "none",
-            "question",
+            "wait",
+            "speak",
             "curveball"
           ],
           "title": "Action",
@@ -297,6 +264,11 @@
           "default": null,
           "title": "Curveball Kind"
         },
+        "is_question": {
+          "default": false,
+          "title": "Is Question",
+          "type": "boolean"
+        },
         "line": {
           "anyOf": [
             {
@@ -308,6 +280,19 @@
           ],
           "default": null,
           "title": "Line"
+        },
+        "mood": {
+          "default": "neutral",
+          "enum": [
+            "neutral",
+            "warm",
+            "confused",
+            "thoughtful",
+            "pressing",
+            "impatient"
+          ],
+          "title": "Mood",
+          "type": "string"
         },
         "persona_id": {
           "anyOf": [
@@ -324,25 +309,13 @@
         "reason": {
           "title": "Reason",
           "type": "string"
-        },
-        "slide_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Slide Number"
         }
       },
       "required": [
         "action",
         "reason"
       ],
-      "title": "OrchestratorDecision",
+      "title": "PanelTurn",
       "type": "object"
     },
     "Persona": {
@@ -759,6 +732,289 @@
         "metrics"
       ],
       "title": "Report",
+      "type": "object"
+    },
+    "ReportAssessment": {
+      "additionalProperties": false,
+      "description": "Internal bounded coaching rubric; the public Report contract stays unchanged.",
+      "properties": {
+        "dimensions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ReportDimensionAssessment"
+          },
+          "maxProperties": 4,
+          "minProperties": 4,
+          "propertyNames": {
+            "enum": [
+              "clarity",
+              "evidence",
+              "structure",
+              "question_handling"
+            ]
+          },
+          "title": "Dimensions",
+          "type": "object"
+        },
+        "improvements": {
+          "items": {
+            "$ref": "#/$defs/ReportImprovementAssessment"
+          },
+          "maxItems": 2,
+          "title": "Improvements",
+          "type": "array"
+        },
+        "persona_feedback": {
+          "items": {
+            "$ref": "#/$defs/ReportPersonaAssessment"
+          },
+          "maxItems": 3,
+          "title": "Persona Feedback",
+          "type": "array"
+        },
+        "strengths": {
+          "items": {
+            "$ref": "#/$defs/ReportRubricEvidence"
+          },
+          "maxItems": 2,
+          "title": "Strengths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "dimensions"
+      ],
+      "title": "ReportAssessment",
+      "type": "object"
+    },
+    "ReportAssessmentContext": {
+      "description": "Bounded exact source text, ordered by source ID, with answer ownership explicit.",
+      "properties": {
+        "evidence": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "object"
+        },
+        "partial": {
+          "title": "Partial",
+          "type": "boolean"
+        },
+        "permitted_dimensions": {
+          "items": {
+            "enum": [
+              "clarity",
+              "evidence",
+              "structure",
+              "question_handling"
+            ],
+            "type": "string"
+          },
+          "title": "Permitted Dimensions",
+          "type": "array"
+        },
+        "personas": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Personas",
+          "type": "object"
+        },
+        "presenter_words": {
+          "title": "Presenter Words",
+          "type": "integer"
+        },
+        "questions": {
+          "items": {
+            "$ref": "#/$defs/ReportAssessmentQuestion"
+          },
+          "title": "Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "evidence",
+        "questions",
+        "personas",
+        "partial",
+        "presenter_words",
+        "permitted_dimensions"
+      ],
+      "title": "ReportAssessmentContext",
+      "type": "object"
+    },
+    "ReportAssessmentQuestion": {
+      "properties": {
+        "answer_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Answer Evidence Ids",
+          "type": "array"
+        },
+        "persona_id": {
+          "title": "Persona Id",
+          "type": "string"
+        },
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "question_id": {
+          "title": "Question Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question_id",
+        "persona_id",
+        "question",
+        "answer_evidence_ids"
+      ],
+      "title": "ReportAssessmentQuestion",
+      "type": "object"
+    },
+    "ReportDimensionAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "observation": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Observation",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        }
+      },
+      "required": [
+        "evidence_ids",
+        "observation"
+      ],
+      "title": "ReportDimensionAssessment",
+      "type": "object"
+    },
+    "ReportImprovementAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "observation": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Observation",
+          "type": "string"
+        },
+        "suggestion": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Suggestion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_ids",
+        "observation",
+        "suggestion"
+      ],
+      "title": "ReportImprovementAssessment",
+      "type": "object"
+    },
+    "ReportPersonaAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "observation": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Observation",
+          "type": "string"
+        },
+        "persona_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Persona Id",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        }
+      },
+      "required": [
+        "evidence_ids",
+        "observation",
+        "persona_id"
+      ],
+      "title": "ReportPersonaAssessment",
+      "type": "object"
+    },
+    "ReportRubricEvidence": {
+      "additionalProperties": false,
+      "description": "Internal model output references existing presenter text; it cannot create quotes.",
+      "properties": {
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "observation": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Observation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_ids",
+        "observation"
+      ],
+      "title": "ReportRubricEvidence",
       "type": "object"
     },
     "SessionConfig": {

@@ -113,3 +113,20 @@ Files outside my paths: docs/design/ (handoff files); mic.js level meter (the TO
 Proposed decision changes (not implemented): the design allows 1–10 guests; SessionConfig caps personas at 2–3, so the UI caps at 3 (`MAX_GUESTS` in frontend/js/rooms.js). Profile (role/goal/level/tone), room setting and presentation context have no contract fields and stay in localStorage — C to decide whether the orchestrator should see them.
 Next: P1-1 (demo-path polish)
 Open question for the team: B — custom guests send `voice_id` (a preset name or a Boson voice id); cloned voices need a backend route that calls `POST /v1/audio/voices` once and stores the id; until then they use the default voice (said on screen).
+
+## Voice room + talking heads · 2026-10-24 · C (covering B/A, on branch feat/voice-room)
+Built: Higgs TTS voices per persona (distinct presets, anger tag for the heckler); the room view (wall screen, audience seated around a table, speaking glow, sound bars, bubbles; clips play one at a time; mic muted while the room talks); Higgs Avatar talking heads — each seat with a portrait from `demo/faces/` gets a lip-synced MP4 per line (video shape matched to the portrait), falling back to voice-over-still past a 9 s budget or on any error. Rendering moved off the room's critical path (one background worker, in order; clips pushed to the browser as they land). The brain backs off 5 s after a "none" instead of being asked every second. Reload no longer replays old clips.
+Measured live: TTS ~2 s per line; avatar clip ~5–8 s for a 4–8 s line; video rate limit is undocumented and tripped at 3 rapid requests (fallback covers it).
+Tests: test_voice_higgs.py 9/9 (voices, faces, clip events, video/fallback, background order, shape), backoff test, websocket wiring test; suite 82/82
+Gate: green at the commit
+Open question for the team: which fictional portraits to use (only Boson's single sample face is in the repo, so every seat looks the same)
+
+## Merge feat/voice-room into the redesign · 2026-10-24 14:30 · A (with C's backend) · session 1
+Built: branch merge/frontend-voice-room = main's redesigned frontend + feat/voice-room's backend (live Higgs faces, Higgs STT, Claude report card); the redesigned room now streams each live face into its stage tile over LiveKit (Higgs stills until then), plays clips one at a time with the speaking state driven by the real audio, sends mic utterances to /api/sessions/{id}/speech, shows the webcam in the layout's "You" seat, and rejoins a call after a reload; the report waits for the grading, shows the overall score and "What worked", and falls back to the server's config when opened outside /setup.
+Tests: none added; suite 83/83. Verified in headless Chrome: mock room + mock report; one live session (2 of 3 faces live, voices, server STT, slides_down blackout + recovery, Q&A, graded report).
+Gate: green (ruff, pyright, schema, mocks, pytest 83/83); pyright needs `--pythonpath .venv/bin/python` on machines with a stale .venv/lib/python3.13
+Demo path: unchanged
+Files outside my paths: none beyond the merge itself; frontend/css/call.css dropped (the redesign's room replaces voice-room's call layout)
+Proposed decision changes (not implemented): none
+Next: P1-1
+Open question for the team: Higgs often refuses the third live face ("every realtime avatar slot is in use"); the pool retries, the seat shows its still meanwhile

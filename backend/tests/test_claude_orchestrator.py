@@ -8,14 +8,14 @@ import pytest
 
 from backend import presets
 from backend.services.audience import (
-    FOLLOW_UP_PROMPT,
     RECOVERY_PROMPT,
-    SYSTEM_PROMPT,
+    TURN_PROMPT,
     ClaudeOrchestrator,
+    Line,
     OrchestratorContext,
 )
 from backend.tests.conftest import seg
-from spec.contracts import FollowUpVerdict, OrchestratorDecision, Persona, RecoveryAssessment
+from spec.contracts import PanelTurn, Persona, RecoveryAssessment
 
 
 @dataclass
@@ -45,65 +45,66 @@ def ctx(**overrides: Any) -> OrchestratorContext:
         preset_id="startup_pitch", difficulty="normal",
         personas=[roster["vc"], roster["student"], roster["professor"]],
         slide_number=3, slide_text="Traction\n100,000 customers in six months",
-        recent_transcript=[seg(33, "We can get 100,000 customers in six months.")],
-        prior_qa=[{"persona_id": "vc", "q": "Evidence?", "cited": "x", "a": None}],
-        question_allowed=True, eligible_kinds=["slides_down"], curveball_budget_remaining=1,
-        seconds_since_last_event=42,
+        conversation=[Line("presenter", "We can get 100,000 customers in six months.", 33_000),
+                      Line("vc", "Based on what?", 37_000)],
+        trigger="spoke", elapsed_s=60, seconds_since_panel_spoke=42,
+        open_question=Line("vc", "Based on what?", 37_000),
+        eligible_kinds=["slides_down"], curveball_budget_remaining=1,
     )
     base.update(overrides)
     return OrchestratorContext(**base)
 
 
-async def test_decide_formats_the_context_and_returns_the_parsed_decision():
-    want = OrchestratorDecision(action="question", persona_id="vc",
-                                line="What evidence supports 100,000 customers?",
-                                reason="unsupported",
-                                cited_transcript_excerpt="100,000 customers in six months",
-                                slide_number=3)
-    client = FakeClient(want)
+QUESTION = PanelTurn(action="speak", persona_id="vc", is_question=True, reason="unsupported",
+                     line="What backs 100,000 customers?",
+                     cited_transcript_excerpt="100,000 customers in six months")
+
+
+async def test_turn_formats_the_whole_conversation_and_returns_the_parsed_turn():
+    client = FakeClient(QUESTION)
     orch = ClaudeOrchestrator(client=client, model="claude-opus-5-5")
-    got = await orch.decide(ctx())
-    assert got == want
+    assert await orch.turn(ctx()) == QUESTION
     call = client.messages.calls[0]
-    assert call["model"] == "claude-opus-5-5" and call["output_format"] is OrchestratorDecision
-    assert call["system"] == SYSTEM_PROMPT and call["output_config"] == {"effort": "low"}
+    assert call["model"] == "claude-opus-5-5" and call["output_format"] is PanelTurn
+    assert call["system"] == TURN_PROMPT and call["output_config"] == {"effort": "low"}
     user = call["messages"][0]["content"]
-    for needle in ("vc: Skeptical VC", "[33.0s] We can get 100,000 customers",
-                   "slide 3 text:", "eligible curveball kinds: slides_down",
-                   "vc asked: 'Evidence?'", "seconds since the last audience event: 42",
-                   "actions allowed right now: question, curveball, none"):
+    for needle in ("vc (", "[33s] PRESENTER: We can get 100,000 customers",
+                   "Based on what?", "slide 3:", "trigger: spoke", "panel last spoke: 42s ago",
+                   "open question:", "eligible curveballs now: slides_down"):
         assert needle in user, needle
 
 
-async def test_decide_skips_the_call_when_nothing_is_allowed():
-    client = FakeClient(OrchestratorDecision(action="question", reason="x"))
-    orch = ClaudeOrchestrator(client=client)
-    got = await orch.decide(ctx(question_allowed=False, eligible_kinds=[]))
-    assert got.action == "none" and client.messages.calls == []
-
-
-async def test_decide_guards_disallowed_answers_and_refusals():
-    orch = ClaudeOrchestrator(client=FakeClient(
-        OrchestratorDecision(action="curveball", curveball_kind="heckler", reason="x")))
-    assert (await orch.decide(ctx(eligible_kinds=["slides_down"]))).action == "none"
-    orch = ClaudeOrchestrator(client=FakeClient(
-        OrchestratorDecision(action="question", persona_id="vc", line="q", reason="x")))
-    assert (await orch.decide(ctx(question_allowed=False))).action == "none"
+async def test_turn_guards_wrong_speakers_and_ineligible_curveballs():
+    orch = ClaudeOrchestrator(client=FakeClient(PanelTurn(
+        action="curveball", curveball_kind="heckler", line="x", reason="x")))
+    assert (await orch.turn(ctx())).action == "wait"
+    orch = ClaudeOrchestrator(client=FakeClient(PanelTurn(
+        action="speak", persona_id="Skeptical VC", line="hi", reason="x")))
+    assert (await orch.turn(ctx())).action == "wait"  # off-roster persona id
+    orch = ClaudeOrchestrator(client=FakeClient(PanelTurn(
+        action="speak", persona_id="vc", line="  ", reason="x")))
+    assert (await orch.turn(ctx())).action == "wait"
     orch = ClaudeOrchestrator(client=FakeClient(FakeResponse(None, stop_reason="refusal")))
-    got = await orch.decide(ctx())
-    assert got.action == "none" and "declined" in got.reason
+    assert (await orch.turn(ctx())).action == "wait"
 
 
-async def test_follow_up_uses_the_prompt_once_then_hands_back():
-    client = FakeClient(FollowUpVerdict(verdict="follow_up", line="What data?",
-                                        missing_detail="data"))
-    orch = ClaudeOrchestrator(client=client)
-    persona = presets.personas()["vc"]
-    first = await orch.follow_up("Evidence?", "We plan to grow.", persona, used=0)
-    assert first.verdict == "follow_up"
-    assert client.messages.calls[0]["system"] == FOLLOW_UP_PROMPT
-    second = await orch.follow_up("Evidence?", "We plan to grow.", persona, used=1)
-    assert second.verdict == "satisfied" and len(client.messages.calls) == 1  # no second call
+async def test_a_moderator_curveball_has_no_persona_and_a_persona_one_gets_a_player():
+    orch = ClaudeOrchestrator(client=FakeClient(PanelTurn(
+        action="curveball", curveball_kind="slides_down", persona_id="vc", line="x",
+        reason="x")))
+    assert (await orch.turn(ctx())).persona_id is None
+    orch = ClaudeOrchestrator(client=FakeClient(PanelTurn(
+        action="curveball", curveball_kind="heckler", persona_id="nobody", line="x",
+        reason="x")))
+    got = await orch.turn(ctx(eligible_kinds=["heckler"]))
+    assert got.action == "curveball" and got.persona_id in {"vc", "student", "professor"}
+
+
+async def test_an_invented_quote_is_dropped_but_the_line_is_still_said():
+    orch = ClaudeOrchestrator(client=FakeClient(QUESTION.model_copy(
+        update={"cited_transcript_excerpt": "we are profitable already"})))
+    got = await orch.turn(ctx())
+    assert got.action == "speak" and got.cited_transcript_excerpt is None
 
 
 async def test_recovery_is_null_without_speech_and_evidence_must_be_verbatim():
@@ -146,7 +147,7 @@ async def test_timeout_surfaces_as_an_exception_the_engine_turns_into_an_error_e
     orch = ClaudeOrchestrator(client=SlowClient())
     orch.timeout_s = 0.01
     with pytest.raises(asyncio.TimeoutError):
-        await orch.decide(ctx())
+        await orch.turn(ctx())
 
 
 # ---- through the real SDK (no network: httpx MockTransport) ------------------------------
@@ -176,13 +177,13 @@ def message(text: str, stop_reason: str = "end_turn") -> dict:
 
 async def test_refusal_with_text_through_the_real_sdk_is_a_none_not_a_crash():
     orch = ClaudeOrchestrator(client=sdk_client(message("I can't help with that.", "refusal")))
-    got = await orch.decide(ctx())
-    assert got.action == "none"
+    got = await orch.turn(ctx())
+    assert got.action == "wait"
 
 
 async def test_truncated_and_invalid_replies_through_the_real_sdk_fall_back():
     orch = ClaudeOrchestrator(client=sdk_client(message('{"action": "quest', "max_tokens")))
-    assert (await orch.decide(ctx())).action == "none"
+    assert (await orch.turn(ctx())).action == "wait"
     bad = json.dumps({"score": 250, "evidence": "x", "observation": "o", "suggestion": "s"})
     orch = ClaudeOrchestrator(client=sdk_client(message(bad)))
     got = await orch.assess_recovery("slides_down", "l", [seg(1, "a b c d")], 100)
@@ -194,31 +195,19 @@ async def test_api_error_through_the_real_sdk_never_breaks_persona_expansion():
         {"type": "error", "error": {"type": "authentication_error", "message": "bad key"}}, 401))
     got = await orch.expand_persona("someone sceptical", 3)
     assert got.id == "custom_3" and got.custom is True
-    assert (await orch.decide(ctx())).action == "none"
+    assert (await orch.turn(ctx())).action == "wait"
 
 
 async def test_valid_reply_through_the_real_sdk_parses_and_is_grounded():
     good = json.dumps({
-        "action": "question", "persona_id": "vc",
+        "action": "speak", "persona_id": "vc", "is_question": True,
         "line": "What backs “100,000 customers in six months”?", "reason": "unsupported",
-        "cited_transcript_excerpt": "“100,000 customers in six months”", "slide_number": 99,
+        "cited_transcript_excerpt": "“100,000 customers in six months”", "mood": "pressing",
     })
     orch = ClaudeOrchestrator(client=sdk_client(message(good)))
-    got = await orch.decide(ctx())
-    assert got.action == "question" and got.persona_id == "vc"
-    assert got.slide_number == 3  # the slide actually shown, not the model's guess
-
-
-async def test_question_with_an_invented_quote_is_not_asked():
-    orch = ClaudeOrchestrator(client=FakeClient(OrchestratorDecision(
-        action="question", persona_id="vc", line="q", reason="r",
-        cited_transcript_excerpt="we are profitable already", slide_number=3)))
-    got = await orch.decide(ctx())
-    assert got.action == "none" and "verbatim" in got.reason
-    orch = ClaudeOrchestrator(client=FakeClient(OrchestratorDecision(
-        action="question", persona_id="Skeptical VC", line="q", reason="r",
-        cited_transcript_excerpt="100,000 customers in six months", slide_number=3)))
-    assert (await orch.decide(ctx())).action == "none"  # off-roster persona id
+    got = await orch.turn(ctx())
+    assert got.action == "speak" and got.persona_id == "vc" and got.is_question
+    assert got.cited_transcript_excerpt is not None
 
 
 def test_verbatim_check_is_forgiving_about_quotes_case_and_segment_boundaries():
@@ -227,14 +216,3 @@ def test_verbatim_check_is_forgiving_about_quotes_case_and_segment_boundaries():
     assert not ClaudeOrchestrator.verbatim(" ", segs)
     assert not ClaudeOrchestrator.verbatim("is onboarding", segs)  # < 3 words
     assert not ClaudeOrchestrator.verbatim("the problem is churn", segs)
-
-
-async def test_qna_round_accepts_a_question_grounded_in_the_slides():
-    client = FakeClient(OrchestratorDecision(
-        action="question", persona_id="student", line="What happens after the pilot?",
-        reason="left open", cited_transcript_excerpt=None, slide_number=3))
-    orch = ClaudeOrchestrator(client=client)
-    assert (await orch.decide(ctx())).action == "none"  # mid-talk: needs a verbatim quote
-    got = await orch.decide(ctx(qna=True))
-    assert got.action == "question" and got.cited_transcript_excerpt is None
-    assert "closing Q&A" in client.messages.calls[-1]["messages"][0]["content"]

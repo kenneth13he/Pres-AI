@@ -9,6 +9,8 @@ anthropic==2.3.0
 httpx==0.28.1
 websockets==17.3
 python-dotenv==1.2.4
+livekit-agents==1.8.8   # live avatars (Higgs Avatar realtime streams via LiveKit)
+livekit-api==1.2.2
 
 # dev / gate
 pytest==9.1.1

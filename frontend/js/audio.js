@@ -1,24 +1,37 @@
-// Plays the AI voices and local SFX in the browser.
-// Owner: Person B. Format: raw 16-bit 24 kHz mono PCM (Higgs TTS 3 `response_format: "pcm"`,
-// and Realtime `response.output_audio.delta` after base64 decode).
+// Plays the panel's voices (Higgs TTS clips announced by `audio_status`) strictly one at a
+// time in arrival order — only one AI voice ever speaks (CLAUDE.md §8). Owner: Person B.
 
-const SAMPLE_RATE = 24000;
+export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {} } = {}) {
+  const queue = [];
+  let current = null; // {audio, clip}
+  let enabled = true;
+  const sfxEl = document.getElementById('sfx');
 
-export function createPlayer() {
-  const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
-
-  function enqueue(pcmBytes) {
-    // TODO(B): Int16 → Float32, AudioBuffer, gapless scheduling from a running `nextAt`.
+  function next() {
+    if (current || !queue.length) return;
+    const clip = queue.shift();
+    const audio = new Audio(clip.url);
+    current = { audio, clip };
+    const done = () => {
+      if (current?.audio !== audio) return;
+      current = null;
+      onClipEnd(clip);
+      next();
+    };
+    audio.onended = done;
+    audio.onerror = done;
+    onClipStart(clip);
+    audio.play().catch(done);
   }
 
-  function cancel() {
-    // TODO(B): barge-in / Skip — stop every scheduled source and reset the queue.
-  }
-
-  function playSfx(url) {
-    const el = document.getElementById('sfx');
-    if (el && url) { el.src = url; el.play().catch(() => {}); }
-  }
-
-  return { enqueue, cancel, playSfx, resume: () => ctx.resume(), get busy() { return false; } };
+  return {
+    playClip(clip) { if (enabled) { queue.push(clip); next(); } },
+    cancel() { // Skip / Pause: stop the voice and drop what is queued
+      queue.length = 0;
+      if (current) { const { audio, clip } = current; current = null; audio.pause(); onClipEnd(clip); }
+    },
+    playSfx(url) { if (sfxEl && url) { sfxEl.src = url; sfxEl.play().catch(() => {}); } },
+    setEnabled(v) { enabled = v; if (!v) this.cancel(); },
+    get busy() { return Boolean(current) || queue.length > 0; },
+  };
 }

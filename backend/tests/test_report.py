@@ -47,8 +47,7 @@ async def test_question_cut_off_by_end_is_not_penalised_but_still_cited():
     await session.start(0)
     await session.slide_changed(s(1), 2)
     await session.presenter_transcript(s(33), seg(33, "Nobody else can ship this in 2 weeks."))
-    await session.tick(s(36))
-    assert session.phase == "answering"
+    assert session.open_question is not None
     await session.control("end", s(40))  # the room ended it, not the presenter
     r = session.report
     assert r is not None

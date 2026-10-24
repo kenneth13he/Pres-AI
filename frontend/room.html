@@ -26,6 +26,18 @@
     .cap-tag { padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; font: 500 10px var(--mono); }
     .end-btn { padding: 9px 16px; border-radius: 10px; border: 0; background: var(--raised-3); font-size: 14px; font-weight: 700; cursor: pointer; }
     .end-btn.done { background: var(--mint); color: var(--mint-ink); }
+    /* live Higgs face (LiveKit) replaces the still once it has joined; name and tag stay on top */
+    #stage .tile video.live-feed { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+    #stage .tile[data-id] > :not(video) { z-index: 1; }
+    #stage .tile.thinking { box-shadow: 0 0 0 2px oklch(0.82 0.15 150 / .35); animation: think 1.2s ease-in-out infinite; }
+    @keyframes think { 50% { box-shadow: 0 0 0 2px oklch(0.82 0.15 150 / .1); } }
+    /* your own seat: the webcam, mirrored, never sent anywhere */
+    #stage .tile.you { z-index: 1; }
+    #stage .tile.you::before { display: none; }
+    #stage .tile.you video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0; }
+    #stage .tile.you.cam-on video { opacity: 1; }
+    #stage .tile.you .cam-off { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-weight: 600; }
+    #stage .tile.you.cam-on .cam-off { display: none; }
   </style>
 </head>
 <body>

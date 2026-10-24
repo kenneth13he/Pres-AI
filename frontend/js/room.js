@@ -2,13 +2,16 @@
 // Owner: Person A (P0-7, P0-10). Events: spec/contracts.schema.json (SessionEvent).
 // Design: docs/design/Pres AI App.dc.html (live step). Everything here is driven by SessionEvents;
 // /room.html?mock=1 replays frontend/mocks/demo_session.json.
+// Live call (feat/voice-room): each panelist's Higgs face streams into their tile over LiveKit once
+// it has joined (a still until then), lines without a live face play as clips, the mic is cut into
+// utterances that Higgs STT transcribes on the server, and your webcam sits in the "You" seat.
 
 import { connect, getSession, isMock } from '/js/api.js';
 import { createPlayer } from '/js/audio.js';
 import { startMic } from '/js/mic.js';
 import { playMock } from '/js/mock_player.js';
 import {
-  CORAL, MINT, PRESET_SETTING, cq, esc, fmtS, kindName, layout, loadSessionMeta, rect,
+  CORAL, MINT, PRESET_SETTING, YOU_AT, cq, esc, fmtS, kindName, layout, loadSessionMeta, rect,
   saveSessionMeta, settingById, tileBg,
 } from '/js/rooms.js';
 
@@ -28,8 +31,16 @@ const state = {
   setting: 'video', config: null, speaking: null, flash: null, flashTag: null, blank: false,
   vip: false, black: false, dim: false, cbActive: null, cbFired: 0, lastLine: {}, link: null,
   reportUrl: null, lastError: null,
+  joined: false, faces: {}, liveVoice: false, thinking: null, joinedAtMs: null,
+  live: {}, liveEls: {}, seatRoom: {}, mic: null, cam: null,
 };
-const player = createPlayer();
+// The panel's voices, one clip at a time; the tile lights up while its clip plays.
+const player = createPlayer({
+  onClipStart: (clip) => speak(clip.speaker),
+  onClipEnd: (clip) => quiet(clip.speaker),
+});
+function speak(id) { state.speaking = id; if (state.thinking === id) state.thinking = null; renderEffects(); }
+function quiet(id) { if (state.speaking === id) { state.speaking = null; renderEffects(); } }
 
 // ---- names ----------------------------------------------------------------------------------
 const nameOf = (id) => (id === 'moderator' ? 'Moderator' : id === 'presenter' ? 'You' : id === VIP.id ? VIP.name : state.personas.find((p) => p.id === id)?.name ?? id);
@@ -47,7 +58,7 @@ function buildStage() {
     <div class="black" style="${rect(L.slide)}"><div><div style="font-size:${cq(L.slide.w, 0.05, 13)};font-weight:700">Projector disconnected</div><div style="margin-top:4%;color:#8a9190;font-size:${cq(L.slide.w, 0.022, 10)}">Keep going.</div></div></div>
     ${L.seats.map((t, i) => {
       const p = T[i]; if (!p) return '';
-      const img = state.images[p.id];
+      const img = state.images[p.id] ?? state.faces[p.id];
       return `<div class="tile ${img ? 'photo' : ''} ${p.id === VIP.id ? 'vip-in' : ''}" data-id="${esc(p.id)}" style="${rect(t)};border-radius:0.8cqw;background:${tileBg(img, i + 1)}">
         <span class="tile-tag hidden" style="font-size:${cq(t.w, 0.055, 8)}"></span>
         <div style="position:absolute;left:5%;right:5%;bottom:6%;display:flex;justify-content:space-between;align-items:flex-end;gap:6px">
@@ -55,9 +66,15 @@ function buildStage() {
           <div class="bars" style="height:1.2cqw">${'<span style="height:20%"></span>'.repeat(4)}</div>
         </div></div>`;
     }).join('')}
+    <div class="tile you ${state.cam ? 'cam-on' : ''}" style="${rect(YOU_AT[state.setting] ?? YOU_AT.video)};border-radius:0.8cqw;background:#181b1e">
+      <video id="selfcam" autoplay playsinline muted></video>
+      <div class="cam-off" style="font-size:${cq(14, 0.07, 8)}">You</div>
+    </div>
     <div id="cb-pill"></div>
     <div id="veil" class="veil hidden"></div>`;
   $('guest-count').textContent = `${T.length} ${T.length === 1 ? 'guest' : 'guests'}`;
+  if (state.cam) $('selfcam').srcObject = state.cam;
+  Object.entries(state.liveEls).forEach(([id, el]) => attachFeed(id, el));
   renderSlide(); renderEffects(); renderVeil();
 }
 
@@ -81,9 +98,10 @@ function renderEffects() {
   st.classList.toggle('black', state.black);
   st.classList.toggle('dim', state.dim);
   $('btn-restore').classList.toggle('hidden', !(state.black || state.dim));
-  st.querySelectorAll('.tile').forEach((t) => {
+  st.querySelectorAll('.tile[data-id]').forEach((t) => {
     const id = t.dataset.id, tag = t.querySelector('.tile-tag');
     t.classList.toggle('speaking', state.speaking === id);
+    t.classList.toggle('thinking', state.thinking === id && state.speaking !== id);
     t.classList.toggle('flash', state.flash === id);
     t.classList.toggle('blank', state.blank);
     const label = state.flash === id ? state.flashTag : id === VIP.id ? 'VIP' : null;
@@ -98,12 +116,12 @@ function renderEffects() {
 
 function renderVeil() {
   const v = $('veil'); if (!v) return;
-  if (!state.started && !MOCK) {
+  if (!state.joined && !MOCK && !state.done) {
     v.classList.remove('hidden');
     v.innerHTML = `<div style="text-align:center;max-width:420px;padding:0 20px">
-      <div style="font-size:max(18px,2.4cqw);font-weight:800;letter-spacing:-0.02em">Ready when you are.</div>
-      <p style="margin:10px 0 18px;font-size:14px;line-height:1.5;color:var(--muted)">We'll ask for your microphone so the room can hear you. Nothing is recorded or stored; the transcript lives in this session only.</p>
-      <button id="btn-start" class="btn-mint">Start presenting</button></div>`;
+      <div style="font-size:max(18px,2.4cqw);font-weight:800;letter-spacing:-0.02em">${state.started ? 'Rejoin the room.' : 'Ready when you are.'}</div>
+      <p style="margin:10px 0 18px;font-size:14px;line-height:1.5;color:var(--muted)">We'll ask for your microphone so the room can hear you, and your camera so you can see yourself (it never leaves this screen). Nothing is recorded or stored; the transcript lives in this session only. Use headphones: the mic stays on.</p>
+      <button id="btn-start" class="btn-mint">${state.started ? 'Rejoin' : 'Start presenting'}</button></div>`;
     $('btn-start').onclick = begin;
   } else if (state.paused) {
     v.classList.remove('hidden');
@@ -158,6 +176,8 @@ setInterval(() => {
 // ---- events: one case per SessionEvent type -------------------------------------------------
 function onEvent(ev) {
   const p = ev.payload ?? {};
+  // After a reload the server replays history: show it, but don't re-speak old lines.
+  const old = state.joinedAtMs != null && ev.timestamp_ms < state.joinedAtMs - 3000;
   switch (ev.type) {
     case 'session_started': state.started = true; renderVeil(); break;
     case 'phase_changed': setPhase(p.to); break;
@@ -170,13 +190,14 @@ function onEvent(ev) {
       break;
     }
     case 'ai_speech_started':
-      state.speaking = p.speaker;
+      // With Higgs voices the line is still rendering: "thinking" until its audio starts.
+      if (state.liveVoice && !old) state.thinking = p.speaker; else if (!state.liveVoice) state.speaking = p.speaker;
       if (p.line && p.line !== state.lastLine[p.speaker]) caption(nameOf(p.speaker), p.line);
       state.lastLine[p.speaker] = p.line;
       renderEffects(); break;
-    case 'ai_speech_ended': state.speaking = null; renderEffects(); break;
+    case 'ai_speech_ended': if (!state.liveVoice) { state.speaking = null; renderEffects(); } break;
     case 'answer_received': break;
-    case 'curveball_triggered': onCurveball(p); break;
+    case 'curveball_triggered': onCurveball(p, old); break;
     case 'curveball_resolved': clearCurveball(p); break;
     case 'timer_override':
       if (p.remaining_ms > 0) { state.crunchEnd = Date.now() + p.remaining_ms; state.crunchExpired = false; }
@@ -187,7 +208,7 @@ function onEvent(ev) {
     case 'skipped':
       caption('Moderator', 'Skipped — carry on.');
       state.speaking = null; clearCurveball({}); break;
-    case 'audio_status': $('conn').textContent = `audio: ${p.status}`; break;
+    case 'audio_status': onAudio(p, old); break;
     case 'avatar_status': break; // P2
     case 'error': // the ticker can repeat one failure every second; show it once
       if (p.message !== state.lastError) caption('System', `Something failed quietly: ${p.message || 'a backend step is not implemented yet'}`, 'error', 'var(--faint)');
@@ -196,11 +217,27 @@ function onEvent(ev) {
       state.done = true; state.speaking = null; state.reportUrl = p.report_url ?? null;
       saveSessionMeta(sessionId ?? 'mock', { ...(loadSessionMeta(sessionId ?? 'mock') ?? {}), setting: state.setting, images: state.images, config: state.config, elapsed_s: state.elapsedS });
       caption('Moderator', 'Thanks, everyone. Your report card is ready.');
-      renderControls(); renderEffects(); break;
+      state.mic?.stop(); state.mic = null; $('mic-label').textContent = 'mic off';
+      renderControls(); renderEffects(); renderVeil(); break;
   }
 }
 
-function onCurveball(p) {
+function onAudio(p, old) {
+  switch (p.status) {
+    case 'ready': // the Higgs adapter is on: voices are real, faces are its stills until live
+      state.liveVoice = true; $('conn').textContent = 'live · Higgs voices';
+      if (p.faces) { state.faces = p.faces; buildStage(); }
+      break;
+    case 'live_seat': joinLive(p).catch((e) => console.warn('[room] live face', e)); break;
+    case 'live_line': state.liveVoice = true; if (!old) speak(p.speaker); break;
+    case 'live_done': quiet(p.speaker); break;
+    case 'clip': state.liveVoice = true; if (!old) player.playClip({ url: p.url, speaker: p.speaker, text: p.text }); break;
+    case 'tts_failed': if (state.thinking === p.speaker) { state.thinking = null; renderEffects(); } break;
+    default: if (!state.liveVoice) $('conn').textContent = `audio: ${p.status}`;
+  }
+}
+
+function onCurveball(p, old = false) {
   state.cbActive = p; state.cbFired++;
   const who = p.speaker === 'persona' ? p.persona_id : 'moderator';
   switch (p.ui_effect) {
@@ -209,7 +246,7 @@ function onCurveball(p) {
     case 'tile_flash': state.flash = p.persona_id; state.flashTag = kindName(p.kind); break;
     case 'tiles_blank': state.blank = true; break;
     case 'tile_add': if (!state.vip) { state.vip = true; buildStage(); } break;
-    case 'sfx': player.playSfx(p.sfx_url); break;
+    case 'sfx': if (!old) player.playSfx(p.sfx_url); break;
   }
   const line = p.line || (p.kind === 'distraction' ? '(A phone rings at the back of the room.)' : p.kind === 'dead_room' ? '(The room goes quiet. No reactions.)' : '');
   caption(nameOf(who), line, kindName(p.kind));
@@ -238,20 +275,91 @@ function control(action) {
   else if (action === 'restore_slides' && state.cbActive) L.emit('curveball_resolved', { curveball_id: state.cbActive.curveball_id, kind: state.cbActive.kind, resolution: 'presenter_restored', recovery: null });
 }
 async function begin() {
-  // Never block the session on audio: resume() can stay pending if the browser withholds autoplay.
-  player.resume().catch(() => {});
-  send({ type: 'presentation_started' });
-  send({ type: 'slide_changed', slide_number: state.slide });
-  state.started = true; renderVeil();
+  if (!state.started) {
+    send({ type: 'presentation_started' });
+    send({ type: 'slide_changed', slide_number: state.slide });
+  }
+  state.started = true; state.joined = true; renderVeil();
+  Object.values(state.live).forEach((room) => room?.startAudio?.().catch(() => {}));
+  camOn();
   try {
-    const mic = await startMic({
+    // Each utterance goes to Higgs STT on the server, which feeds it into the session; the
+    // transcript comes back as a transcript_segment event like everything else.
+    state.mic = await startMic({
       pushToTalk: state.config?.input_mode === 'push_to_talk',
       onLevel: (v) => { $('mic-level').style.width = `${Math.round(v * 100)}%`; },
-      onSegment: (segment) => send({ type: 'transcript_segment', segment }),
+      transcribe: async (wav, start, end) => {
+        const res = await fetch(`/api/sessions/${sessionId}/speech?start_ms=${start}&end_ms=${end}`,
+          { method: 'POST', headers: { 'content-type': 'audio/wav' }, body: wav });
+        return res.ok ? (await res.json()).text : null;
+      },
     });
-    $('mic-label').textContent = state.config?.input_mode === 'push_to_talk' ? 'hold Space to talk' : mic.hasSTT ? 'mic + STT' : 'mic';
+    $('mic-label').textContent = state.config?.input_mode === 'push_to_talk' ? 'hold Space to talk' : 'mic · listening';
   } catch (e) { $('mic-label').textContent = `mic blocked: ${e.message}`; }
 }
+
+// ---- live faces: one LiveKit room per Higgs avatar; a renewed face takes over the tile -------
+function loadScript(src) {
+  return new Promise((ok, fail) => {
+    const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = fail;
+    document.head.append(s);
+  });
+}
+function attachFeed(id, el) {
+  const tile = document.querySelector(`#stage .tile[data-id="${CSS.escape(id)}"]`);
+  if (!tile) return;
+  tile.querySelectorAll('video.live-feed').forEach((x) => { if (x !== el) x.remove(); });
+  tile.prepend(el);
+  tile.classList.add('photo', 'live-on');
+}
+async function joinLive(p) {
+  if (state.live[p.room]) return;
+  state.live[p.room] = 'joining';
+  if (!window.LivekitClient) await loadScript('https://cdn.jsdelivr.net/npm/livekit-client@2.15.0/dist/livekit-client.umd.js');
+  const { Room, RoomEvent, Track } = window.LivekitClient;
+  const room = new Room({ adaptiveStream: false });
+  room.on(RoomEvent.TrackSubscribed, (track) => {
+    const el = track.attach();
+    if (track.kind === Track.Kind.Video) {
+      el.className = 'live-feed'; el.muted = true; el.playsInline = true;
+      state.liveEls[p.speaker] = el;
+      attachFeed(p.speaker, el);
+      const before = state.seatRoom[p.speaker];
+      state.seatRoom[p.speaker] = room;
+      if (before && before !== room) before.disconnect();
+    } else if (track.kind === Track.Kind.Audio) {
+      el.style.display = 'none'; document.body.append(el);
+    }
+  });
+  room.on(RoomEvent.TrackUnsubscribed, (track) => {
+    track.detach().forEach((el) => {
+      el.remove();
+      if (state.liveEls[p.speaker] === el) {
+        delete state.liveEls[p.speaker];
+        document.querySelector(`#stage .tile[data-id="${CSS.escape(p.speaker)}"]`)?.classList.remove('live-on');
+      }
+    });
+  });
+  await room.connect(p.url, p.token);
+  room.startAudio().catch(() => {});
+  state.live[p.room] = room;
+}
+
+// Your webcam: only ever shown to you, never sent anywhere.
+async function camOn() {
+  try {
+    state.cam = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    if ($('selfcam')) $('selfcam').srcObject = state.cam;
+    document.querySelector('#stage .tile.you')?.classList.add('cam-on');
+  } catch { /* camera blocked or absent: the seat stays a placeholder */ }
+}
+function hangUp() {
+  state.mic?.stop(); state.mic = null;
+  state.cam?.getTracks().forEach((t) => t.stop()); state.cam = null;
+  Object.values(state.live).forEach((room) => room?.disconnect?.());
+}
+addEventListener('beforeunload', hangUp);
+addEventListener('click', () => Object.values(state.live).forEach((room) => room?.startAudio?.().catch(() => {})));
 const togglePause = () => { if (!state.done && state.started) control(state.paused ? 'resume' : 'pause'); };
 const skip = () => { if (!state.done && state.started) { player.cancel(); control('skip'); } };
 function moveSlide(d) {
@@ -264,6 +372,7 @@ function moveSlide(d) {
 function end() {
   if (state.done) { location.href = MOCK ? '/report.html?mock=1' : `/report.html?session=${sessionId}`; return; }
   if (MOCK) { location.href = '/report.html?mock=1'; return; }
+  player.cancel();
   if (state.phase === 'qna') send({ type: 'control', action: 'end' });
   else send({ type: 'presentation_ended' });
 }
@@ -302,6 +411,11 @@ if (MOCK) {
     const s = await getSession(sessionId);
     adopt(s.config, s.preset, loadSessionMeta(sessionId));
     state.deck = s.deck;
+    state.faces = s.faces ?? {};
+    if (s.phase !== 'setup' && s.elapsed_ms > 0) { // reload mid-call: the clock carries on
+      state.started = true; state.elapsedS = Math.floor(s.elapsed_ms / 1000); state.joinedAtMs = s.elapsed_ms;
+      state.slide = s.slide_number ?? state.slide;
+    }
     buildStage(); renderControls();
     state.link = connect(sessionId, onEvent, (st) => { $('conn').textContent = st; });
   } catch (e) {

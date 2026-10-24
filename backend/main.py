@@ -15,7 +15,15 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -35,7 +43,14 @@ from .services import slides
 from .services.audience import ClaudeOrchestrator, MockOrchestrator, Orchestrator
 from .services.curveballs import CATALOG
 from .services.voice_base import VoiceAdapter
-from .services.voice_higgs import HiggsVoice, SpendCounter
+from .services.voice_higgs import (
+    POOL,
+    HiggsVoice,
+    SpendCounter,
+    live_faces_enabled,
+    seat_characters,
+    transcribe,
+)
 from .services.voice_mock import MockVoice
 
 load_dotenv()
@@ -61,6 +76,13 @@ class Room:
         self.ticker: asyncio.Task[None] | None = None
         self.lock = asyncio.Lock()
         self.t0: int | None = None
+        self._flushes: set[asyncio.Task[None]] = set()
+        self.cleanup: asyncio.Task[None] | None = None
+
+    def schedule_flush(self) -> None:
+        task = asyncio.get_running_loop().create_task(self.flush())
+        self._flushes.add(task)  # keep a reference until it finishes
+        task.add_done_callback(self._flushes.discard)
 
     def now_ms(self) -> int:
         return 0 if self.t0 is None else wall_ms() - self.t0
@@ -111,10 +133,27 @@ def make_voice() -> VoiceAdapter:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     presets.presets()  # fail fast on a bad YAML
+    if os.environ.get("VOICE_ADAPTER") == "higgs" and live_faces_enabled():
+        POOL.start()  # warm the live faces before anyone joins
     yield
     for room in ROOMS.values():
         if room.ticker:
             room.ticker.cancel()
+        await _release_live(room)
+    await POOL.close()  # live faces bill per minute: never leave them running
+
+
+async def _release_live(room: Room) -> None:
+    release = getattr(room.session.voice, "release_live", None)
+    if release is not None:
+        await release()
+
+
+async def _release_if_abandoned(room: Room, after_s: float = 60) -> None:
+    """Everyone closed the tab without ending the call: it lets go of the live faces."""
+    await asyncio.sleep(after_s)
+    if not room.sockets:
+        await _release_live(room)
 
 
 app = FastAPI(title="PresAI", lifespan=lifespan)
@@ -133,6 +172,7 @@ def health() -> dict[str, Any]:
             "boson_key": bool(os.environ.get("BOSON_API_KEY")),
             "anthropic_key": bool(os.environ.get("ANTHROPIC_API_KEY")),
             "avatar": os.environ.get("BOSON_AVATAR_ENABLED", "false") == "true",
+            "faces": POOL.status() if live_faces_enabled() else None,
         },
         "spend": {"tts_chars": SpendCounter.tts_chars, "realtime_ms": SpendCounter.realtime_ms,
                   "estimate_usd": round(SpendCounter.estimate_usd(), 3),
@@ -191,8 +231,13 @@ async def create_session(body: CreateSession) -> dict[str, Any]:
         session_id, config, preset, orchestrator, make_voice(),
         deck=slides.get_deck(config.deck_id),
         curveballs_enabled=os.environ.get("CURVEBALLS_ENABLED", "true") == "true",
+        background=True,  # the brain thinks beside the room; the mic is never blocked
     )
-    ROOMS[session_id] = Room(session)
+    room = Room(session)
+    session.clock = room.now_ms
+    # Lines and clips produced in the background reach the browser as soon as they exist.
+    session.on_append = lambda: room.schedule_flush()
+    ROOMS[session_id] = room
     return {"session_id": session_id, "config": config.model_dump(), "preset": preset.model_dump()}
 
 
@@ -212,6 +257,8 @@ def get_session(session_id: str) -> dict[str, Any]:
         "elapsed_ms": (s.elapsed_ms(_room(session_id).now_ms())
                        if s.start_ms is not None else 0),
         "deck": s.deck.model_dump() if s.deck else None,
+        "faces": {p.id: f"/demo/faces/higgs/{seat_characters(s.config)[p.id][0]}.png"
+                  for p in s.config.personas},
         "events": [e.model_dump() for e in s.events],
     }
 
@@ -238,6 +285,21 @@ async def force_curveball(session_id: str, body: ForceCurveball) -> dict[str, st
     room = _room(session_id)
     await room.run(room.session.force_curveball(body.kind, room.now_ms()))
     return {"phase": room.session.phase}
+
+
+@app.post("/api/sessions/{session_id}/speech")
+async def post_speech(session_id: str, request: Request, start_ms: int = 0,
+                      end_ms: int | None = None) -> dict[str, Any]:
+    """One utterance from the browser's mic (a WAV) → Higgs STT → the presenter said it."""
+    room = _room(session_id)
+    audio = await request.body()
+    if not audio or len(audio) > 5_000_000:
+        raise HTTPException(400, "expected one short WAV utterance")
+    text = await transcribe(audio)
+    if text:
+        seg = TranscriptSegment(start_ms=start_ms, end_ms=end_ms, text=text)
+        await room.run(room.session.presenter_transcript(room.now_ms(), seg))
+    return {"text": text}
 
 
 @app.get("/api/sessions/{session_id}/report")
@@ -269,6 +331,8 @@ async def ws_session(ws: WebSocket, session_id: str) -> None:
         pass
     finally:
         room.sockets.discard(ws)
+        if not room.sockets:
+            room.cleanup = asyncio.create_task(_release_if_abandoned(room))
 
 
 async def _handle_client_message(room: Room, msg: dict[str, Any]) -> None:
@@ -298,5 +362,7 @@ async def _handle_client_message(room: Room, msg: dict[str, Any]) -> None:
 
 (ROOT / "data" / "decks").mkdir(parents=True, exist_ok=True)
 app.mount("/decks", StaticFiles(directory=ROOT / "data" / "decks"), name="decks")
+(ROOT / "data" / "audio").mkdir(parents=True, exist_ok=True)
+app.mount("/audio", StaticFiles(directory=ROOT / "data" / "audio"), name="audio")
 app.mount("/demo", StaticFiles(directory=ROOT / "demo"), name="demo")
 app.mount("/", StaticFiles(directory=ROOT / "frontend", html=True), name="frontend")
