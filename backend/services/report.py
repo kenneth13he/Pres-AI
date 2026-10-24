@@ -62,7 +62,11 @@ def build_report(session: Session) -> Report:
         for q in session.questions
         if q.get("cited_excerpt")
     ]
-    unanswered = sum(1 for q in session.questions if q.get("answer") is None)
+    # Skipped is never penalised (§2): a skipped question is neither unanswered nor scored.
+    unanswered = sum(1 for q in session.questions
+                     if q.get("answer") is None and not q.get("skipped"))
+    skipped = (sum(1 for q in session.questions if q.get("skipped") and not q["curveball_id"])
+               + sum(1 for r in records if r.resolution == "skipped"))
 
     return Report(
         session_id=session.session_id,
@@ -76,7 +80,7 @@ def build_report(session: Session) -> Report:
             "words_per_minute": wpm,
             "unanswered_questions": unanswered,
             "curveballs_faced": len(records),
-            "skipped": sum(1 for r in records if r.resolution == "skipped"),
+            "skipped": skipped,
         },
         metric_caveats=caveats,
         strengths=[],
@@ -119,6 +123,8 @@ def _persona_comment(persona_id: str, session: Session) -> str:
     if not asked:
         return "Listened; had no question this time."
     q = asked[-1]
+    if q.get("skipped"):
+        return "You skipped my question — no penalty, but I'm still curious."
     if q.get("answer") is None:
         return f"Never got an answer to: {q['question']}"
     return f"Asked about: {q['cited_excerpt'] or q['question']}"

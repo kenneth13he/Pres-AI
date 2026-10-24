@@ -58,23 +58,31 @@ class Orchestrator(Protocol):
 # ---------------------------------------------------------------------------------
 
 
-# A sentence that makes a checkable claim: a number, a quantity word, or an absolute.
+# A sentence that makes a checkable claim: a quantity (digits, %, million…) or a strong
+# absolute about the product/market. Greetings and ordinals ("first", "only") don't count.
+SENTENCE_RE = re.compile(r"[^.!?]+[.!?]?")
 CLAIM_RE = re.compile(
-    r"[^.!?]*\b(\d[\d,.]*\s*(%|percent|million|thousand|k|x)?|customers|users|revenue|"
-    r"everyone|nobody|always|never|best|first|only)\b[^.!?]*[.!?]?",
+    r"\b(\d[\d,.]*\s*(%|percent|million|thousand|k|x)?|customers|users|revenue|churn|"
+    r"nobody|always|never|best|fastest|cheapest|biggest)\b",
     re.IGNORECASE,
 )
+MIN_CLAIM_WORDS = 4
 SUBSTANTIVE_WORDS = 12  # an answer this long is taken as having given the detail
 
 
-def find_claim(segments: list[TranscriptSegment]) -> str | None:
-    """The most recent presenter sentence that states a checkable claim, verbatim."""
+def find_claim(segments: list[TranscriptSegment], already_cited: set[str]) -> str | None:
+    """The most recent presenter sentence that states a checkable claim, verbatim, that has
+    not been cited by an earlier question."""
     for seg in reversed(segments):
         if seg.speaker != "presenter":
             continue
-        m = CLAIM_RE.search(seg.text)
-        if m:
-            return m.group(0).strip()
+        for m in reversed(list(SENTENCE_RE.finditer(seg.text))):
+            sentence = m.group(0).strip()
+            if len(sentence.split()) < MIN_CLAIM_WORDS or not CLAIM_RE.search(sentence):
+                continue
+            if sentence in already_cited:
+                continue
+            return sentence
     return None
 
 
@@ -84,10 +92,14 @@ class MockOrchestrator:
 
     async def decide(self, ctx: OrchestratorContext) -> OrchestratorDecision:
         if ctx.question_allowed:
-            claim = find_claim(ctx.recent_transcript)
-            already = {q.get("q") for q in ctx.prior_qa}
-            if claim and all(claim not in (q or "") for q in already):
-                persona = max(ctx.personas, key=lambda p: p.skepticism)
+            cited: set[str] = {str(q["cited"]) for q in ctx.prior_qa if q.get("cited")}
+            claim = find_claim(ctx.recent_transcript, cited)
+            if claim:
+                # The most skeptical persona who has asked the least, so the room shares the work.
+                asked = {p.id: 0 for p in ctx.personas}
+                for q in ctx.prior_qa:
+                    asked[q.get("persona_id", "")] = asked.get(q.get("persona_id", ""), 0) + 1
+                persona = max(ctx.personas, key=lambda p: (-asked[p.id], p.skepticism))
                 return OrchestratorDecision(
                     action="question",
                     persona_id=persona.id,
@@ -129,12 +141,16 @@ class MockOrchestrator:
         resume_after_ms: int | None,
     ) -> RecoveryAssessment:
         if not after:
+            # Unmeasured is null, never 0 (§6, §10).
             return RecoveryAssessment(
-                score=0, evidence="(no presenter speech after the event)",
-                observation="Did not resume within the window.",
+                score=None, evidence=None,
+                observation="No presenter speech was recorded after the event; not assessed.",
                 suggestion="Keep a three-point outline in your head so you can restart anywhere.",
             )
-        if resume_after_ms is None:
+        if kind == "time_crunch":
+            # Judged on the close, not a resume gap: did they keep talking and stop in time?
+            score, observation = 70, "Kept going under the countdown."
+        elif resume_after_ms is None:
             score, observation = 50, "Resumed; timing could not be measured."
         elif resume_after_ms < 5_000:
             score, observation = 85, "Resumed promptly and kept the thread."

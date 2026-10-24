@@ -617,18 +617,34 @@
     "RecoveryAssessment": {
       "properties": {
         "evidence": {
-          "title": "Evidence",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence"
         },
         "observation": {
           "title": "Observation",
           "type": "string"
         },
         "score": {
-          "maximum": 100,
-          "minimum": 0,
-          "title": "Score",
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
         },
         "suggestion": {
           "title": "Suggestion",
@@ -636,8 +652,6 @@
         }
       },
       "required": [
-        "score",
-        "evidence",
         "observation",
         "suggestion"
       ],

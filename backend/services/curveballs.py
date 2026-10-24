@@ -68,7 +68,9 @@ CATALOG: dict[CurveballKind, CurveballSpec] = {
         min_elapsed_ms=90_000, priority="P1",
     ),
     "crosstalk": CurveballSpec(
-        "crosstalk", "persona", "tile_flash", "", min_elapsed_ms=90_000, priority="P2",
+        "crosstalk", "persona", "tile_flash",
+        "Hold on — I don't think the rest of the room buys that. Does anyone here?",
+        min_elapsed_ms=90_000, priority="P2",
     ),
     "fact_check": CurveballSpec(
         "fact_check", "persona", "tile_flash",
@@ -225,7 +227,11 @@ class CurveballEngine:
 
 def measure_recovery(rec: CurveballRecord, transcript: list[TranscriptSegment]) -> Recovery:
     """Timing only: resume_after_ms = first presenter segment after rec.at_ms minus rec.at_ms.
-    No speech after the event → resume_after_ms=None with a note saying so. Never 0 by default."""
+    No speech after the event → resume_after_ms=None with a note saying so. Never 0 by default.
+    time_crunch has no resume gap (§6.1: judged on the close), so its timing is always None."""
+    if rec.kind == "time_crunch":
+        return Recovery(resume_after_ms=None,
+                        notes="time_crunch is judged on the close, not on a resume gap")
     after = [s for s in transcript if s.speaker == "presenter" and s.start_ms > rec.at_ms]
     if not after:
         return Recovery(resume_after_ms=None,

@@ -1,5 +1,6 @@
 """The three canonical flows from CLAUDE.md §12, silent and deterministic."""
 
+from backend.services.voice_mock import MockVoice
 from backend.tests.conftest import make_session, s, seg
 
 
@@ -156,3 +157,159 @@ async def test_restore_slides_resolves_early_and_qna_asks_then_finishes():
     await session.tick(s(161))  # 1 of 1 asked → finish
     assert session.ended and session.report is not None
     assert session.report.metrics["unanswered_questions"] == 0
+
+
+# ---- fixes from the pre-merge review: pause/skip never penalised, nothing gets stuck ----
+
+
+async def test_pause_time_never_counts_against_recovery_or_the_crunch():
+    session = make_session()
+    await session.start(0)
+    await session.slide_changed(s(1), 3)
+    await session.force_curveball("slides_down", s(100))
+    await session.control("pause", s(101))
+    await session.presenter_transcript(s(105), seg(105, "ignored while paused"))
+    assert session.transcript == []
+    await session.control("resume", s(121))  # 20 s paused
+    await session.tick(s(125))  # 30 s auto-resolve must not have fired: only 5 s of play
+    assert session.curveballs.active is not None
+    await session.presenter_transcript(s(123.4), seg(123.4, "So, the problem again is onboarding."))
+    await session.tick(s(151))  # trigger shifted to 120 → due at 150
+    res = next(e for e in session.events if e.type == "curveball_resolved")
+    assert res.payload["recovery"]["resume_after_ms"] == 3_400
+    assert session.elapsed_ms(s(151)) == s(131)
+
+    await session.force_curveball("time_crunch", s(160))
+    await session.control("pause", s(170))
+    await session.control("resume", s(240))  # 70 s paused; only 10 s of the crunch used
+    await session.tick(s(241))
+    assert session.phase == "presenting"
+    await session.tick(s(291))
+    assert session.phase == "qna"
+
+
+async def test_vip_arrives_is_answerable_and_does_not_get_stuck():
+    session = make_session()
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.force_curveball("vip_arrives", s(100))
+    assert session.phase == "answering" and session.pending_question is not None
+    await session.presenter_transcript(
+        s(110), seg(110, "We cut onboarding from two weeks to one day; we need a pilot by March."))
+    res = next(e for e in session.events if e.type == "curveball_resolved")
+    assert res.payload["resolution"] == "answered" and session.phase == "presenting"
+
+
+async def test_skip_during_time_crunch_skips_the_question_not_the_crunch():
+    session = make_session(difficulty="brutal")
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.force_curveball("time_crunch", s(100))
+    await session.presenter_transcript(s(141), seg(141, "We have 2,000 users already."))
+    await session.tick(s(144))  # cooldown (40 s) over → question
+    assert session.phase == "answering"
+    await session.control("skip", s(145))
+    assert session.phase == "presenting" and session.pending_question is None
+    crunch = session.curveballs.records[0]
+    assert crunch.resolution is None and session.time_crunch_deadline_ms == s(160)
+    assert session.questions[-1]["skipped"] is True
+    await session.tick(s(160))
+    assert session.phase == "qna"
+    assert crunch.resolution == "timed_out" and crunch.recovery is not None
+    assert crunch.recovery.resume_after_ms is None  # judged on the close, not a resume gap
+    r = session.report
+    assert r is None
+    await session.control("end", s(161))
+    r = session.report
+    assert r is not None
+    assert r.metrics["unanswered_questions"] == 0 and r.metrics["skipped"] == 1
+
+
+async def test_restore_slides_while_paused_is_ignored_and_resume_is_clean():
+    session = make_session()
+    await session.start(0)
+    await session.slide_changed(s(1), 3)
+    await session.force_curveball("slides_down", s(100))
+    await session.control("pause", s(101))
+    await session.control("restore_slides", s(102))
+    assert session.curveballs.active is not None
+    await session.control("resume", s(103))
+    assert session.phase == "recovering"
+    await session.control("restore_slides", s(104))
+    assert session.phase == "presenting" and session.curveballs.active is None
+
+
+async def test_end_during_a_qna_answer_finishes():
+    session = make_session(qna_questions=2)
+    await session.start(0)
+    await session.control("end", s(100))
+    await session.presenter_transcript(s(101), seg(101, "Our churn is only 2 percent."))
+    await session.tick(s(102))
+    assert session.phase == "answering"
+    await session.control("end", s(103))
+    assert session.ended
+
+
+async def test_ai_segments_are_never_an_answer():
+    session = make_session()
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.force_curveball("heckler", s(70))
+    await session.presenter_transcript(
+        s(71), seg(71, "echo of the heckler line").model_copy(update={"speaker": "ai"}))
+    assert session.phase == "answering" and session.transcript == []
+
+
+async def test_mock_does_not_reask_a_claim_or_question_greetings():
+    session = make_session(difficulty="brutal", interruption_frequency="often")
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.presenter_transcript(s(33), seg(33, "Hi everyone, thanks for having me today."))
+    await session.tick(s(36))
+    assert session.phase == "presenting"  # a greeting is not a claim
+    await session.presenter_transcript(s(40), seg(40, "First, the market: revenue grew 40%."))
+    await session.tick(s(43))
+    assert session.phase == "answering"
+    await session.presenter_transcript(
+        s(50), seg(50, "From our audited numbers across both regions over the last two quarters."))
+    await session.presenter_transcript(s(85), seg(85, "Again: revenue grew 40% last year."))
+    await session.presenter_transcript(s(86), seg(86, "First, the market: revenue grew 40%."))
+    await session.tick(s(90))  # the repeated sentence is skipped; the new one is asked
+    asked = [e.payload["cited_excerpt"] for e in session.events
+             if e.type == "question_queued" and e.payload.get("cited_excerpt")]
+    assert asked == ["First, the market: revenue grew 40%.", "Again: revenue grew 40% last year."]
+    personas = [e.payload["persona_id"] for e in session.events
+                if e.type == "question_queued" and e.payload.get("cited_excerpt")]
+    assert personas[0] != personas[1]  # the room shares the questions
+
+
+async def test_voice_failure_never_strands_the_phase():
+    session = make_session()
+
+    class BrokenVoice(MockVoice):
+        async def request_persona_turn(self, persona_id: str, text: str,
+                                       style: str | None = None) -> None:
+            raise RuntimeError("TTS down")
+
+    session.voice = BrokenVoice()
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.force_curveball("heckler", s(70))
+    assert session.phase == "answering"
+    assert any(e.type == "error" and e.payload["where"] == "voice.speak" for e in session.events)
+    starts = [e for e in session.events if e.type == "ai_speech_started"]
+    ends = [e for e in session.events if e.type == "ai_speech_ended"]
+    assert len(starts) == len(ends) == 1
+
+
+async def test_unmeasured_recovery_is_null_not_zero():
+    session = make_session(qna_questions=0)
+    await session.start(0)
+    await session.slide_changed(s(1), 3)
+    await session.force_curveball("slides_down", s(100))
+    await session.control("end", s(101))
+    r = session.report
+    assert r is not None
+    rec = r.curveballs[0].recovery
+    assert rec is not None and rec.resume_after_ms is None and rec.score is None
+    assert r.dimensions["recovery"] is None

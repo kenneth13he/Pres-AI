@@ -46,13 +46,13 @@ async def test_unanswered_question_is_counted_and_named():
     session = make_session(qna_questions=0)
     await session.start(0)
     await session.slide_changed(s(1), 2)
-    await session.presenter_transcript(s(33), seg(33, "Everyone wants this product."))
+    await session.presenter_transcript(s(33), seg(33, "Nobody else can ship this in 2 weeks."))
     await session.tick(s(36))
     assert session.phase == "answering"
     await session.control("end", s(40))  # ended mid-answer
     r = session.report
     assert r is not None
     assert r.metrics["unanswered_questions"] == 1
-    assert r.improvements[0].evidence == "Everyone wants this product."
+    assert r.improvements[0].evidence == "Nobody else can ship this in 2 weeks."
     vc = next(f for f in r.persona_feedback if f.persona_id == "vc")
     assert vc.comment.startswith("Never got an answer")

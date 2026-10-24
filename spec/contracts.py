@@ -159,8 +159,8 @@ class FollowUpVerdict(BaseModel):
 
 
 class RecoveryAssessment(BaseModel):
-    score: int = Field(ge=0, le=100)
-    evidence: str
+    score: int | None = Field(default=None, ge=0, le=100)  # None = could not be assessed
+    evidence: str | None = None  # verbatim transcript quote, or None
     observation: str
     suggestion: str
 

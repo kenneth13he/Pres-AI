@@ -42,12 +42,16 @@ ROOT = Path(__file__).resolve().parents[1]
 TICK_S = 1.0
 
 
-def now_ms() -> int:
+def wall_ms() -> int:
     return int(time.time() * 1000)
 
 
 class Room:
-    """A live session plus its WebSocket subscribers and its ticker task."""
+    """A live session plus its WebSocket subscribers and its ticker task.
+
+    Timebase: the engine and every event use the *session clock* — ms since the presenter
+    pressed Start (engine.py docstring). `t0` is set when `presentation_started` arrives, so
+    the browser's own relative timestamps line up with ours."""
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -55,6 +59,10 @@ class Room:
         self.sent = 0
         self.ticker: asyncio.Task[None] | None = None
         self.lock = asyncio.Lock()
+        self.t0: int | None = None
+
+    def now_ms(self) -> int:
+        return 0 if self.t0 is None else wall_ms() - self.t0
 
     async def flush(self) -> None:
         pending = self.session.drain(self.sent)
@@ -74,14 +82,14 @@ class Room:
             except Exception as exc:  # a failed LLM/TTS call never breaks the session
                 self.session.events.append(SessionEvent(
                     type="error", session_id=self.session.session_id,
-                    timestamp_ms=now_ms(), payload={"message": str(exc)[:300]},
+                    timestamp_ms=self.now_ms(), payload={"message": str(exc)[:300]},
                 ))
             await self.flush()
 
     async def tick_forever(self) -> None:
         while not self.session.ended:
             await asyncio.sleep(TICK_S)
-            await self.run(self.session.tick(now_ms()))
+            await self.run(self.session.tick(self.now_ms()))
 
 
 ROOMS: dict[str, Room] = {}
@@ -196,7 +204,7 @@ def get_session(session_id: str) -> dict[str, Any]:
     return {
         "session_id": s.session_id, "phase": s.phase, "config": s.config.model_dump(),
         "preset": s.preset.model_dump(), "slide_number": s.slide_number,
-        "elapsed_ms": s.elapsed_ms(now_ms()) if s.start_ms else 0,
+        "elapsed_ms": s.elapsed_ms(_room(session_id).now_ms()) if s.start_ms else 0,
         "deck": s.deck.model_dump() if s.deck else None,
         "events": [e.model_dump() for e in s.events],
     }
@@ -209,7 +217,7 @@ class Control(BaseModel):
 @app.post("/api/sessions/{session_id}/control")
 async def control(session_id: str, body: Control) -> dict[str, str]:
     room = _room(session_id)
-    await room.run(room.session.control(body.action, now_ms()))
+    await room.run(room.session.control(body.action, room.now_ms()))
     return {"phase": room.session.phase}
 
 
@@ -222,7 +230,7 @@ async def force_curveball(session_id: str, body: ForceCurveball) -> dict[str, st
     if os.environ.get("DEBUG_CURVEBALL_ENDPOINT", "true") != "true":
         raise HTTPException(403, "debug endpoint disabled")
     room = _room(session_id)
-    await room.run(room.session.force_curveball(body.kind, now_ms()))
+    await room.run(room.session.force_curveball(body.kind, room.now_ms()))
     return {"phase": room.session.phase}
 
 
@@ -260,7 +268,9 @@ async def ws_session(ws: WebSocket, session_id: str) -> None:
 async def _handle_client_message(room: Room, msg: dict[str, Any]) -> None:
     s = room.session
     t = msg.get("type")
-    ts = now_ms()
+    if t == "presentation_started" and room.t0 is None:
+        room.t0 = wall_ms()  # the session clock starts now
+    ts = room.now_ms()
     if t == "presentation_started":
         await room.run(s.start(ts))
         if room.ticker is None:

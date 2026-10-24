@@ -46,3 +46,9 @@ Files outside my paths: none
 Proposed decision changes (not implemented): none
 Next: P0-4 (slides.ingest_pdf) and the C half of P0-3b (ClaudeOrchestrator bodies incl. expand_persona), because the engine now runs
 Open question for the team: none
+
+## P0-5 + P0-6 · 2026-10-23 · fix 1
+Fixed (per pre-merge review): pause is frozen — every stored timestamp shifts by the paused duration on resume, so the resume gap, the 60 s crunch, auto-resolve and cooldowns never count paused time, and transcript during pause is ignored; `vip_arrives` (and any answerable kind with a moderator voice) now assigns an answering persona instead of sticking in `recovering`; Skip targets the pending question (marked `skipped`, never "unanswered") or a non-time_crunch curveball, never the crunch itself; `time_crunch` resolves at the deadline on its own metric (no resume gap, no invented score) and starts the cooldown when it fires; `restore_slides` ignored while paused; explicit `in_qna` flag, End during a Q&A answer finishes; AI segments are never answers; every voice/LLM call is wrapped so a failure is an `error` event and the phase still moves; `RecoveryAssessment.score/evidence` nullable so "no speech after the event" is null not 0; mock claim regex no longer fires on greetings/ordinals, dedupes on the cited sentence, rotates personas; report counts skipped questions as skipped, not unanswered. Timebase pinned: all timestamps are ms since Start (session clock); main.py converts.
+Evidence: 9 new regression tests in test_e2e_mock.py; suite 48/48; live WebSocket smoke run (pause/resume/end, session-relative timestamps)
+Gate: green at the fix commit
+Notes for A: an answerable curveball emits both `curveball_triggered` and `question_queued` (same line, `curveball_id` set) — caption only one. Notes for B: the engine emits its own `ai_speech_ended` floor; a live adapter's own end event should replace it, not duplicate it.
