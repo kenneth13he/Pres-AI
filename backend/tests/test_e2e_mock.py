@@ -82,9 +82,9 @@ async def test_the_panel_never_hears_its_own_voice():
     await session.presenter_transcript(s(2), seg(2, "we can see and hear you"))
     assert session.transcript == []  # that was the panel coming back through the mic
     await session.presenter_transcript(s(3), seg(3, "Sorry, one sec, my slides froze."))
-    await session.presenter_transcript(s(5), seg(5, "we can see and hear you"))
-    assert [t.text for t in session.transcript] == [  # talking over them is still heard
-        "Sorry, one sec, my slides froze.", "we can see and hear you"]
+    await session.presenter_transcript(s(10), seg(10, "we can see and hear you"))
+    assert [t.text for t in session.transcript] == [  # talking over them is still heard,
+        "Sorry, one sec, my slides froze.", "we can see and hear you"]  # and so is you, later
 
 
 async def test_silence_gives_the_panel_one_chance_to_speak():
@@ -284,3 +284,39 @@ async def test_in_the_server_the_brain_thinks_beside_the_room():
     while session._thinking and not session._thinking.done():
         await asyncio.sleep(0)
     assert seen == [0, 3]  # the greeting, then one call that saw all three sentences
+
+
+async def test_after_a_panelist_speaks_you_get_your_full_pause_to_answer():
+    calls: list[str] = []
+
+    class Counting(MockOrchestrator):
+        async def turn(self, ctx):
+            calls.append(ctx.trigger)
+            return await super().turn(ctx)
+
+    class Talky(MockVoice):
+        async def request_persona_turn(self, persona_id, text, style=None):
+            await super().request_persona_turn(persona_id, text, style)
+            return 8.0
+
+    session = make_session()
+    session.orchestrator, session.voice = Counting(), Talky()
+    await session.start(0)  # greeting plays until 8.5 s
+    session.speaking_until_ms = 0  # (let a line through that they said over the greeting)
+    await session.presenter_transcript(s(5), seg(2, "Thanks, so here's the idea."))
+    session.speaking_until_ms = s(8.5)
+    for t in range(9, 14):  # >5 s since they spoke, but the panel only stopped at 8.5 s
+        await session.tick(s(t))
+    assert calls == ["joined", "spoke"]
+    await session.tick(s(14))
+    assert calls == ["joined", "spoke", "silence"]
+
+
+async def test_the_panels_words_arriving_late_from_the_speakers_are_not_your_words():
+    session = make_session()
+    await session.start(0)  # mock voice: the greeting "finishes" at once
+    greeting = session.lines[-1].text
+    await session.presenter_transcript(s(3), seg(1, greeting.lower()))  # 3 s late, via speakers
+    assert session.transcript == []
+    await session.presenter_transcript(s(3.5), seg(2, "Thanks, let me share my idea."))
+    assert len(session.transcript) == 1

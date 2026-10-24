@@ -15,7 +15,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const state = {
   phase: 'setup', startedAt: null, pausedAt: null, slide: 1, personas: [], preset: null,
   timerOverrideUntil: null, link: null, inputMode: 'live', mic: null, voices: true,
-  lineTag: {}, faces: {}, cam: null, joinedAtMs: null,
+  lineTag: {}, faces: {}, cam: null, joinedAtMs: null, live: null,
 };
 
 // ---- participant tiles ----------------------------------------------------------------
@@ -124,6 +124,15 @@ function onEvent(ev) {
       if (p.status === 'ready') {
         $('conn').textContent = 'live · Higgs voices';
         if (p.faces) { state.faces = p.faces; renderTiles(); }
+      } else if (p.status === 'live_seat') {
+        joinLive(p);
+      } else if (p.status === 'live_line' && !old) { // a live face is saying this right now
+        seat(p.speaker)?.classList.remove('thinking');
+        seat(p.speaker)?.classList.add('speaking');
+        say(nameOf(p.speaker), p.text, state.lineTag[p.text]);
+      } else if (p.status === 'live_done') {
+        seat(p.speaker)?.classList.remove('speaking');
+        captionTimer = setTimeout(() => $('live-caption').classList.remove('show'), 1500);
       } else if (p.status === 'clip' && state.voices && !old) {
         player.playClip({ url: p.url, speaker: p.speaker, text: p.text });
       } else if (p.status === 'tts_failed') {
@@ -163,6 +172,44 @@ $('btn-start').onclick = async () => {
     $('mic-label').textContent = state.mic.hasSTT ? 'mic · listening' : 'mic (no speech recognition in this browser — use Chrome)';
   } catch (e) { $('mic-label').textContent = `mic blocked: ${e.message}`; }
 };
+
+// ---- live faces: each panelist's Higgs avatar streams into their tile once it has joined -
+function loadScript(src) {
+  return new Promise((ok, fail) => {
+    const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = fail;
+    document.head.append(s);
+  });
+}
+// One LiveKit room per live face (Higgs runs one avatar per room).
+async function joinLive(p) {
+  state.live ??= {};
+  if (state.live[p.room]) return;
+  state.live[p.room] = 'joining';
+  if (!window.LivekitClient) await loadScript('https://cdn.jsdelivr.net/npm/livekit-client@2.15.0/dist/livekit-client.umd.js');
+  const { Room, RoomEvent, Track } = window.LivekitClient;
+  const room = new Room({ adaptiveStream: false });
+  room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+    const tile = seat(participant.identity.replace(/^avatar-/, ''));
+    const el = track.attach();
+    if (track.kind === Track.Kind.Video && tile) {
+      el.className = 'live-feed'; el.muted = true; el.playsInline = true;
+      tile.querySelector('.live-feed')?.remove();
+      tile.prepend(el);
+      tile.classList.add('live-on');
+    } else if (track.kind === Track.Kind.Audio) {
+      el.style.display = 'none'; document.body.append(el);
+    }
+  });
+  room.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
+    track.detach().forEach((el) => el.remove());
+    seat(participant.identity.replace(/^avatar-/, ''))?.classList.remove('live-on');
+  });
+  addEventListener('click', () => room.startAudio().catch(() => {}));
+  await room.connect(p.url, p.token);
+  room.startAudio().catch(() => {});
+  state.live[p.room] = room;
+  addEventListener('beforeunload', () => room.disconnect());
+}
 
 // your webcam: only ever shown to you, never sent anywhere
 async function camOn() {

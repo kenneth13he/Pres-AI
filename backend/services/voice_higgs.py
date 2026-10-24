@@ -5,7 +5,9 @@ Each line is rendered by Higgs TTS 3 in that panelist's own cloned voice (raw 24
 `audio_status` "clip" event; the browser plays clips one at a time. The line's exact length
 goes back to the engine, which ignores the mic until it has finished playing.
 
-Faces: Higgs's built-in avatars (Claire, Emma, James), as stills in demo/faces/higgs/.
+Faces: Higgs's built-in avatars (Claire, James, Emma). Each starts as a still (demo/faces/
+higgs/) and becomes a live, lip-synced stream once its avatar has joined (avatar_live.py);
+from then on that panelist's lines are streamed into their live face instead of a clip.
 Voices: each character's voice was cloned once from a preset (data/voices.json) and is reused
 by id, so the same face always has the same voice. Speech-to-text is the browser's (mic.js).
 Money: $0.015 per 1K characters; a 20-word line is ~$0.0015. SpendCounter feeds /health.
@@ -24,6 +26,7 @@ import httpx
 
 from spec.contracts import SessionConfig, SessionEvent
 
+from .avatar_live import STAGGER_S, LiveAvatarRoom, livekit_configured
 from .voice_base import OnEvent, OnTranscript
 
 BASE_URL = "https://api.boson.ai/v1"
@@ -36,6 +39,8 @@ SAMPLE_RATE = 24_000
 CHARACTERS: list[tuple[str, str]] = [("claire", "eleanor"), ("james", "marcus"),
                                      ("emma", "chloe")]
 MODERATOR = ("moderator", "nora")
+LIVE_TRIES = 5      # a seat refused a live slot ("every slot is in use") tries again...
+LIVE_RETRY_S = 20   # ...this often; meanwhile it keeps its still face and voice
 VOICE_SCRIPT = ("Thanks for having me on this call. I'll be listening closely, and I'll probably "
                 "have a few questions about your numbers, your customers, and your plan.")
 MOOD_EMOTION: dict[str, str] = {
@@ -84,7 +89,12 @@ class HiggsVoice:
         self._voice_ids: dict[str, str] = {}
         self._session_id = ""
         self._on_event: OnEvent | None = None
-        self._lock = asyncio.Lock()  # one line renders at a time, in order
+        self._lock = asyncio.Lock()  # one line at a time, in order
+        # Live faces only with the real API and LiveKit configured (never in tests).
+        self.live_enabled = (client is None and livekit_configured()
+                             and os.environ.get("BOSON_AVATAR_ENABLED", "false") == "true")
+        self._live: dict[str, LiveAvatarRoom] = {}  # persona id → their live face, once live
+        self._live_task: asyncio.Task[None] | None = None
 
     def on_event(self, callback: OnEvent) -> None:
         self._on_event = callback
@@ -103,6 +113,34 @@ class HiggsVoice:
         await self._status(
             "ready", faces={pid: f"/demo/faces/higgs/{c}.png"
                             for pid, (c, _) in self._seats.items() if pid != "moderator"})
+        if self.live_enabled and self._live_task is None:
+            self._live_task = asyncio.create_task(self._bring_faces_live(session_id))
+
+    async def _bring_faces_live(self, session_id: str) -> None:
+        """Turn each still face into its live avatar, one at a time (Higgs rate-limits
+        starting them back to back). A seat that fails just keeps its still face."""
+        seats = [(pid, c) for pid, (c, _) in self._seats.items() if pid != "moderator"]
+        for i, (pid, character) in enumerate(seats):
+            if i:
+                await asyncio.sleep(STAGGER_S)
+            for attempt in range(LIVE_TRIES):
+                if attempt:
+                    await asyncio.sleep(LIVE_RETRY_S)  # Higgs's shared slots free up
+                room = LiveAvatarRoom(session_id)
+                try:
+                    await room.connect()
+                    identity = await room.add_seat(pid, f"builtin_{character}_v1")
+                except asyncio.CancelledError:
+                    await room.close()
+                    raise
+                except Exception as exc:
+                    await room.close()
+                    await self._status("live_failed", speaker=pid, attempt=attempt + 1,
+                                       detail=f"{type(exc).__name__}: {exc}"[:300])
+                    continue
+                self._live[pid] = room
+                await self._status("live_seat", speaker=pid, identity=identity, **room.viewer())
+                break
 
     async def request_persona_turn(self, persona_id: str, text: str,
                                    style: str | None = None) -> float | None:
@@ -112,9 +150,12 @@ class HiggsVoice:
         return await self._say("moderator", text, None)
 
     async def _say(self, speaker: str, text: str, mood: str | None) -> float | None:
-        """Render the line and announce the clip. Returns its length in seconds, or None if
-        the render failed (the caption still shows the line; the room carries on)."""
+        """Speak one line: streamed into the live face if that seat is live (returns once it
+        has played), otherwise rendered as a clip over the still face (returns its length).
+        None if it failed (the caption still shows the line; the room carries on)."""
         async with self._lock:
+            if speaker in self._live:
+                return await self._say_live(speaker, text, mood)
             if speaker not in self._voice_ids and speaker in self._seats:
                 try:
                     await self._clone(speaker)
@@ -141,6 +182,28 @@ class HiggsVoice:
                                url=f"/audio/{self._session_id}/{name}",
                                duration_ms=round(seconds * 1000))
             return seconds
+
+    async def _say_live(self, speaker: str, text: str, mood: str | None) -> float | None:
+        voice = self._voice_ids.get(speaker) or self._seats[speaker][1]
+        tagged = MOOD_EMOTION.get(mood or "neutral", "") + text
+        SpendCounter.tts_chars += len(tagged)
+
+        async def pcm():
+            async with self._client.stream("POST", "/audio/speech", json={
+                    "model": self.tts_model, "input": tagged, "voice": voice,
+                    "stream": True, "response_format": "pcm"}) as resp:
+                resp.raise_for_status()
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+
+        await self._status("live_line", speaker=speaker, text=text)
+        try:
+            await self._live[speaker].speak(speaker, pcm())
+        except Exception as exc:
+            await self._status("tts_failed", speaker=speaker, detail=str(exc)[:200])
+            return None
+        await self._status("live_done", speaker=speaker)
+        return 0.0  # already played
 
     async def _clone(self, speaker: str) -> None:
         """One-time per character: say VOICE_SCRIPT in its preset, register it as a custom
@@ -178,10 +241,20 @@ class HiggsVoice:
         return None  # phone/door are local clips the browser plays from sfx_url
 
     async def cancel_speech(self) -> None:
-        return None  # the browser stops what is playing; nothing is queued here
+        for room in self._live.values():  # clips are stopped by the browser; live faces here
+            room.interrupt()
 
     async def stop_voice_session(self) -> None:
+        await self.release_live()
         await self._status("stopped")
+
+    async def release_live(self) -> None:
+        """Stop billing: release every live face. Safe to call twice."""
+        if self._live_task is not None:
+            self._live_task.cancel()
+        live, self._live = self._live, {}
+        for room in live.values():
+            await room.close()
 
     async def _status(self, status: str, **extra: object) -> None:
         if self._on_event:

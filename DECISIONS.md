@@ -34,3 +34,14 @@ Settled. Dated entries, newest first. Do not re-decide; a decision that looks wr
   words while they are talking), so a presenter talking over the panel is still heard.
 - Voices: Higgs TTS 3 raw PCM in each character's cloned voice → WAV clip; its exact length
   tells the engine how long the panel is talking.
+
+## 2026-10-24 · Three live faces on one key
+- Measured: Higgs runs three realtime avatars at once on our key, but only one per LiveKit
+  room, and starting them back to back is rate-limited (429). One room per panelist, started
+  15 s apart → all three live. Higgs's realtime slots are shared platform-wide: "every
+  realtime avatar slot is in use" happens; a refused seat retries every 20 s (5 tries) and
+  keeps its still face and voice meanwhile.
+- Live faces are released when the call ends, on server shutdown, or 60 s after the last
+  browser tab leaves; each also has a 15-min hard cap.
+- Echo: a line that mostly repeats the panel's words is dropped while they talk and for 4 s
+  after (speech recognition is late). Headphones avoid it entirely.

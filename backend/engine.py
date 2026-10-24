@@ -57,6 +57,7 @@ CONVERSATION_LINES = 24     # what the brain sees: the last ~two minutes of a ca
 SILENCE_MS = 5_000          # the presenter has gone quiet: the panel may fill the gap
 ECHO_GUARD_MS = 500         # after a panelist stops, before the mic counts again
 ECHO_OVERLAP = 0.6          # this share of the words were the panelist's own: it's echo
+ECHO_TAIL_MS = 4_000        # speech recognition returns text a few seconds late
 WORD_MS = 350               # speech-length estimate when the voice can't say
 SLIDE_CURVEBALLS: set[CurveballKind] = {"slides_down", "elevator"}
 # Curveballs that are a question in disguise: the presenter's next words answer them.
@@ -108,6 +109,7 @@ class Session:
         self.last_presenter_speech_ms: int | None = None
         self.last_panel_ms: int | None = None
         self.speaking_until_ms = 0
+        self._speaking = False
         self.paused_phase: SessionPhase | None = None
         self.paused_at_ms: int | None = None
         self.pauses: list[tuple[int, int]] = []
@@ -198,7 +200,8 @@ class Session:
         is talking (that is the panel's own voice coming back through the mic)."""
         if self.phase not in LIVE_PHASES or seg.speaker != "presenter":
             return
-        if now_ms < self.speaking_until_ms and self._is_echo(seg.text):
+        recent = self._speaking or now_ms < self.speaking_until_ms + ECHO_TAIL_MS
+        if recent and self._is_echo(seg.text):
             return
         self.transcript.append(seg)
         self.lines.append(Line("presenter", seg.text, seg.start_ms))
@@ -273,14 +276,19 @@ class Session:
             now_ms, paused_between(self.pauses, active.at_ms, now_ms) if active else 0)
         if due:
             await self._resolve(due, now_ms, "auto_restored")
-        quiet_for = (None if self.last_presenter_speech_ms is None
-                     else now_ms - self.last_presenter_speech_ms)
-        if (self.phase == "presenting" and self._silence_armed and quiet_for is not None
-                and quiet_for >= SILENCE_MS and now_ms >= self.speaking_until_ms):
+        # Quiet counts from whoever spoke last: the presenter gets their full 5 s to answer
+        # after a panelist finishes, before the panel fills the gap.
+        last_sound = max(self.last_presenter_speech_ms or 0, self.speaking_until_ms)
+        if (self.phase == "presenting" and self._silence_armed and not self._speaking
+                and self.last_presenter_speech_ms is not None
+                and now_ms - last_sound >= SILENCE_MS and not self._busy()):
             self._silence_armed = False
             await self._kick("silence")
 
     # ---- thinking: one brain call, then at most one line --------------------------------
+
+    def _busy(self) -> bool:
+        return self._thinking is not None and not self._thinking.done()
 
     async def _kick(self, trigger: Trigger) -> None:
         """Ask the brain what happens next. In the server this runs beside the room, and a
@@ -288,8 +296,11 @@ class Session:
         if not self.background:
             await self._think(trigger)
             return
-        if self._thinking is not None and not self._thinking.done():
-            self._pending = trigger
+        if self._busy():
+            if trigger != "silence":  # speech always beats a stale silence
+                self._pending = trigger
+            elif self._pending is None:
+                self._pending = trigger
             return
         self._pending = None
         self._thinking = asyncio.get_running_loop().create_task(self._think_loop(trigger))
@@ -311,6 +322,7 @@ class Session:
             trigger = "qna"  # between closing questions: the panel asks the next one
         now = self._now()
         ctx = self._context(now, trigger)
+        heard = len(self.transcript)
         try:
             turn = await self.orchestrator.turn(ctx)
         except Exception as exc:
@@ -318,6 +330,8 @@ class Session:
             turn = None
         if self.phase not in LIVE_PHASES:
             return  # paused or ended while the brain was thinking
+        if trigger == "silence" and len(self.transcript) > heard:
+            return  # they started talking again: that line was for a silence that's over
         now = self._now()
         if (turn is not None and turn.action == "curveball"
                 and turn.curveball_kind in ctx.eligible_kinds
@@ -423,6 +437,7 @@ class Session:
         speaker = persona_id or "moderator"
         self._emit("ai_speech_started", now_ms, {"speaker": speaker, "line": line})
         seconds: float | None = None
+        self._speaking = True  # a live face is talking until the voice call returns
         try:
             if persona_id:
                 persona = self.persona(persona_id)
@@ -432,6 +447,8 @@ class Session:
                 seconds = await self.voice.play_moderator_line(line)
         except Exception as exc:
             self._error(now_ms, "voice.speak", exc)
+        finally:
+            self._speaking = False
         done = max(now_ms, self._now())
         length_ms = int(seconds * 1000) if seconds is not None else len(line.split()) * WORD_MS
         self.speaking_until_ms = max(self.speaking_until_ms, done) + length_ms + ECHO_GUARD_MS

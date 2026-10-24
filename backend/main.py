@@ -62,6 +62,7 @@ class Room:
         self.lock = asyncio.Lock()
         self.t0: int | None = None
         self._flushes: set[asyncio.Task[None]] = set()
+        self.cleanup: asyncio.Task[None] | None = None
 
     def schedule_flush(self) -> None:
         task = asyncio.get_running_loop().create_task(self.flush())
@@ -121,6 +122,20 @@ async def lifespan(_: FastAPI):
     for room in ROOMS.values():
         if room.ticker:
             room.ticker.cancel()
+        await _release_live(room)  # live faces bill per minute: never leave them running
+
+
+async def _release_live(room: Room) -> None:
+    release = getattr(room.session.voice, "release_live", None)
+    if release is not None:
+        await release()
+
+
+async def _release_if_abandoned(room: Room, after_s: float = 60) -> None:
+    """Everyone closed the tab without ending the call: release the live faces."""
+    await asyncio.sleep(after_s)
+    if not room.sockets:
+        await _release_live(room)
 
 
 app = FastAPI(title="PresAI", lifespan=lifespan)
@@ -282,6 +297,8 @@ async def ws_session(ws: WebSocket, session_id: str) -> None:
         pass
     finally:
         room.sockets.discard(ws)
+        if not room.sockets:
+            room.cleanup = asyncio.create_task(_release_if_abandoned(room))
 
 
 async def _handle_client_message(room: Room, msg: dict[str, Any]) -> None:
