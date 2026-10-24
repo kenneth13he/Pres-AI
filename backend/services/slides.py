@@ -18,7 +18,7 @@ _DECKS: dict[str, Deck] = {}
 
 
 def ingest_pdf(pdf_bytes: bytes, filename: str, render_png: bool = True) -> Deck:
-    """PyMuPDF (`import fitz`): open from bytes, per page → Slide(number, text=page.get_text(),
+    """PyMuPDF (`import pymupdf`; `fitz` is the deprecated alias): open from bytes, per page → Slide(number, text=page.get_text(),
     image_url="/decks/<id>/<n>.png" after page.get_pixmap(dpi=96).save(...)). Store in _DECKS."""
     # TODO(C)
     raise NotImplementedError
