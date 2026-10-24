@@ -15,7 +15,15 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -41,6 +49,7 @@ from .services.voice_higgs import (
     SpendCounter,
     live_faces_enabled,
     seat_characters,
+    transcribe,
 )
 from .services.voice_mock import MockVoice
 
@@ -276,6 +285,21 @@ async def force_curveball(session_id: str, body: ForceCurveball) -> dict[str, st
     room = _room(session_id)
     await room.run(room.session.force_curveball(body.kind, room.now_ms()))
     return {"phase": room.session.phase}
+
+
+@app.post("/api/sessions/{session_id}/speech")
+async def post_speech(session_id: str, request: Request, start_ms: int = 0,
+                      end_ms: int | None = None) -> dict[str, Any]:
+    """One utterance from the browser's mic (a WAV) → Higgs STT → the presenter said it."""
+    room = _room(session_id)
+    audio = await request.body()
+    if not audio or len(audio) > 5_000_000:
+        raise HTTPException(400, "expected one short WAV utterance")
+    text = await transcribe(audio)
+    if text:
+        seg = TranscriptSegment(start_ms=start_ms, end_ms=end_ms, text=text)
+        await room.run(room.session.presenter_transcript(room.now_ms(), seg))
+    return {"text": text}
 
 
 @app.get("/api/sessions/{session_id}/report")

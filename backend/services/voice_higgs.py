@@ -9,7 +9,9 @@ Faces: Higgs's built-in avatars (Claire, James, Emma). Each shows as a still (de
 higgs/) until its live, lip-synced face is up in the shared FacePool (avatar_live.py), which
 keeps them running across calls; that panelist's lines then stream into the live face.
 Voices: each character's voice was cloned once from a preset (data/voices.json) and is reused
-by id, so the same face always has the same voice. Speech-to-text is the browser's (mic.js).
+by id, so the same face always has the same voice. Speech-to-text: the browser cuts the mic
+into utterances (mic.js) and `transcribe` sends each to Higgs STT (~0.8 s a sentence);
+Chrome's own speech recognition proved unreliable (on 24 Oct it ended instantly, silently).
 Money: $0.015 per 1K characters; a 20-word line is ~$0.0015. SpendCounter feeds /health.
 """
 
@@ -54,6 +56,26 @@ def live_faces_enabled() -> bool:
 
 # The live faces, shared by every call (started at server boot, see main.py).
 POOL = FacePool([c for c, _ in CHARACTERS])
+
+
+async def transcribe(wav_bytes: bytes) -> str | None:
+    """One utterance (a WAV) → its text via Higgs STT; None if it failed or heard nothing."""
+    key = os.environ.get("BOSON_API_KEY", "")
+    if not key:
+        return None
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=15,
+                                 headers={"Authorization": f"Bearer {key}"}) as client:
+        try:
+            resp = await client.post(
+                "/audio/transcriptions",
+                data={"model": os.environ.get("BOSON_STT_MODEL", "higgs-stt-3.1"),
+                      "language": "en"},
+                files={"file": ("speech.wav", wav_bytes, "audio/wav")})
+            resp.raise_for_status()
+        except httpx.HTTPError:
+            return None
+    text = str(resp.json().get("text") or "").strip()
+    return text or None
 
 
 class SpendCounter:

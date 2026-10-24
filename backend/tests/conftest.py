@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import pytest
+
+# Tests never reach a vendor: these win over .env (load_dotenv doesn't override).
+os.environ.update(VOICE_ADAPTER="mock", ORCHESTRATOR="mock", BOSON_AVATAR_ENABLED="false")
 
 from backend import presets
 from backend.engine import Session

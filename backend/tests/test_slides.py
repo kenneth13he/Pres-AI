@@ -107,3 +107,37 @@ def test_websocket_start_runs_the_session_clock():
             first = ws.receive_json()
             assert first["type"] == "session_started"
         assert client.get(f"/api/sessions/{sid}").json()["phase"] == "presenting"
+
+
+def test_a_spoken_utterance_is_transcribed_into_the_call(monkeypatch):
+    """The mic path: browser WAV → /speech → Higgs STT (faked) → the presenter said it."""
+    from fastapi.testclient import TestClient
+
+    from backend import main
+    from backend import presets as p
+
+    heard: list[bytes] = []
+
+    async def fake_stt(wav: bytes) -> str | None:
+        heard.append(wav)
+        return "We can get 100,000 customers in six months." if len(wav) > 10 else None
+    monkeypatch.setattr(main, "transcribe", fake_stt)
+
+    with TestClient(main.app) as client:
+        roster = p.personas()
+        people = [roster["vc"].model_dump(), roster["student"].model_dump()]
+        sid = client.post("/api/sessions", json={"config": {
+            "preset_id": "startup_pitch", "personas": people}}).json()["session_id"]
+        with client.websocket_connect(f"/ws/sessions/{sid}") as ws:
+            ws.send_json({"type": "presentation_started"})
+            ws.receive_json()
+            r = client.post(f"/api/sessions/{sid}/speech?start_ms=1000&end_ms=4000",
+                            content=b"RIFF" + b"\0" * 100,
+                            headers={"content-type": "audio/wav"})
+            assert r.json()["text"].startswith("We can get")
+            quiet = client.post(f"/api/sessions/{sid}/speech", content=b"RIFF",
+                                headers={"content-type": "audio/wav"})
+            assert quiet.json()["text"] is None
+        said = [s.text for s in main.ROOMS[sid].session.transcript if s.speaker == "presenter"]
+        assert said == ["We can get 100,000 customers in six months."]
+        assert len(heard) == 2

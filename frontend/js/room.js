@@ -4,7 +4,7 @@
 
 import { connect, getSession, isMock } from '/js/api.js';
 import { createPlayer } from '/js/audio.js?v=lean1';
-import { startMic } from '/js/mic.js?v=lean1';
+import { startMic } from '/js/mic.js?v=stt1';
 import { playMock } from '/js/mock_player.js';
 
 const qs = new URLSearchParams(location.search);
@@ -167,7 +167,13 @@ $('btn-start').onclick = async () => {
       pushToTalk: ptt,
       onLevel: (v) => { $('mic-level').style.width = `${Math.round(v * 100)}%`; },
       onInterim: (text) => { if (!player.busy) say('You', text, null, 2500); },
-      onSegment: (segment) => send({ type: 'transcript_segment', segment }),
+      // each utterance goes to Higgs STT on the server, which feeds it into the call
+      transcribe: async (wav, start, end) => {
+        const res = await fetch(`/api/sessions/${sessionId}/speech?start_ms=${start}&end_ms=${end}`,
+          { method: 'POST', headers: { 'content-type': 'audio/wav' }, body: wav });
+        return res.ok ? (await res.json()).text : null;
+      },
+      onSegment: (segment) => { if (!player.busy) say('You', segment.text, null, 3000); },
     });
     $('mic-label').textContent = state.mic.hasSTT ? 'mic · listening' : 'mic (no speech recognition in this browser — use Chrome)';
   } catch (e) { $('mic-label').textContent = `mic blocked: ${e.message}`; }
