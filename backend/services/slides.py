@@ -50,7 +50,8 @@ def ingest_pdf(pdf_bytes: bytes, filename: str, render_png: bool = True,
             if render_png:
                 page.get_pixmap(dpi=RENDER_DPI).save(out_dir / f"{index}.png")
                 image_url = f"/decks/{deck_id}/{index}.png"
-            slides.append(Slide(number=index, text=_clean(page.get_text()), image_url=image_url))
+            text = page.get_text("text")  # str; other modes return lists/dicts
+            slides.append(Slide(number=index, text=_clean(str(text)), image_url=image_url))
     deck = Deck(deck_id=deck_id, filename=filename, page_count=len(slides), slides=slides)
     _DECKS[deck_id] = deck
     return deck
