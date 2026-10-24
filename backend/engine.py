@@ -60,6 +60,14 @@ GREETING = re.compile(r"^\W*(hi|hello|hey|good (morning|afternoon|evening))\b", 
 INVITATION = re.compile(
     r"\b(any (questions|thoughts)|questions so far|does (that|this) make sense|what do you (guys )?"
     r"think|happy to take questions|open (it )?(up )?(to|for) questions)\b", re.I)
+# Said to the panel (not to the pitch): a question, or addressing them directly.
+ADDRESSED = re.compile(
+    r"\?\s*$"                                                       # a question
+    r"|^\W*(can|could|would|will|do|does|did|is|are|what|why|how|who|when|where|should"
+    r"|shall)\b"                                                     # phrased as one
+    r"|\b(you guys|y'?all|everyone|panel|tell me|talk to me|give me|please|let'?s (talk|chat))\b",
+    re.I)
+REPLY_COOLDOWN_MS = 4_000
 WELCOME = "Hi, thanks for joining — we can see and hear you. Go ahead whenever you're ready."
 HEARD_YOU = "Yes, we can hear you clearly — go ahead."
 SOCIAL_COOLDOWN_MS = 15_000
@@ -123,6 +131,7 @@ class Session:
         self._clock_ms = 0  # last session-clock time seen, stamps adapter events
         self._next_decide_ms = 0  # after a "none", wait before asking the brain again
         self._last_social_ms: int | None = None
+        self._last_reply_ms: int | None = None
         self._greeted_back = False
         # Called after an event lands outside a room action (a clip rendered in the
         # background), so main.py can push it to the browser at once.
@@ -242,6 +251,26 @@ class Session:
             return
         if INVITATION.search(text):
             await self._take_questions(now_ms)
+            return
+        if ADDRESSED.search(text):
+            await self._converse(now_ms, text)
+
+    async def _converse(self, now_ms: int, text: str) -> None:
+        """Talked to directly: one panelist answers, in character, like a person on a call.
+        The fastest voice (a live avatar) is preferred so the reply lands right away."""
+        if self._last_reply_ms is not None and now_ms - self._last_reply_ms < REPLY_COOLDOWN_MS:
+            return
+        self._last_reply_ms = now_ms
+        prefer = sorted(getattr(self.voice, "fast_speakers", lambda: set())())
+        try:
+            ctx = self._context(now_ms, False, [])
+            ctx.recent_transcript = self.transcript[-12:]
+            reply = await self.orchestrator.reply(text, ctx, prefer)
+        except Exception as exc:
+            self._error(now_ms, "orchestrator.reply", exc)
+            return
+        if reply is not None:
+            await self._speak(reply.persona_id, reply.line, now_ms)
 
     async def _take_questions(self, now_ms: int) -> None:
         """Invited to ask: ask now (skipping the usual wait), or say so if the room is done."""

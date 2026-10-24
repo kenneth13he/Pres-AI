@@ -449,3 +449,16 @@ async def test_when_the_room_has_asked_enough_they_say_so():
     session.questions = [{"follow_up_of": None, "curveball_id": None}] * 2  # budget used
     await session.presenter_transcript(s(80), seg(80, "Does that make sense?"))
     assert lines(session)[-1] == "No more questions from me for now — carry on."
+
+
+async def test_talking_to_the_panel_gets_a_reply_from_the_fastest_voice():
+    session = make_session()
+    session.voice.fast_speakers = lambda: {"professor"}  # type: ignore[attr-defined]
+    await session.start(0)
+    await session.presenter_transcript(s(40), seg(40, "can we have a real conversation"))
+    assert lines(session, "professor") == ["Sure. Walk us through it."]
+    await session.presenter_transcript(s(41), seg(41, "what do you think so far?"))  # cooldown
+    assert len(lines(session, "professor")) == 1
+    await session.presenter_transcript(s(50), seg(50, "how would you price this?"))
+    assert lines(session, "professor")[-1].startswith("Good question")
+    assert session.questions == [] and session.phase == "presenting"  # never scored

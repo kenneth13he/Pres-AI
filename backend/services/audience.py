@@ -23,6 +23,7 @@ from spec.contracts import (
     CurveballKind,
     FollowUpVerdict,
     OrchestratorDecision,
+    PanelReply,
     Persona,
     RecoveryAssessment,
     TranscriptSegment,
@@ -59,6 +60,8 @@ class Orchestrator(Protocol):
         resume_after_ms: int | None,
     ) -> RecoveryAssessment: ...
     async def expand_persona(self, description: str, index: int) -> Persona: ...
+    async def reply(self, utterance: str, ctx: OrchestratorContext,
+                    prefer: list[str]) -> PanelReply | None: ...
 
 
 # ---------------------------------------------------------------------------------
@@ -97,6 +100,15 @@ def find_claim(segments: list[TranscriptSegment], already_cited: set[str]) -> st
 class MockOrchestrator:
     """Deterministic stand-in: grounds a question in a detected claim, asks one follow-up
     when the answer is thin, scores recovery from timing. No network."""
+
+    async def reply(self, utterance: str, ctx: OrchestratorContext,
+                    prefer: list[str]) -> PanelReply | None:
+        ids = [p.id for p in ctx.personas]
+        speaker = next((pid for pid in prefer if pid in ids), ids[0])
+        if utterance.rstrip().endswith("?"):
+            return PanelReply(persona_id=speaker,
+                              line="Good question — honestly, I'd rather hear your take first.")
+        return PanelReply(persona_id=speaker, line="Sure. Walk us through it.")
 
     async def decide(self, ctx: OrchestratorContext) -> OrchestratorDecision:
         if ctx.question_allowed:
@@ -217,6 +229,15 @@ problem, solution, ask; bait - admitted uncertainty or scoped the answer rather 
 inventing specifics; distraction - resumed the thought without restarting; vip_arrives -
 stated the ask and the why-now within 30 s. Quote the transcript as evidence. If timing is
 null, say so in the observation."""
+
+REPLY_PROMPT = """You are one fictional panelist on a live video call with someone rehearsing a
+pitch or presentation. They just spoke to the panel directly. Reply as ONE panelist, in that
+persona's character and focus: one or two short, natural spoken sentences, no lists, no
+markdown. Answer what they actually said or asked. If they're making small talk or checking
+in, respond like a real person on a call and, where it fits, nudge them back to their pitch.
+Stay in character: a skeptical VC sounds skeptical, a confused student sounds unsure. Never
+sycophantic, never rude. If a preferred persona is listed and fits, use them.
+persona_id must be one of the listed ids exactly."""
 
 PERSONA_PROMPT = """Turn a free-text description of an audience member into a fictional
 persona for a presentation rehearsal. Keep the name generic (never a real person), give two
@@ -398,6 +419,18 @@ class ClaudeOrchestrator:
             )
         if not self.verbatim(out.evidence, after):
             out.evidence = after[0].text  # evidence must be verbatim (§10)
+        return out
+
+    async def reply(self, utterance: str, ctx: OrchestratorContext,
+                    prefer: list[str]) -> PanelReply | None:
+        """A conversational turn. None (and the room stays quiet) if the model declines or
+        names someone who isn't on the panel."""
+        ids = {p.id for p in ctx.personas}
+        user = (f"{self.format_context(ctx)}\n\npreferred persona (fastest to answer): "
+                f"{', '.join(prefer) or '(any)'}\n\nthe presenter just said: {utterance!r}")
+        out = await self._parse(REPLY_PROMPT, user, PanelReply, "low")
+        if out is None or out.persona_id not in ids or not out.line.strip():
+            return None
         return out
 
     async def expand_persona(self, description: str, index: int) -> Persona:

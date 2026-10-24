@@ -152,6 +152,13 @@ class OrchestratorDecision(BaseModel):
     slide_number: int | None = None
 
 
+class PanelReply(BaseModel):
+    """A conversational turn: the presenter spoke to the panel, one panelist answers."""
+
+    persona_id: str
+    line: str
+
+
 class FollowUpVerdict(BaseModel):
     verdict: Literal["satisfied", "follow_up"]
     line: str
@@ -219,6 +226,7 @@ SCHEMA_MODELS: list[type[BaseModel]] = [
     TranscriptSegment,
     OrchestratorDecision,
     FollowUpVerdict,
+    PanelReply,
     RecoveryAssessment,
     Report,
 ]

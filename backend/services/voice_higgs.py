@@ -475,6 +475,10 @@ class HiggsVoice:
     async def play_sfx(self, sfx_id: str) -> None:
         return None  # phone/door are local clips the browser plays from sfx_url
 
+    def fast_speakers(self) -> set[str]:
+        """Panelists who can answer instantly (live avatars stream; clips must render)."""
+        return set(self._live.seats) if self._live is not None else set()
+
     async def cancel_speech(self) -> None:
         """Skip/Pause: drop lines not yet rendered (the browser stops what is playing) and cut
         off a live avatar mid-sentence."""

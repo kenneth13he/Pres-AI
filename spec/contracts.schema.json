@@ -345,6 +345,25 @@
       "title": "OrchestratorDecision",
       "type": "object"
     },
+    "PanelReply": {
+      "description": "A conversational turn: the presenter spoke to the panel, one panelist answers.",
+      "properties": {
+        "line": {
+          "title": "Line",
+          "type": "string"
+        },
+        "persona_id": {
+          "title": "Persona Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "persona_id",
+        "line"
+      ],
+      "title": "PanelReply",
+      "type": "object"
+    },
     "Persona": {
       "properties": {
         "avatar_url": {
