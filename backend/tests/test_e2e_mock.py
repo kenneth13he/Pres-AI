@@ -389,3 +389,10 @@ async def test_follow_up_wording_varies_between_questions():
     follow_ups = [e.payload["question"] for e in session.events
                   if e.type == "question_queued" and e.payload.get("follow_up_of")]
     assert len(follow_ups) == 2 and follow_ups[0] != follow_ups[1]
+
+
+async def test_no_deck_means_no_slide_curveballs():
+    session = make_session()  # conftest sessions have no deck
+    assert "slides_down" not in session.scheduler.allowed_kinds
+    allowed = session.scheduler.allowed_kinds
+    assert "time_crunch" in allowed and "heckler" in allowed

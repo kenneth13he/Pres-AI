@@ -37,7 +37,8 @@ FACES_DIR = Path(__file__).resolve().parents[2] / "demo" / "faces"
 FACE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 # Measured 24 Oct: a 4 s line renders in ~5 s. Past this budget the voice plays over the
 # still portrait instead, so a slow or throttled render never delays the room.
-AVATAR_BUDGET_S = float(os.environ.get("BOSON_AVATAR_BUDGET_S", "9"))
+AVATAR_BUDGET_S = float(os.environ.get("BOSON_AVATAR_BUDGET_S", "10"))
+TAIL_S = 1.5  # silence after each line: the head settles back to rest before the clip ends
 PRESET_VOICES = ["marcus", "eleanor", "jake", "chloe", "oliver", "nora"]
 MODERATOR_VOICE = "nora"
 
@@ -237,7 +238,10 @@ class HiggsVoice:
         face = self._faces.get(speaker)
         if not (self.avatar_enabled and face):
             return False
-        ok = await self._avatar_video(face, ("line.mp3", mp3, "audio/mpeg"), dest,
+        # A silent tail lets the face finish the sentence, close its mouth and settle back to
+        # rest by itself, so the clip ends in the pose the idle loop starts from — no snap.
+        audio = await _with_silent_tail(mp3, TAIL_S)
+        ok = await self._avatar_video(face, audio, dest,
                                       budget_s=self.avatar_budget_s, speaker=speaker)
         return ok
 
@@ -417,3 +421,24 @@ async def _pingpong(src: Path, dest: Path) -> bool:
     )
     _, err = await proc.communicate()
     return proc.returncode == 0 and dest.exists()
+
+
+async def _with_silent_tail(mp3: bytes, seconds: float) -> tuple[str, bytes, str]:
+    """The line's audio with `seconds` of silence appended (mp3, via ffmpeg). Falls back to
+    the plain mp3 if ffmpeg is unavailable — the clip then just ends a little abruptly."""
+    import shutil
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return ("line.mp3", mp3, "audio/mpeg")
+    proc = await asyncio.create_subprocess_exec(
+        ffmpeg, "-loglevel", "error", "-f", "mp3", "-i", "pipe:0",
+        "-af", f"apad=pad_dur={seconds}", "-ar", "24000", "-ac", "1",
+        "-c:a", "libmp3lame", "-b:a", "64k", "-f", "mp3", "pipe:1",  # wav to a pipe has no length
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, _ = await proc.communicate(mp3)
+    if proc.returncode != 0 or len(out) < 100:
+        return ("line.mp3", mp3, "audio/mpeg")
+    return ("line.mp3", out, "audio/mpeg")

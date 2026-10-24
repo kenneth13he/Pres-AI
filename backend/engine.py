@@ -47,6 +47,7 @@ log = logging.getLogger(__name__)
 TIME_CRUNCH_MS = 60_000
 RECENT_TRANSCRIPT_MS = 30_000
 RECOVERY_WINDOW_MS = 60_000
+SLIDE_CURVEBALLS: set[CurveballKind] = {"slides_down", "elevator"}
 DECIDE_BACKOFF_MS = 5_000  # the brain said "nothing to ask": give the talk 5 s before asking again
 # Curveballs that are a question in disguise: the presenter answers, then we resolve "answered".
 ANSWERABLE: set[CurveballKind] = {
@@ -82,9 +83,12 @@ class Session:
         # slide_number, follow_up_of, curveball_id, answer, skipped, asked_at_ms
         self.questions: list[dict[str, Any]] = []
         self.curveballs = CurveballEngine(session_id)
+        # Without a deck there is no screen to lose: drop the curveballs that need slides.
+        allowed: list[CurveballKind] = [k for k in preset.curveballs_allowed
+                   if deck is not None or k not in SLIDE_CURVEBALLS]
         self.scheduler = Scheduler(
             config.difficulty, config.interruption_frequency, config.curveballs,
-            preset.curveballs_allowed, curveballs_enabled,
+            allowed, curveballs_enabled,
         )
         self.start_ms: int | None = None
         self.slide_number = 1

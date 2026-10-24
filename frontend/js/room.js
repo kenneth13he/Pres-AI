@@ -1,9 +1,9 @@
-// /room: the room — screen on the wall, the audience seated around a table, voices, bubbles.
-// Owner: Person A (P0-7, P0-10). Events: spec/contracts.schema.json (SessionEvent).
+// /room: the rehearsal as a video call — your slides on the main stage, the panel and your
+// own webcam as tiles, live captions. Owner: Person A (P0-7, P0-10).
 // Works against the mock (/room.html?mock=1) and against a live session (/room.html?session=ID).
 
 import { connect, getSession, isMock } from '/js/api.js';
-import { createPlayer } from '/js/audio.js';
+import { createPlayer } from '/js/audio.js?v=call3';
 import { startMic } from '/js/mic.js';
 import { playMock } from '/js/mock_player.js';
 
@@ -15,8 +15,36 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const state = {
   phase: 'setup', startedAt: null, pausedAt: null, slide: 1, deck: null, personas: [], preset: null,
   timerOverrideUntil: null, activeCurveball: null, link: null, inputMode: 'live', mic: null,
-  voices: true, lineTag: {}, faces: {}, idle: {},
+  voices: true, lineTag: {}, faces: {}, idle: {}, cam: null,
 };
+
+// ---- participant tiles ----------------------------------------------------------------
+const PALETTE = ['#e37400', '#7b1fa2', '#0b8043', '#c2185b', '#1a73e8', '#d93025'];
+const initials = (name) => (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+function tileHtml(p, i) {
+  const face = state.faces[p.id];
+  // Layers: still photo (first paint) → idle loop (listening: blinks, small moves) → talking
+  // clip. When a line ends the tile fades back to the idle loop, never to the still photo.
+  const picture = face ? `
+      <img src="${esc(face)}" alt="${esc(p.name)}" />
+      <video class="idle" playsinline muted loop preload="auto"></video>
+      <video class="talk" playsinline preload="auto"></video>` : `
+      <div class="avatar-fallback"><span style="background:${PALETTE[i % PALETTE.length]}">${esc(initials(p.name))}</span></div>`;
+  return `
+    <div class="tile-call seat" data-persona="${p.id}">
+      ${picture}
+      <span class="hand">✋ wants to speak</span>
+      <div class="waves"><i></i><i></i><i></i></div>
+      <div class="name-tag">${esc(p.name)} <span class="role">· ${esc(p.role)}</span></div>
+    </div>`;
+}
+
+function renderTiles() {
+  $('tiles').innerHTML = state.personas.map((p, i) => tileHtml(p, i)).join('');
+  for (const id of Object.keys(state.idle)) startIdle(id);
+}
+const seat = (id) => $('tiles').querySelector(`[data-persona="${id}"]`);
 
 function startIdle(id) {
   const el = seat(id)?.querySelector('video.idle');
@@ -24,81 +52,34 @@ function startIdle(id) {
   if (!el || !url) return;
   if (!el.src.endsWith(url)) el.src = url;
   el.currentTime = Math.random() * 3; // people don't blink in unison
-  el.play().then(() => el.closest('.portrait')?.classList.add('idle-on')).catch(() => {});
+  el.playbackRate = 0.9;               // a calmer, more natural listening pace
+  el.play().then(() => el.closest('.tile-call')?.classList.add('idle-on')).catch(() => {});
 }
 
-// ---- people at the table ------------------------------------------------------------
-const PALETTE = [
-  ['#fbbf24', '#b45309'], ['#a78bfa', '#5b21b6'], ['#34d399', '#047857'],
-  ['#f472b6', '#9d174d'], ['#60a5fa', '#1d4ed8'], ['#fb923c', '#c2410c'],
-];
-const colourFor = (i) => PALETTE[i % PALETTE.length];
-const initials = (name) => (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
-
-function seatHtml(p, i, extra = '') {
-  const [skin, shirt] = p.id === 'moderator' ? ['#94a3b8', '#334155'] : colourFor(i);
-  const face = state.faces[p.id];
-  // Layers, bottom to top: still photo (first paint) → idle loop (listening: blinks, small
-  // moves) → talking clip. When a line ends we fade back to the idle loop, never the still.
-  const figure = face ? `
-      <div class="portrait">
-        <img src="${esc(face)}" alt="${esc(p.name)}" />
-        <video class="idle" playsinline muted loop preload="auto"></video>
-        <video class="talk" playsinline preload="auto"></video>
-        <span class="thinking">thinking…</span>
-        <div class="waves"><i></i><i></i><i></i></div>
-      </div>` : `
-      <div class="person">
-        <span class="thinking">thinking…</span>
-        <div class="body" style="background:${shirt}"></div>
-        <div class="head" style="background:${skin}">${esc(initials(p.name))}</div>
-        <div class="waves"><i></i><i></i><i></i></div>
-      </div>`;
-  return `
-    <div class="seat tile ${face ? 'has-face' : ''} ${extra}" data-persona="${p.id}">
-      <div class="bubble"><span class="tag"></span><span class="text"></span></div>
-      ${figure}
-    </div>`;
-}
-
-function renderTiles() {
-  // Everyone sits together behind one table; the moderator is the room's host by the screen.
-  const people = state.personas;
-  $('tiles').innerHTML = people.map((p, i) => seatHtml(p, i, i === 1 && people.length === 3 ? 'far' : '')).join('');
-  $('host').innerHTML = seatHtml({ id: 'moderator', name: 'Host' }, 0, 'moderator');
-  $('plates').innerHTML = people.map((p) => `
-    <div class="plate"><b>${esc(p.name)}</b><br>${esc(p.role)}${p.custom ? ' · custom' : ''}</div>`).join('');
-  for (const id of Object.keys(state.idle)) startIdle(id);
-}
-const seat = (id) => $('tiles').querySelector(`[data-persona="${id}"]`);
-
-const bubbleTimers = {};
+// ---- live captions (the call's subtitles) ---------------------------------------------
+let captionTimer;
 function say(speaker, text, tag, holdMs = 0) {
-  const s = seat(speaker);
-  if (!s) return;
-  clearTimeout(bubbleTimers[speaker]);
-  s.querySelector('.bubble .text').textContent = text;
-  const t = s.querySelector('.bubble .tag');
-  t.textContent = tag ? tag.replace('_', ' ') : '';
-  t.style.display = tag ? 'block' : 'none';
-  s.querySelector('.bubble').classList.add('show');
-  if (holdMs) bubbleTimers[speaker] = setTimeout(() => quiet(speaker), holdMs);
+  const p = state.personas.find((x) => x.id === speaker);
+  $('lc-who').textContent = `${p ? p.name : 'Host'}${tag ? ` (${tag.replace('_', ' ')})` : ''}:`;
+  $('lc-text').textContent = text;
+  $('live-caption').classList.add('show');
+  clearTimeout(captionTimer);
+  if (holdMs) captionTimer = setTimeout(() => quiet(speaker), holdMs);
 }
 function quiet(speaker, after = 0) {
-  clearTimeout(bubbleTimers[speaker]);
-  bubbleTimers[speaker] = setTimeout(() => {
-    const s = seat(speaker);
-    s?.querySelector('.bubble').classList.remove('show');
-    s?.classList.remove('speaking');
+  clearTimeout(captionTimer);
+  captionTimer = setTimeout(() => {
+    $('live-caption').classList.remove('show');
+    seat(speaker)?.classList.remove('speaking');
   }, after);
 }
 const readingMs = (text) => Math.min(9000, 1800 + text.split(/\s+/).length * 330);
 
-// ---- voice: clips play one at a time; the mic is muted while the room talks -------------
+// ---- voice: clips play one at a time; the mic is muted while the panel talks -----------
 const player = createPlayer({
   onClipStart: (clip) => {
     state.mic?.setMuted(true);
-    $('tiles').querySelectorAll('.seat.speaking').forEach((x) => x.classList.remove('speaking'));
+    $('tiles').querySelectorAll('.speaking').forEach((x) => x.classList.remove('speaking'));
     seat(clip.speaker)?.classList.add('speaking');
     say(clip.speaker, clip.text, state.lineTag[clip.text]);
   },
@@ -185,7 +166,7 @@ function onEvent(ev) {
         seat(p.speaker)?.classList.add('speaking');
         say(p.speaker, p.line, state.lineTag[p.line], readingMs(p.line));
       } else {
-        seat(p.speaker)?.classList.add('thinking'); // TTS is rendering (~2 s)
+        seat(p.speaker)?.classList.add('thinking'); // raised hand while the voice renders
       }
       break;
     }
@@ -251,6 +232,7 @@ function clearCurveball(p) {
 const send = (msg) => state.link?.send(msg);
 $('btn-start').onclick = async () => {
   await player.resume();
+  camOn();
   send({ type: 'presentation_started' });
   send({ type: 'slide_changed', slide_number: state.slide });
   try {
@@ -264,6 +246,36 @@ $('btn-start').onclick = async () => {
     $('mic-label').textContent = state.mic.hasSTT ? 'mic · listening' : 'mic (no STT in this browser)';
   } catch (e) { $('mic-label').textContent = `mic blocked: ${e.message}`; }
 };
+// ---- your webcam: on by default once you join; only ever shown to you, never sent anywhere
+async function camOn() {
+  try {
+    state.cam = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    $('selfcam').srcObject = state.cam;
+    document.querySelector('.tile-call.you').classList.add('cam-on');
+    $('btn-cam').classList.remove('off');
+  } catch (e) { $('selfcam-off').textContent = `Camera blocked: ${e.message}`; }
+}
+function camOff() {
+  state.cam?.getTracks().forEach((t) => t.stop()); state.cam = null;
+  $('selfcam').srcObject = null;
+  document.querySelector('.tile-call.you').classList.remove('cam-on');
+  $('btn-cam').classList.add('off');
+}
+$('btn-cam').onclick = () => (state.cam ? camOff() : camOn());
+
+// ---- view: gallery (just the people) unless you're sharing slides ------------------------
+function setView(gallery) {
+  document.body.classList.toggle('gallery', gallery);
+  $('btn-view').textContent = gallery ? 'Slides' : 'Gallery';
+  // in gallery view the captions float over the call instead of over the slide
+  $('live-caption').classList.toggle('gallery-caption', gallery);
+  if (gallery) document.body.append($('live-caption'));
+  else document.querySelector('.stage').append($('live-caption'));
+}
+$('btn-view').onclick = () => setView(!document.body.classList.contains('gallery'));
+$('btn-drawer').onclick = () => $('drawer').classList.toggle('hidden');
+addEventListener('beforeunload', camOff);
+
 $('btn-pause').onclick = () => send({ type: 'control', action: state.phase === 'paused' ? 'resume' : 'pause' });
 $('btn-skip').onclick = () => { player.cancel(); send({ type: 'control', action: 'skip' }); };
 $('btn-restore').onclick = () => send({ type: 'control', action: 'restore_slides' });
@@ -299,5 +311,8 @@ if (isMock() || !sessionId) {
   }
   $('preset-name').textContent = s.preset.name;
   renderTiles(); renderSlide();
+  // The demo screen is the audience only: you present from another device, and an uploaded
+  // deck is used behind the scenes so the panel can ask about it.
+  setView(true);
   state.link = connect(sessionId, onEvent, (st) => { $('conn').textContent = st; });
 }

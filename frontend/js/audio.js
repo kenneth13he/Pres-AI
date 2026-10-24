@@ -21,13 +21,18 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
     audio.src = clip.url;
     current = { audio, clip };
     onClipStart(clip);
-    if (clip.kind === 'video' && clip.el) clip.el.closest('.portrait')?.classList.add('live');
+    if (clip.kind === 'video' && clip.el) clip.el.closest('.tile-call')?.classList.add('live');
     const done = () => {
       if (current?.audio !== audio) return;
       current = null;
-      // Fade back to the listening loop; without one, hold the last frame (never the still).
-      const portrait = clip.el?.closest('.portrait');
-      if (portrait?.classList.contains('idle-on')) portrait.classList.remove('live');
+      // The clip ends at rest (silent tail), so rewind the listening loop to its rest pose
+      // and blend into it slowly. Without a loop, hold the last frame (never the still).
+      const portrait = clip.el?.closest('.tile-call');
+      if (portrait?.classList.contains('idle-on')) {
+        const idle = portrait.querySelector('video.idle');
+        if (idle) { idle.currentTime = 0; idle.play().catch(() => {}); }
+        portrait.classList.remove('live');
+      }
       onClipEnd(clip);
       next();
     };
@@ -46,7 +51,7 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
     queue.length = 0;
     if (current) {
       const { audio, clip } = current; current = null; audio.pause();
-      const portrait = clip.el?.closest('.portrait');
+      const portrait = clip.el?.closest('.tile-call');
       if (portrait?.classList.contains('idle-on')) portrait.classList.remove('live');
       onClipEnd(clip);
     }

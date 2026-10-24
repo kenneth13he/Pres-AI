@@ -2,7 +2,7 @@
 
 The cast: ten fictional, AI-generated people photographed in **one** meeting room (same
 whiteboard, lights and table), so they join into one continuous room on screen. Source:
-`demo/faces_source/grid_room.png` (crops in `crops/`). Never put a real person's photo here
+`demo/faces_source/grid_neutral.png` (neutral expressions; crops in `neutral/`). Never put a real person's photo here
 without their written consent (CLAUDE.md §13 Fairness).
 
 | persona (roster) | character | voice |
@@ -24,7 +24,6 @@ without their written consent (CLAUDE.md §13 Fairness).
 - `pool_<n>--<character>.jpg` go to custom personas in order, never repeating a character
   already at the table.
 - Crop to 3:4 (talking heads render at 480×640, so the face doesn't jump).
-- The photo sets the resting expression. For a tougher room, generate the faces neutral:
-  "attentive, mouth closed, not smiling, slightly skeptical, listening to a pitch".
+- The photo sets the resting expression, so these are neutral and attentive on purpose.
 
 Needs `BOSON_AVATAR_ENABLED=true`. Idle loops render once per face file and are cached.

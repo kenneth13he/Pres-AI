@@ -3,78 +3,86 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PresAI · Room</title>
+  <title>PresAI · Call</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="/css/app.css?v=room6" />
+  <link rel="stylesheet" href="/css/app.css?v=call1" />
+  <link rel="stylesheet" href="/css/call.css?v=call5" />
 </head>
-<body class="min-h-screen">
-  <main class="mx-auto max-w-7xl px-4 py-5">
-    <header class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <span class="text-sm text-slate-500">PresAI ·</span>
-        <span id="preset-name" class="text-sm text-slate-300">Room</span>
-        <span id="phase" class="ml-3 rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">setup</span>
-      </div>
-      <div class="flex items-center gap-4">
-        <div id="timer" class="timer font-mono text-2xl">00:00</div>
-        <div class="flex gap-2 text-sm">
-          <button id="btn-start" class="rounded-lg bg-cyan-500 px-4 py-2 font-medium text-black">Start presenting</button>
-          <button id="btn-pause" class="rounded-lg bg-slate-800 px-3 py-2" title="P">Pause</button>
-          <button id="btn-skip" class="rounded-lg bg-slate-800 px-3 py-2" title="S">Skip</button>
-          <button id="btn-restore" class="hidden rounded-lg bg-amber-600 px-3 py-2">Restore slides</button>
-          <button id="btn-end" class="rounded-lg bg-slate-800 px-3 py-2">End → Q&amp;A</button>
-        </div>
-      </div>
-    </header>
-
-    <div class="mt-4 grid gap-5 lg:grid-cols-[1fr_320px]">
-      <!-- the room: screen on the wall, audience around the table -->
-      <section class="room rounded-2xl p-4 sm:p-6">
-        <div id="slide-viewer" class="slide-viewer screen mx-auto max-w-2xl overflow-hidden rounded-lg">
-          <img id="slide-img" alt="" class="hidden h-full w-full object-contain" />
-          <div id="slide-text" class="slide-text absolute inset-0 hidden place-items-center p-8 text-center text-slate-400"></div>
-          <div class="overlay">
-            <div>
-              <div class="text-3xl font-semibold" id="overlay-title">Projector disconnected</div>
-              <div class="mt-2 text-slate-400" id="overlay-sub">Keep going.</div>
-            </div>
-          </div>
-        </div>
-        <div class="mx-auto mt-2 flex max-w-2xl items-center justify-between text-sm text-slate-400">
-          <div class="flex items-center gap-2">
-            <button id="prev" class="rounded bg-slate-800/80 px-3 py-1">←</button>
-            <span id="slide-no">Slide 1</span>
-            <button id="next" class="rounded bg-slate-800/80 px-3 py-1">→</button>
-          </div>
-          <div class="flex items-center gap-2">
-            <span id="mic-label">mic</span>
-            <div class="meter w-28"><div id="mic-level"></div></div>
-            <span id="ptt-hint" class="hidden text-xs">hold Space to talk</span>
-          </div>
-        </div>
-
-        <div class="table-scene mt-4">
-          <div class="back-wall"></div>
-          <div id="host" class="host"></div>
-          <div id="tiles" class="seats"></div>
-          <div class="table-top"><div id="plates" class="plates"></div></div>
-          <div class="you-marker">you · presenting</div>
-        </div>
-      </section>
-
-      <!-- transcript -->
-      <aside class="flex flex-col">
-        <div class="mb-2 flex items-center justify-between text-xs uppercase tracking-wide text-slate-500">
-          <span>Transcript</span>
-          <label class="flex items-center gap-1 normal-case tracking-normal"><input id="voice-on" type="checkbox" checked /> voices</label>
-        </div>
-        <div id="captions" class="h-[520px] space-y-2 overflow-y-auto rounded-xl border border-slate-800 p-3 text-sm"></div>
-      </aside>
+<body class="call gallery">
+  <!-- top bar -->
+  <header class="call-top">
+    <div class="flex items-center gap-3">
+      <span class="rec-dot"></span>
+      <span id="preset-name" class="text-sm text-slate-200">Rehearsal</span>
+      <span class="text-xs text-slate-500">· present from your other device; this screen is your audience</span>
+      <span id="phase" class="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-300">setup</span>
     </div>
+    <div id="timer" class="timer font-mono text-lg text-slate-200">00:00</div>
+  </header>
 
-    <p class="mt-4 text-xs text-slate-600">Personas are fictional · Voices by Higgs TTS · Pause and Skip are never scored against you · <span id="conn">connecting…</span></p>
+  <main class="call-main">
+    <!-- the shared screen: your slides -->
+    <section class="stage">
+      <div class="stage-label">You are presenting</div>
+      <div id="slide-viewer" class="slide-viewer">
+        <img id="slide-img" alt="" class="hidden h-full w-full object-contain" />
+        <div id="slide-text" class="slide-text absolute inset-0 hidden place-items-center p-8 text-center text-slate-400"></div>
+        <div class="overlay">
+          <div>
+            <div class="text-3xl font-semibold" id="overlay-title">Screen share stopped</div>
+            <div class="mt-2 text-slate-300" id="overlay-sub">Keep going.</div>
+          </div>
+        </div>
+      </div>
+      <div id="live-caption" class="live-caption"><b id="lc-who"></b> <span id="lc-text"></span></div>
+    </section>
+
+    <!-- participants: the panel, then you -->
+    <aside class="people">
+      <div id="tiles" class="tiles"></div>
+      <div class="tile-call you">
+        <video id="selfcam" autoplay playsinline muted></video>
+        <div id="selfcam-off" class="cam-off">Camera off</div>
+        <div class="name-tag">You</div>
+        <div class="meter you-meter"><div id="mic-level"></div></div>
+      </div>
+    </aside>
+
+    <!-- transcript drawer -->
+    <aside id="drawer" class="drawer hidden">
+      <div class="mb-2 flex items-center justify-between text-xs uppercase tracking-wide text-slate-400">
+        <span>Transcript</span>
+        <label class="flex items-center gap-1 normal-case tracking-normal"><input id="voice-on" type="checkbox" checked /> voices</label>
+      </div>
+      <div id="captions" class="space-y-2 overflow-y-auto text-sm"></div>
+    </aside>
   </main>
+
+  <!-- call controls -->
+  <footer class="call-bar">
+    <div class="flex items-center gap-2 text-xs text-slate-400">
+      <button id="prev" class="cb-small">←</button>
+      <span id="slide-no">Slide 1</span>
+      <button id="next" class="cb-small">→</button>
+      <span id="mic-label" class="ml-3 hidden sm:inline">mic</span>
+      <span id="ptt-hint" class="hidden">hold Space to talk</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="btn-start" class="cb cb-go">Join call</button>
+      <button id="btn-cam" class="cb" title="Camera">Camera</button>
+      <button id="btn-pause" class="cb" title="P">Pause</button>
+      <button id="btn-skip" class="cb" title="S">Skip</button>
+      <button id="btn-restore" class="cb hidden">Share again</button>
+      <button id="btn-view" class="cb hidden" title="Switch view">Gallery</button>
+      <button id="btn-drawer" class="cb" title="Transcript">Transcript</button>
+      <button id="btn-end" class="cb cb-end">End → Q&amp;A</button>
+    </div>
+    <div id="conn" class="text-xs text-slate-500">connecting…</div>
+  </footer>
+
+  <div id="host" class="hidden"></div>
+  <div id="plates" class="hidden"></div>
   <audio id="sfx" preload="auto"></audio>
-  <script type="module" src="/js/room.js?v=room4"></script>
+  <script type="module" src="/js/room.js?v=call4"></script>
 </body>
 </html>
