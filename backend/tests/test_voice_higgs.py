@@ -207,3 +207,28 @@ def test_video_shape_follows_the_portrait(tmp_path):
         pix.save(tmp_path / f"{w}x{h}.png")
         assert _video_size(tmp_path / f"{w}x{h}.png") == want
     assert _video_size(tmp_path / "missing.jpg") == "480x640"
+
+
+def test_custom_persona_voice_follows_its_face_and_roster_faces_stay_reserved(tmp_path):
+    from spec.contracts import Persona
+
+    d = faces(tmp_path, ["vc.jpg", "student.jpg", "mentor.jpg", "pool_1_margaret.f.jpg",
+                         "pool_2_lucas.m.jpg"])
+    custom = Persona(id="custom_1", name="Mum", role="baker", focus=["money"], skepticism=0.6,
+                     custom=True)
+    cfg = make_config(personas=[presets.personas()["vc"].model_dump(),
+                                presets.personas()["student"].model_dump(),
+                                custom.model_dump()])
+    got = assign_faces([p.id for p in cfg.personas], d)
+    assert got["custom_1"].name == "pool_1_margaret.f.jpg"  # not mentor.jpg: that's reserved
+    voices = assign_voices(cfg, got)
+    assert voices["vc"] == "eleanor" and voices["student"] == "jake"
+    assert voices["custom_1"] == "chloe"  # female face → the free female voice
+
+
+def test_repo_faces_cover_every_roster_persona():
+    from pathlib import Path
+
+    faces_dir = Path(__file__).resolve().parents[2] / "demo" / "faces"
+    for pid in presets.personas():
+        assert (faces_dir / f"{pid}.jpg").exists(), pid

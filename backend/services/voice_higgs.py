@@ -69,8 +69,22 @@ class SpendCounter:
         return cls.tts_chars / 1000 * 0.015 + cls.realtime_ms / 60_000 * 0.016
 
 
-def assign_voices(config: SessionConfig) -> dict[str, str]:
-    """Persona id → preset voice, all distinct and never the moderator's voice."""
+FEMALE_VOICES = ["eleanor", "chloe"]
+MALE_VOICES = ["marcus", "jake", "oliver"]
+
+
+def face_gender(face: Path | None) -> str | None:
+    """Pool faces carry a tag in the name — `pool_1_margaret.f.jpg` — so a custom persona's
+    voice can match the face it was given."""
+    if face is None:
+        return None
+    tag = face.stem.rsplit(".", 1)[-1] if "." in face.stem else ""
+    return tag if tag in ("f", "m") else None
+
+
+def assign_voices(config: SessionConfig, faces: dict[str, Path] | None = None) -> dict[str, str]:
+    """Persona id → preset voice, all distinct and never the moderator's voice. A persona
+    without a roster voice (custom) gets a voice matching its face's gender when known."""
     out: dict[str, str] = {"moderator": MODERATOR_VOICE}
     used = {MODERATOR_VOICE}
     for p in config.personas:
@@ -78,7 +92,10 @@ def assign_voices(config: SessionConfig) -> dict[str, str]:
         if want in PRESET_VOICES and want not in used:
             out[p.id] = want
         else:
-            out[p.id] = next((v for v in PRESET_VOICES if v not in used), PRESET_VOICES[0])
+            gender = face_gender((faces or {}).get(p.id))
+            prefer = (FEMALE_VOICES if gender == "f" else MALE_VOICES if gender == "m" else [])
+            out[p.id] = next((v for v in prefer + PRESET_VOICES if v not in used),
+                             PRESET_VOICES[0])
         used.add(out[p.id])
     return out
 
@@ -89,7 +106,9 @@ def assign_faces(persona_ids: list[str], faces_dir: Path | None = None) -> dict[
     d = faces_dir or FACES_DIR
     files = sorted(p for p in d.glob("*") if p.suffix.lower() in FACE_EXTS) if d.exists() else []
     pinned = {p.stem: p for p in files}
-    pool = [p for p in files if p.stem not in persona_ids and not p.stem.startswith("_")]
+    # Faces pinned to *other* roster personas are not up for grabs: they belong to someone.
+    reserved = set(persona_ids) | set(ROSTER_VOICES)
+    pool = [p for p in files if p.stem not in reserved and not p.stem.startswith("_")]
     if not pool:
         pool = [p for p in files if p.stem.startswith("_")]
     out: dict[str, Path] = {}
@@ -208,8 +227,8 @@ class HiggsVoice:
 
     async def start_voice_session(self, session_id: str, config: SessionConfig) -> None:
         self._session_id = session_id
-        self._voices = assign_voices(config)
         self._faces = assign_faces([p.id for p in config.personas], self.faces_dir)
+        self._voices = assign_voices(config, self._faces)
         await self._status("ready", voices=self._voices, avatars=self.avatar_enabled,
                            faces={pid: f"/demo/faces/{p.name}" for pid, p in self._faces.items()})
 
