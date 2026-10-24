@@ -16,6 +16,7 @@ from typing import Annotated, Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -156,8 +157,9 @@ def list_presets() -> dict[str, Any]:
 async def upload_slides(file: Annotated[UploadFile, File()]) -> dict[str, Any]:
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(400, "upload a PDF")
-    try:
-        deck = slides.ingest_pdf(await file.read(), file.filename or "deck.pdf")
+    try:  # rendering takes seconds for a big deck; keep the event loop (and rooms) free
+        deck = await run_in_threadpool(slides.ingest_pdf, await file.read(),
+                                       file.filename or "deck.pdf")
     except slides.DeckError as exc:
         raise HTTPException(400, str(exc)) from exc
     return deck.model_dump()

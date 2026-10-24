@@ -19,6 +19,8 @@ from spec.contracts import Deck, Slide
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "decks"
 RENDER_DPI = 96  # ~1024 px wide for a 16:9 slide: sharp enough for the room, small enough to serve
 MAX_PAGES = 60  # a 24-hour hackathon deck; anything longer is a mistake, not a use case
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+TEXT_FLAGS = pymupdf.TEXTFLAGS_TEXT & ~pymupdf.TEXT_PRESERVE_LIGATURES
 _DECKS: dict[str, Deck] = {}
 
 
@@ -28,6 +30,8 @@ class DeckError(ValueError):
 
 def ingest_pdf(pdf_bytes: bytes, filename: str, render_png: bool = True,
                data_dir: Path | None = None) -> Deck:
+    if len(pdf_bytes) > MAX_UPLOAD_BYTES:
+        raise DeckError("That PDF is over 50 MB; export a smaller copy.")
     try:
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     except Exception as exc:  # pymupdf raises several types for a bad file
@@ -50,7 +54,9 @@ def ingest_pdf(pdf_bytes: bytes, filename: str, render_png: bool = True,
             if render_png:
                 page.get_pixmap(dpi=RENDER_DPI).save(out_dir / f"{index}.png")
                 image_url = f"/decks/{deck_id}/{index}.png"
-            text = page.get_text("text")  # str; other modes return lists/dicts
+            # Plain text with ligatures expanded ("ﬁ" → "fi") so slide lines match the
+            # transcript and read cleanly in the prompt.
+            text = page.get_text("text", flags=TEXT_FLAGS)
             slides.append(Slide(number=index, text=_clean(str(text)), image_url=image_url))
     deck = Deck(deck_id=deck_id, filename=filename, page_count=len(slides), slides=slides)
     _DECKS[deck_id] = deck

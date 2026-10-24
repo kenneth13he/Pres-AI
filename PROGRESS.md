@@ -67,3 +67,8 @@ Files outside my paths: pyproject.toml (pytest filterwarnings for the pymupdf/sw
 Proposed decision changes (not implemented): none
 Next: C half of P0-3b — `ClaudeOrchestrator` bodies (decide / follow_up / assess_recovery / expand_persona) behind the mock-tested seam, because the engine and slides now run
 Open question for the team: none
+
+## P0-4 · 2026-10-23 · fix 1
+Fixed (per review): `demo/sample_pitch.pdf` added (6-slide fictional Startup Pitch deck, generated with PyMuPDF — the §13 stage-recovery deck); ligatures expanded in extracted text so slide lines match the transcript; ingest runs in a threadpool so a big deck never stalls the rooms; 50 MB upload cap with a presenter-safe 400; route test cleans up the deck folder and the in-memory entry it creates; wrong AES fallback dropped.
+Evidence: test_slides.py 6/6 (ligature case added); suite 58/58; `data/decks` count unchanged across a test run
+Gate: green at the fix commit

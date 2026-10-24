@@ -49,27 +49,42 @@ def test_bad_inputs_raise_presenter_safe_errors():
         ingest_pdf(make_pdf(["p"] * (slides.MAX_PAGES + 1)), "long.pdf", render_png=False)
     doc = pymupdf.open()
     doc.new_page()
-    aes256 = getattr(pymupdf, "PDF_ENCRYPT_AES_256", 4)
+    aes256 = pymupdf.PDF_ENCRYPT_AES_256  # type: ignore[attr-defined]  # exists at runtime (=5)
     locked = doc.tobytes(encryption=aes256, user_pw="pw", owner_pw="pw")
     doc.close()
     with pytest.raises(DeckError, match="password"):
         ingest_pdf(locked, "locked.pdf", render_png=False)
 
 
+def test_ligatures_are_expanded():
+    deck = ingest_pdf(make_pdf(["office network effects, fifty"]), "d.pdf", render_png=False)
+    assert deck.slides[0].text == "office network effects, fifty"
+    assert all(ord(ch) < 0xFB00 for ch in deck.slides[0].text)
+
+
 def test_upload_route_returns_deck_and_serves_png():
+    import shutil
+
     from fastapi.testclient import TestClient
 
     from backend.main import app
 
-    with TestClient(app) as client:
-        r = client.post("/api/slides", files={"file": ("pitch.pdf", make_pdf(["Hello"]),
-                                                       "application/pdf")})
-        assert r.status_code == 200, r.text
-        deck = r.json()
-        assert deck["page_count"] == 1 and "Hello" in deck["slides"][0]["text"]
-        png = client.get(deck["slides"][0]["image_url"])
-        assert png.status_code == 200 and png.headers["content-type"] == "image/png"
-        bad = client.post("/api/slides", files={"file": ("x.pdf", b"nope", "application/pdf")})
-        assert bad.status_code == 400 and "readable PDF" in bad.json()["detail"]
-        not_pdf = client.post("/api/slides", files={"file": ("x.txt", b"hi", "text/plain")})
-        assert not_pdf.status_code == 400
+    made: list[str] = []
+    try:
+        with TestClient(app) as client:
+            r = client.post("/api/slides", files={"file": ("pitch.pdf", make_pdf(["Hello"]),
+                                                           "application/pdf")})
+            assert r.status_code == 200, r.text
+            deck = r.json()
+            made.append(deck["deck_id"])
+            assert deck["page_count"] == 1 and "Hello" in deck["slides"][0]["text"]
+            png = client.get(deck["slides"][0]["image_url"])
+            assert png.status_code == 200 and png.headers["content-type"] == "image/png"
+            bad = client.post("/api/slides", files={"file": ("x.pdf", b"nope", "application/pdf")})
+            assert bad.status_code == 400 and "readable PDF" in bad.json()["detail"]
+            not_pdf = client.post("/api/slides", files={"file": ("x.txt", b"hi", "text/plain")})
+            assert not_pdf.status_code == 400
+    finally:  # the /decks mount is fixed at import time, so clean up the real folder
+        for deck_id in made:
+            shutil.rmtree(slides.DATA_DIR / deck_id, ignore_errors=True)
+            slides._DECKS.pop(deck_id, None)
