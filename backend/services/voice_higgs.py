@@ -39,6 +39,7 @@ FACE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 # Measured 24 Oct: a 4 s line renders in ~5 s. Past this budget the voice plays over the
 # still portrait instead, so a slow or throttled render never delays the room.
 AVATAR_BUDGET_S = float(os.environ.get("BOSON_AVATAR_BUDGET_S", "10"))
+IDLE_S = 2  # first listening loop: short, so a line never waits long for its start frame
 TAIL_S = 2.0  # silence after each line: the face settles, and this tail becomes its rest loop
 VOICE_REGISTRY = AUDIO_DIR.parent / "voices.json"
 # Each character's voice is cloned once from this neutral line, then reused by ID for every
@@ -374,7 +375,7 @@ class HiggsVoice:
     # ---- idle loops: the face is alive while listening, never a frozen photo ---------------
 
     def _idle_path(self, face: Path) -> Path:
-        return self.audio_dir / "_idle" / f"{face.stem}-{int(face.stat().st_mtime)}.mp4"
+        return self.audio_dir / "_idle" / f"{face.stem}-{int(face.stat().st_mtime)}-{IDLE_S}s.mp4"
 
     def _idle_url(self, face: Path) -> str:
         return f"/audio/_idle/{self._idle_path(face).name}"
@@ -387,7 +388,7 @@ class HiggsVoice:
         if not dest.exists():
             dest.parent.mkdir(parents=True, exist_ok=True)
             raw = dest.with_suffix(".raw.mp4")
-            ok = await self._avatar_video(face, ("silence.wav", _silence_wav(6), "audio/wav"),
+            ok = await self._avatar_video(face, ("silence.wav", _silence_wav(IDLE_S), "audio/wav"),
                                           raw, budget_s=40)
             if not ok:
                 return

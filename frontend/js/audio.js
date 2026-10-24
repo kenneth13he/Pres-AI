@@ -19,9 +19,9 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
     // a voice-only clip plays through a detached <audio>.
     const audio = clip.kind === 'video' && clip.el ? clip.el : new Audio();
     audio.src = clip.url;
+    audio.preload = 'auto';
+    audio.load();
     current = { audio, clip };
-    onClipStart(clip);
-    if (clip.kind === 'video' && clip.el) clip.el.closest('.tile-call')?.classList.add('live');
     const done = () => {
       if (current?.audio !== audio) return;
       current = null;
@@ -44,7 +44,32 @@ export function createPlayer({ onClipStart = () => {}, onClipEnd = () => {}, onI
     };
     audio.onended = done;
     audio.onerror = done;
-    audio.play().catch(done);
+    const begin = () => {
+      if (current?.audio !== audio) return;          // skipped while we waited
+      onClipStart(clip);
+      if (clip.kind === 'video' && clip.el) clip.el.closest('.tile-call')?.classList.add('live');
+      audio.play().catch(done);
+    };
+    // One continuous shot: the new line was rendered from the frame the resting loop starts
+    // on, so wait for the loop to come round to that frame and cut exactly there.
+    const idle = clip.el?.closest('.tile-call')?.querySelector('video.idle');
+    if (clip.kind === 'video' && idle && !idle.paused && idle.duration) waitForLoopStart(idle, begin);
+    else begin();
+  }
+
+  function waitForLoopStart(loop, go) {
+    let last = loop.currentTime;
+    let fired = false;
+    const fire = () => { if (!fired) { fired = true; go(); } };
+    const tick = () => {
+      if (fired) return;
+      const t = loop.currentTime;
+      if (t + 0.05 < last || t < 0.04) return fire();  // wrapped back to frame 0
+      last = t;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    setTimeout(fire, (loop.duration / (loop.playbackRate || 1)) * 1000 + 150);  // never wait longer than one loop
   }
 
   function playClip(clip) {

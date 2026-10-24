@@ -3,7 +3,7 @@
 // Works against the mock (/room.html?mock=1) and against a live session (/room.html?session=ID).
 
 import { connect, getSession, isMock } from '/js/api.js';
-import { createPlayer } from '/js/audio.js?v=call6';
+import { createPlayer } from '/js/audio.js?v=call7';
 import { startMic } from '/js/mic.js';
 import { playMock } from '/js/mock_player.js';
 
@@ -52,7 +52,6 @@ function startIdle(id) {
   if (!el || !url) return;
   if (!el.src.endsWith(url)) el.src = url;
   if (!el.src.includes('.rest.')) el.currentTime = Math.random() * 3; // don't blink in unison
-  el.playbackRate = 0.9;               // a calmer, more natural listening pace
   el.play().then(() => el.closest('.tile-call')?.classList.add('idle-on')).catch(() => {});
 }
 
