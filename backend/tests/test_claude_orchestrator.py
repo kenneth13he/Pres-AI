@@ -123,10 +123,11 @@ async def test_recovery_is_null_without_speech_and_evidence_must_be_verbatim():
 async def test_expand_persona_sets_id_and_custom_and_falls_back_on_refusal():
     model_persona = Persona(id="whatever", name="The Chair", role="Thesis committee chair",
                             focus=["jargon", "method"], skepticism=0.7, style_hint="thoughtful",
-                            plays=["bait"])
+                            plays=["bait", "time_crunch", "elevator"])
     orch = ClaudeOrchestrator(client=FakeClient(model_persona))
     got = await orch.expand_persona("my thesis committee chair who hates jargon", 1)
     assert got.id == "custom_1" and got.custom is True and got.role == "Thesis committee chair"
+    assert got.plays == ["bait"]
     orch = ClaudeOrchestrator(client=FakeClient(FakeResponse(None, stop_reason="refusal")))
     fallback = await orch.expand_persona("someone", 2)
     assert fallback.id == "custom_2" and fallback.custom is True

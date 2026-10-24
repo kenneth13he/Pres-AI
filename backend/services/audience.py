@@ -243,10 +243,14 @@ class ClaudeOrchestrator:
             client = anthropic.AsyncAnthropic(max_retries=1)
         self.client = client
         self.model = model or os.environ.get("ORCHESTRATOR_MODEL", "claude-opus-5-5")
+        # Live-measured 23 Oct: decide 2.2–2.6 s, follow_up 2.1 s (effort low);
+        # assess_recovery 6.4 s (effort high) — hence two budgets.
         self.timeout_s = float(os.environ.get("ORCHESTRATOR_TIMEOUT_S", "8"))
+        self.slow_timeout_s = float(os.environ.get("ORCHESTRATOR_SLOW_TIMEOUT_S", "15"))
 
     async def _parse(self, system: str, user: str, schema: type[T],
-                     effort: Literal["low", "high"], max_tokens: int = 2048) -> T | None:
+                     effort: Literal["low", "high"], max_tokens: int = 2048,
+                     timeout_s: float | None = None) -> T | None:
         """None means "no usable answer": a refusal, a truncated or schema-violating reply,
         or an API error. The SDK validates the JSON before we see stop_reason, so a refusal
         that carries text surfaces as ValidationError — caught here. A timeout propagates:
@@ -261,7 +265,7 @@ class ClaudeOrchestrator:
                     messages=[{"role": "user", "content": user}],
                     output_format=schema,
                 ),
-                timeout=self.timeout_s,
+                timeout=timeout_s or self.timeout_s,
             )
         except (ValidationError, anthropic.APIError):
             return None
@@ -380,7 +384,7 @@ class ClaudeOrchestrator:
                 f"measured time until the presenter resumed: {timing}\n"
                 f"next 60 s of presenter transcript:\n{self.format_transcript(after)}")
         out = await self._parse(RECOVERY_PROMPT, user, RecoveryAssessment, "high",
-                                max_tokens=8192)
+                                max_tokens=8192, timeout_s=self.slow_timeout_s)
         if out is None:
             return RecoveryAssessment(
                 score=None, evidence=None,
@@ -404,4 +408,6 @@ class ClaudeOrchestrator:
             "id": f"custom_{index}", "custom": True,
             "voice_id": None, "avatar_url": None,  # Person B maps voices; the model never does
             "skepticism": min(1.0, max(0.0, out.skepticism)),
+            # Only kinds a persona actually voices; the live model also listed moderator kinds.
+            "plays": [k for k in out.plays if CATALOG[k].speaker == "persona"],
         })
