@@ -193,11 +193,13 @@ class CurveballEngine:
         )
         return rec, event
 
-    def due_for_auto_resolve(self, now_ms: int) -> CurveballRecord | None:
+    def due_for_auto_resolve(self, now_ms: int, paused_ms: int = 0) -> CurveballRecord | None:
+        """`paused_ms` is the time the session spent paused since the record fired; paused
+        time never counts (CLAUDE.md §2)."""
         rec = self.active
         if rec is None or rec.spec.auto_resolve_ms is None:
             return None
-        return rec if now_ms - rec.at_ms >= rec.spec.auto_resolve_ms else None
+        return rec if now_ms - rec.at_ms - paused_ms >= rec.spec.auto_resolve_ms else None
 
     def resolve(
         self,
@@ -205,13 +207,15 @@ class CurveballEngine:
         now_ms: int,
         resolution: Resolution,
         transcript: list[TranscriptSegment],
+        pauses: list[tuple[int, int]] | None = None,
     ) -> SessionEvent:
         """Mark resolved and return the `curveball_resolved` event. `skipped` → recovery None;
         otherwise recovery = measure_recovery(...). Rubric scores are added later by the
         orchestrator's recovery assessment (engine._resolve)."""
         rec.resolution = resolution
         rec.resolved_at_ms = now_ms
-        rec.recovery = None if resolution == "skipped" else measure_recovery(rec, transcript)
+        rec.recovery = (None if resolution == "skipped"
+                        else measure_recovery(rec, transcript, pauses or []))
         return SessionEvent(
             type="curveball_resolved",
             session_id=self.session_id,
@@ -225,8 +229,20 @@ class CurveballEngine:
         )
 
 
-def measure_recovery(rec: CurveballRecord, transcript: list[TranscriptSegment]) -> Recovery:
-    """Timing only: resume_after_ms = first presenter segment after rec.at_ms minus rec.at_ms.
+def paused_between(pauses: list[tuple[int, int]], start_ms: int, end_ms: int) -> int:
+    """Milliseconds of the given pause intervals that fall inside [start_ms, end_ms]."""
+    total = 0
+    for p_start, p_end in pauses:
+        total += max(0, min(p_end, end_ms) - max(p_start, start_ms))
+    return total
+
+
+def measure_recovery(
+    rec: CurveballRecord, transcript: list[TranscriptSegment],
+    pauses: list[tuple[int, int]] | None = None,
+) -> Recovery:
+    """Timing only: resume_after_ms = first presenter segment after rec.at_ms minus rec.at_ms,
+    minus any paused time in between (a pause is never penalised).
     No speech after the event → resume_after_ms=None with a note saying so. Never 0 by default.
     time_crunch has no resume gap (§6.1: judged on the close), so its timing is always None."""
     if rec.kind == "time_crunch":
@@ -237,8 +253,9 @@ def measure_recovery(rec: CurveballRecord, transcript: list[TranscriptSegment]) 
         return Recovery(resume_after_ms=None,
                         notes="no presenter speech recorded after the event; timing not measured")
     first = min(after, key=lambda s: s.start_ms)
+    gap = first.start_ms - rec.at_ms - paused_between(pauses or [], rec.at_ms, first.start_ms)
     return Recovery(
-        resume_after_ms=first.start_ms - rec.at_ms,
+        resume_after_ms=max(0, gap),
         notes=f"resumed with: {first.text[:80]!r}",
         evidence=first.text,
     )

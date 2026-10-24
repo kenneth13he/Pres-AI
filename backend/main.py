@@ -204,7 +204,8 @@ def get_session(session_id: str) -> dict[str, Any]:
     return {
         "session_id": s.session_id, "phase": s.phase, "config": s.config.model_dump(),
         "preset": s.preset.model_dump(), "slide_number": s.slide_number,
-        "elapsed_ms": s.elapsed_ms(_room(session_id).now_ms()) if s.start_ms else 0,
+        "elapsed_ms": (s.elapsed_ms(_room(session_id).now_ms())
+                       if s.start_ms is not None else 0),
         "deck": s.deck.model_dump() if s.deck else None,
         "events": [e.model_dump() for e in s.events],
     }

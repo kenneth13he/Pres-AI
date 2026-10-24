@@ -52,3 +52,8 @@ Fixed (per pre-merge review): pause is frozen — every stored timestamp shifts 
 Evidence: 9 new regression tests in test_e2e_mock.py; suite 48/48; live WebSocket smoke run (pause/resume/end, session-relative timestamps)
 Gate: green at the fix commit
 Notes for A: an answerable curveball emits both `curveball_triggered` and `question_queued` (same line, `curveball_id` set) — caption only one. Notes for B: the engine emits its own `ai_speech_ended` floor; a live adapter's own end event should replace it, not duplicate it.
+
+## P0-5 + P0-6 · 2026-10-23 · fix 2
+Fixed (per second review): curveball `at_ms` is no longer shifted on resume — recovery timing subtracts the recorded pause intervals instead, so a pause after an early resume cannot inflate a measured gap and the report's times agree with the event log; a question the room cuts off (End, crunch expiry) is `skipped` with a reason and a `skipped` event, never "unanswered"; curveball pseudo-questions are excluded from the unanswered count; `enter_qna` disarms the crunch deadline and resolves an open crunch as `answered` when the presenter closes early (`timed_out` only at the deadline); `in_qna` is set before resolving so there is no detour through presenting; `_resolve` on an already-resolved record still restores the phase; REST `elapsed_ms` fixed (`start_ms is not None`); mock follow-up wording varies by persona and question; persona feedback quotes root questions, not follow-ups.
+Evidence: 4 new regression tests; suite 52/52; gate green
+Gate: green at the fix commit

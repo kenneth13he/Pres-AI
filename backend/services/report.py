@@ -62,9 +62,11 @@ def build_report(session: Session) -> Report:
         for q in session.questions
         if q.get("cited_excerpt")
     ]
-    # Skipped is never penalised (§2): a skipped question is neither unanswered nor scored.
+    # Skipped is never penalised (§2): a skipped or cut-off question is neither unanswered
+    # nor scored; curveball pseudo-questions carry their own resolution.
     unanswered = sum(1 for q in session.questions
-                     if q.get("answer") is None and not q.get("skipped"))
+                     if q.get("answer") is None and not q.get("skipped")
+                     and not q["curveball_id"])
     skipped = (sum(1 for q in session.questions if q.get("skipped") and not q["curveball_id"])
                + sum(1 for r in records if r.resolution == "skipped"))
 
@@ -119,12 +121,15 @@ def _key_moments(session: Session) -> list[KeyMoment]:
 
 
 def _persona_comment(persona_id: str, session: Session) -> str:
-    asked = [q for q in session.questions if q["persona_id"] == persona_id]
+    asked = [q for q in session.questions
+             if q["persona_id"] == persona_id and not q["follow_up_of"]]
     if not asked:
         return "Listened; had no question this time."
     q = asked[-1]
+    if q.get("cut_off"):
+        return "We ran out of time for my question — no penalty."
     if q.get("skipped"):
         return "You skipped my question — no penalty, but I'm still curious."
-    if q.get("answer") is None:
+    if q.get("answer") is None and not q["curveball_id"]:
         return f"Never got an answer to: {q['question']}"
     return f"Asked about: {q['cited_excerpt'] or q['question']}"

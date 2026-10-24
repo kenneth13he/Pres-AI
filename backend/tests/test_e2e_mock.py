@@ -313,3 +313,79 @@ async def test_unmeasured_recovery_is_null_not_zero():
     rec = r.curveballs[0].recovery
     assert rec is not None and rec.resume_after_ms is None and rec.score is None
     assert r.dimensions["recovery"] is None
+
+
+# ---- second review round ----------------------------------------------------------------
+
+
+async def test_pause_after_an_early_resume_does_not_inflate_the_gap():
+    session = make_session()
+    await session.start(0)
+    await session.slide_changed(s(1), 3)
+    await session.force_curveball("slides_down", s(100))
+    await session.presenter_transcript(s(100.5), seg(100.5, "Right — no slides, fine."))
+    await session.control("pause", s(102))
+    await session.control("resume", s(132))
+    await session.presenter_transcript(s(137), seg(137, "So the problem is onboarding."))
+    await session.control("restore_slides", s(140))
+    res = next(e for e in session.events if e.type == "curveball_resolved")
+    assert res.payload["recovery"]["resume_after_ms"] == 500  # measured, not 7000
+    trig = next(e for e in session.events if e.type == "curveball_triggered")
+    await session.control("end", s(150))
+    await session.control("end", s(151))
+    assert session.report is not None
+    assert session.report.curveballs[0].at_ms == trig.timestamp_ms  # report agrees with events
+
+
+async def test_crunch_expiry_cuts_off_a_pending_question_without_penalty():
+    session = make_session(difficulty="brutal", qna_questions=0)
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.force_curveball("time_crunch", s(100))
+    await session.presenter_transcript(s(141), seg(141, "We have 12,000 users already."))
+    await session.tick(s(144))
+    assert session.phase == "answering"
+    await session.tick(s(160))  # deadline while the question is pending
+    assert session.ended
+    phases = [e.payload["to"] for e in session.events if e.type == "phase_changed"]
+    assert phases[-2:] == ["qna", "report"]  # no detour through presenting
+    cut = [e for e in session.events if e.type == "skipped"]
+    assert cut and cut[0].payload["reason"] == "presentation ended"
+    r = session.report
+    assert r is not None
+    assert r.metrics["unanswered_questions"] == 0
+    vc = next(f for f in r.persona_feedback if f.persona_id == "vc")
+    assert vc.comment.startswith("We ran out of time")
+
+
+async def test_ending_early_during_a_crunch_closes_it_as_answered():
+    session = make_session(qna_questions=1)
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.force_curveball("time_crunch", s(100))
+    await session.presenter_transcript(s(105), seg(105, "So: the ask is a pilot. Thank you."))
+    await session.control("end", s(110))
+    assert session.phase == "qna" and session.time_crunch_deadline_ms is None
+    crunch = session.curveballs.records[0]
+    assert crunch.resolution == "answered"
+    await session.presenter_transcript(s(150), seg(150, "Our churn is only 2 percent."))
+    await session.tick(s(161))  # past the old deadline: nothing expires inside Q&A
+    assert not any(e.type == "timer_override" and e.payload.get("style") == "expired"
+                   for e in session.events)
+    assert session.phase == "answering"
+
+
+async def test_follow_up_wording_varies_between_questions():
+    session = make_session(difficulty="brutal", interruption_frequency="often")
+    await session.start(0)
+    await session.slide_changed(s(1), 2)
+    await session.presenter_transcript(s(33), seg(33, "We have 2,000 users already."))
+    await session.tick(s(36))
+    await session.presenter_transcript(s(40), seg(40, "From pilots."))
+    await session.presenter_transcript(s(45), seg(45, "Three schools, since January, all paying."))
+    await session.presenter_transcript(s(80), seg(80, "Revenue is 40% up month on month."))
+    await session.tick(s(83))
+    await session.presenter_transcript(s(90), seg(90, "Because of pricing."))
+    follow_ups = [e.payload["question"] for e in session.events
+                  if e.type == "question_queued" and e.payload.get("follow_up_of")]
+    assert len(follow_ups) == 2 and follow_ups[0] != follow_ups[1]

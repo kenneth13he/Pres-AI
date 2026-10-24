@@ -36,7 +36,7 @@ from spec.contracts import (
 
 from .services import slides
 from .services.audience import Orchestrator, OrchestratorContext
-from .services.curveballs import CATALOG, CurveballEngine, CurveballRecord
+from .services.curveballs import CATALOG, CurveballEngine, CurveballRecord, paused_between
 from .services.report import build_report
 from .services.scheduler import Scheduler, SchedulerSnapshot
 from .services.voice_base import VoiceAdapter
@@ -91,6 +91,7 @@ class Session:
         self.last_presenter_speech_ms: int | None = None
         self.paused_phase: SessionPhase | None = None
         self.paused_at_ms: int | None = None
+        self.pauses: list[tuple[int, int]] = []  # closed pause intervals, session clock
         self.time_crunch_deadline_ms: int | None = None
         self.pending_question: dict[str, Any] | None = None
         self.followups_used = 0
@@ -193,8 +194,7 @@ class Session:
             except Exception as exc:
                 self._error(now_ms, "voice.cancel_speech", exc)
         elif action == "resume" and self.phase == "paused":
-            self._shift_clocks(now_ms - (self.paused_at_ms or now_ms))
-            self.paused_at_ms = None
+            self._unpause(now_ms)
             self._set_phase(self.paused_phase or self._resting_phase(), now_ms)
             self.paused_phase = None
             self._emit("resumed", now_ms)
@@ -210,9 +210,16 @@ class Session:
             elif self.phase in LIVE_PHASES or self.phase == "paused":
                 await self.enter_qna(now_ms)
 
-    def _shift_clocks(self, delta_ms: int) -> None:
-        """Move every stored timestamp forward by the paused duration so paused time never
-        counts against the presenter."""
+    def _unpause(self, now_ms: int) -> None:
+        """Close the pause interval and move every *deadline-like* timestamp forward by the
+        paused duration so paused time never counts against the presenter. Event-like
+        timestamps (when a curveball fired, when a question was asked) stay on the session
+        clock so the report agrees with the event log; recovery timing subtracts `pauses`."""
+        if self.paused_at_ms is None:
+            return
+        delta_ms = now_ms - self.paused_at_ms
+        self.pauses.append((self.paused_at_ms, now_ms))
+        self.paused_at_ms = None
         if delta_ms <= 0:
             return
         if self.start_ms is not None:
@@ -225,11 +232,9 @@ class Session:
             self.last_presenter_speech_ms += delta_ms
         if self.slide_changed_at_ms is not None:
             self.slide_changed_at_ms += delta_ms
-        for rec in self.curveballs.records:
-            if rec.resolution is None:
-                rec.at_ms += delta_ms
-        if self.pending_question:
-            self.pending_question["asked_at_ms"] += delta_ms
+
+    def _paused_since(self, start_ms: int, now_ms: int) -> int:
+        return paused_between(self.pauses, start_ms, now_ms)
 
     async def force_curveball(self, kind: CurveballKind, now_ms: int) -> None:
         """Debug/demo only (CLAUDE.md §7). Bypasses eligibility, never the one-at-a-time rule:
@@ -248,7 +253,9 @@ class Session:
         if deadline is not None and now_ms >= deadline:
             await self._time_crunch_expired(now_ms)
             return
-        due = self.curveballs.due_for_auto_resolve(now_ms)
+        active = self.curveballs.active
+        due = self.curveballs.due_for_auto_resolve(
+            now_ms, self._paused_since(active.at_ms, now_ms) if active else 0)
         if due:
             await self._resolve(due, now_ms, "auto_restored")
         if self.phase == "presenting":
@@ -261,11 +268,20 @@ class Session:
         then Q&A."""
         self.time_crunch_deadline_ms = None
         self._emit("timer_override", now_ms, {"remaining_ms": 0, "style": "expired"})
-        crunch = next((r for r in self.curveballs.records
-                       if r.kind == "time_crunch" and r.resolution is None), None)
-        if crunch:
-            await self._resolve(crunch, now_ms, "timed_out")
-        await self.enter_qna(now_ms)
+        await self.enter_qna(now_ms, crunch_resolution="timed_out")
+
+    def _cut_off_pending(self, now_ms: int, reason: str) -> None:
+        """The room, not the presenter, ended a pending question: it is `skipped` (never
+        "unanswered") and the UI hears about it."""
+        q = self.pending_question
+        if q is None:
+            return
+        q["skipped"] = True
+        q["cut_off"] = reason
+        self._emit("skipped", now_ms, {"question_id": q["question_id"],
+                                       "curveball_id": q["curveball_id"], "reason": reason})
+        self.pending_question = None
+        self.followups_used = 0
 
     async def _maybe_interrupt(self, now_ms: int) -> None:
         """SchedulerSnapshot → scheduler.eligible → orchestrator.decide → _ask / _fire_curveball
@@ -487,8 +503,10 @@ class Session:
         recovery (a failed assessment leaves the timing and no score) → event → cooldown →
         back to presenting / Q&A."""
         if rec.resolution is not None:
+            if self.phase == "answering" and self.pending_question is None:
+                self._set_phase(self._resting_phase(), now_ms)
             return
-        event = self.curveballs.resolve(rec, now_ms, resolution, self.transcript)
+        event = self.curveballs.resolve(rec, now_ms, resolution, self.transcript, self.pauses)
         if rec.recovery is not None:
             after = [s for s in self.transcript
                      if rec.at_ms < s.start_ms <= rec.at_ms + RECOVERY_WINDOW_MS]
@@ -511,21 +529,23 @@ class Session:
 
     # ---- the end --------------------------------------------------------------------------
 
-    async def enter_qna(self, now_ms: int) -> None:
-        """Resolve a non-time_crunch active curveball as timed_out → QNA.
-        qna_questions == 0 → finish."""
+    async def enter_qna(self, now_ms: int, crunch_resolution: Resolution = "answered") -> None:
+        """Presenting is over: a pending question is cut off (skipped, not penalised), an
+        open curveball resolves `timed_out`, an open time_crunch resolves `crunch_resolution`
+        (the presenter closing before the deadline is `answered`) and its deadline is
+        disarmed → QNA. qna_questions == 0 → finish."""
         if self.in_qna or self.ended:
             return
         if self.phase == "paused":
-            self._shift_clocks(now_ms - (self.paused_at_ms or now_ms))
-            self.paused_at_ms = None
+            self._unpause(now_ms)
             self.paused_phase = None
-        active = self.curveballs.active
-        if active and active.kind != "time_crunch":
-            await self._resolve(active, now_ms, "timed_out")
-        self.pending_question = None
-        self.followups_used = 0
-        self.in_qna = True
+        self.in_qna = True  # before resolving, so the resting phase is already Q&A
+        self._cut_off_pending(now_ms, "presentation ended")
+        self.time_crunch_deadline_ms = None
+        for rec in list(self.curveballs.records):
+            if rec.resolution is None:
+                await self._resolve(rec, now_ms,
+                                    crunch_resolution if rec.kind == "time_crunch" else "timed_out")
         self._set_phase("qna", now_ms)
         if self.config.qna_questions == 0:
             await self.finish(now_ms)
@@ -553,10 +573,10 @@ class Session:
         """Resolve leftovers timed_out, stop the voice, REPORT, build the report."""
         if self.ended:
             return
+        self._cut_off_pending(now_ms, "session ended")
         for rec in self.curveballs.records:
             if rec.resolution is None:
                 await self._resolve(rec, now_ms, "timed_out")
-        self.pending_question = None
         self.time_crunch_deadline_ms = None
         try:
             await self.voice.stop_voice_session()

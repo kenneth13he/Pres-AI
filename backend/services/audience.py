@@ -130,11 +130,16 @@ class MockOrchestrator:
     ) -> FollowUpVerdict:
         if used >= 1 or len(answer.split()) >= SUBSTANTIVE_WORDS:
             return FollowUpVerdict(verdict="satisfied", line="Fair enough, go on.")
-        return FollowUpVerdict(
-            verdict="follow_up",
-            line="That's the plan — what early data do you have for it?",
-            missing_detail="evidence for the stated approach",
-        )
+        # Never the same wording twice (§9): vary by persona and by the question asked.
+        variants = [
+            "That's the plan — what early data do you have for it?",
+            f"{persona.name} again — can you put a number on that?",
+            "Understood. What have you actually measured so far?",
+            "And the evidence for that is…?",
+        ]
+        line = variants[sum(map(ord, question)) % len(variants)]
+        return FollowUpVerdict(verdict="follow_up", line=line,
+                               missing_detail="evidence for the stated approach")
 
     async def assess_recovery(
         self, kind: CurveballKind, line: str, after: list[TranscriptSegment],

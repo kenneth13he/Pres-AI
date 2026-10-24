@@ -42,17 +42,17 @@ async def test_wpm_is_null_without_end_times():
     assert any("lack end times" in c for c in r.metric_caveats)
 
 
-async def test_unanswered_question_is_counted_and_named():
+async def test_question_cut_off_by_end_is_not_penalised_but_still_cited():
     session = make_session(qna_questions=0)
     await session.start(0)
     await session.slide_changed(s(1), 2)
     await session.presenter_transcript(s(33), seg(33, "Nobody else can ship this in 2 weeks."))
     await session.tick(s(36))
     assert session.phase == "answering"
-    await session.control("end", s(40))  # ended mid-answer
+    await session.control("end", s(40))  # the room ended it, not the presenter
     r = session.report
     assert r is not None
-    assert r.metrics["unanswered_questions"] == 1
+    assert r.metrics["unanswered_questions"] == 0 and r.metrics["skipped"] == 1
     assert r.improvements[0].evidence == "Nobody else can ship this in 2 weeks."
     vc = next(f for f in r.persona_feedback if f.persona_id == "vc")
-    assert vc.comment.startswith("Never got an answer")
+    assert vc.comment.startswith("We ran out of time")
