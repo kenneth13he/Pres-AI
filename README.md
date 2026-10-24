@@ -4,6 +4,22 @@ An AI audience that listens to your presentation, interrupts with grounded quest
 
 **Read `CLAUDE.md` first.** It is the house rules and the shared source of truth: scope, priorities, contracts, team split, hour gates, vendor facts, money rules. Then `PRIORITIES.md` for what to build next, `DECISIONS.md` for what is settled, `demo/DEMO_STATUS.md` for what is live.
 
+## Try the live call (branch `feat/voice-room`)
+
+You present to three AI panelists on a video call. They have live, lip-synced Higgs faces,
+interrupt, follow up and throw curveballs, and the call ends with a report card that quotes
+what you said.
+
+1. `make setup`, then fill in `.env`: `BOSON_API_KEY`, `ANTHROPIC_API_KEY`, the three
+   `LIVEKIT_*` values (a LiveKit Cloud project), and set `VOICE_ADAPTER=higgs`,
+   `ORCHESTRATOR=claude`, `BOSON_AVATAR_ENABLED=true`.
+2. `make dev`, then wait until http://localhost:8000/health shows all three `faces` as
+   `live`. Higgs is slow and flaky to start avatars; it can take a few minutes after boot.
+   The faces then stay up across calls (about $12/h for three while the server runs).
+3. Open http://localhost:8000, pick a preset, Join, and talk. **Use headphones.** Your mic
+   is always on, and Higgs STT does the speech-to-text on the server (Chrome's own
+   recognizer was unreliable). End → Finish shows the report card after about 10 s.
+
 ## Run it
 
 ```bash
