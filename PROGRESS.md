@@ -93,3 +93,13 @@ Fixed: live check against the real API passed for all four prompts (results in D
 Evidence: `scripts/try_orchestrator.py` output 22:50; timing run decide 2.6/2.2 s, follow_up 2.1 s, recovery 6.4 s
 Gate: green at the fix commit
 Note for later (P1): `assess_recovery` runs inside the room lock, so the room holds ~6 s at the moment a curveball resolves. Acceptable for the demo (nothing else is due at that instant); making it a background task needs a new `recovery_assessed` event in the contract — A's call.
+
+## Backend live run · 2026-10-23 · C · session 6
+Built: nothing new — the whole backend exercised live over WebSocket with `ORCHESTRATOR=claude`: custom persona expanded in 3.5 s; grounded VC question at 30.0 s quoting the claim verbatim and contrasting it with the slide; one follow-up; pause/resume; `slides_down` forced, restored, resume gap measured (6.2 s) and scored 80 by the rubric; Q&A; report with the real quote. Zero `error` events. The run exposed one gap, fixed here: the closing Q&A demanded a verbatim transcript quote and ended instantly — Q&A now tells the model it is the closing round and accepts a question grounded in the slides alone.
+Tests: +1 (Q&A grounding); suite 72/72
+Gate: green at the commit
+Demo path: backend side of steps 2–8 live (DEMO_STATUS.md); A's room and B's voice are the remaining mocks
+Files outside my paths: none
+Proposed decision changes (not implemented): none
+Next: integration support for A/B; P1-2/P1-4 are already in place by construction and get flipped when A can show them
+Open question for the team: Anthropic monthly cap (we have spent well under $1 so far)

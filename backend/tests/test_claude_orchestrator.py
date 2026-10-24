@@ -227,3 +227,14 @@ def test_verbatim_check_is_forgiving_about_quotes_case_and_segment_boundaries():
     assert not ClaudeOrchestrator.verbatim(" ", segs)
     assert not ClaudeOrchestrator.verbatim("is onboarding", segs)  # < 3 words
     assert not ClaudeOrchestrator.verbatim("the problem is churn", segs)
+
+
+async def test_qna_round_accepts_a_question_grounded_in_the_slides():
+    client = FakeClient(OrchestratorDecision(
+        action="question", persona_id="student", line="What happens after the pilot?",
+        reason="left open", cited_transcript_excerpt=None, slide_number=3))
+    orch = ClaudeOrchestrator(client=client)
+    assert (await orch.decide(ctx())).action == "none"  # mid-talk: needs a verbatim quote
+    got = await orch.decide(ctx(qna=True))
+    assert got.action == "question" and got.cited_transcript_excerpt is None
+    assert "closing Q&A" in client.messages.calls[-1]["messages"][0]["content"]

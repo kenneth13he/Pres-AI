@@ -46,6 +46,7 @@ class OrchestratorContext:
     eligible_kinds: list[CurveballKind] = field(default_factory=list)
     curveball_budget_remaining: int = 0
     seconds_since_last_event: int | None = None
+    qna: bool = False  # the closing round: one question about the talk as a whole
 
 
 class Orchestrator(Protocol):
@@ -325,7 +326,9 @@ class ClaudeOrchestrator:
             f"recent presenter transcript (last ~30 s):\n"
             f"{ClaudeOrchestrator.format_transcript(ctx.recent_transcript)}\n\n"
             f"prior questions this session:\n{prior}\n\n"
-            f"actions allowed right now: {', '.join(allowed)}\n"
+            + ("round: closing Q&A — the presentation is over; ask the one question the talk "
+               "left most open, grounded in the slides or anything said.\n" if ctx.qna else "")
+            + f"actions allowed right now: {', '.join(allowed)}\n"
             f"eligible curveball kinds: {', '.join(ctx.eligible_kinds) or '(none)'}\n"
             f"curveball budget remaining: {ctx.curveball_budget_remaining}\n"
             f"seconds since the last audience event: "
@@ -348,8 +351,10 @@ class ClaudeOrchestrator:
             if not ctx.question_allowed or out.persona_id not in ids or not out.line:
                 return none
             if not self.verbatim(out.cited_transcript_excerpt, ctx.recent_transcript):
-                return OrchestratorDecision(action="none",
-                                            reason="question had no verbatim excerpt; skipped")
+                if not ctx.qna:
+                    return OrchestratorDecision(action="none",
+                                                reason="question had no verbatim excerpt; skipped")
+                out.cited_transcript_excerpt = None  # Q&A may be grounded in the slides alone
             out.slide_number = ctx.slide_number
         elif out.action == "curveball":
             if out.curveball_kind not in ctx.eligible_kinds:

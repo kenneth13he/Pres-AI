@@ -557,7 +557,10 @@ class Session:
             await self.finish(now_ms)
             return
         try:
-            decision = await self.orchestrator.decide(self._context(now_ms, True, []))
+            ctx = self._context(now_ms, True, [])
+            ctx.qna = True
+            ctx.recent_transcript = self.transcript[-12:]  # the whole talk's tail, not 30 s
+            decision = await self.orchestrator.decide(ctx)
         except Exception as exc:
             self._error(now_ms, "orchestrator.decide", exc)
             await self.finish(now_ms)
