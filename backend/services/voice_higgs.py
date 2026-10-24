@@ -46,6 +46,18 @@ MODERATOR_VOICE = "nora"
 # prosody signature (pitch/pace), so no seat is ever re-voiced to resolve a clash.
 # Face files are named `<persona_id>--<character>.jpg` (pinned) or `pool_<n>--<character>.jpg`.
 CHARACTER_VOICES: dict[str, tuple[str, str]] = {
+    # the meeting-room cast (demo/faces_source/grid_room.png)
+    "layla": ("eleanor", ""),
+    "mei": ("eleanor", "<|prosody:pitch_high|>"),
+    "hannah": ("chloe", ""),
+    "ava": ("chloe", "<|prosody:pitch_high|>"),
+    "ken": ("jake", ""),
+    "leo": ("jake", "<|prosody:pitch_low|>"),
+    "finn": ("oliver", ""),
+    "ray": ("oliver", "<|prosody:pitch_high|>"),
+    "dev": ("marcus", "<|prosody:speed_fast|>"),
+    "mr_tan": ("marcus", "<|prosody:speed_slow|>"),
+    # the first cast (demo/faces_source/grid.png), kept so its faces still work
     "grace": ("eleanor", ""),
     "margaret": ("eleanor", "<|prosody:pitch_low|><|prosody:speed_slow|>"),
     "emily": ("chloe", ""),

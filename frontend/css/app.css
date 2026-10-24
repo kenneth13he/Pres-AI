@@ -179,3 +179,29 @@ body { background: #0b0d12; color: #e7e9ee; }
 .table-top { bottom: 26px; width: min(96%, 820px); height: 110px; z-index: 2; }
 .plates { inset: 30px 8% auto 8%; gap: 28px; }
 .you-marker { z-index: 3; }
+
+/* ======================================================================================
+   SAME-ROOM CAST — the portraits were all shot in one meeting room (same whiteboard, same
+   lights, same table), so they sit edge to edge and join into one continuous room. Only the
+   seams are softened. (Overrides the head-and-shoulders cutout above.)
+   ====================================================================================== */
+.table-scene { height: 330px; }
+.seats { bottom: 64px; height: 280px; }
+.seat.has-face { width: 210px; margin: 0 -12px; }
+.seat.has-face.far { transform: none; z-index: 1; }
+.seat.has-face .portrait {
+  width: 210px; height: 280px;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+}
+.portrait img, .portrait video { filter: saturate(.92) contrast(1.02); }
+.seat.has-face .bubble { bottom: 268px; }
+.seat.has-face.far .bubble { bottom: 268px; }
+.seat.has-face.far.speaking { transform: none; }
+.table-top {
+  bottom: 18px; width: min(100%, 860px); height: 92px; border-radius: 46% 46% 12px 12px / 60% 60% 12px 12px;
+  background: linear-gradient(#e6d6bd, #cdb898 60%, #b49c7c);
+  box-shadow: inset 0 6px 10px #fff6, 0 18px 30px #0008;
+}
+.plates { inset: 26px 10% auto 10%; gap: 40px; }
+.plate { background: #fbf8f2; }
