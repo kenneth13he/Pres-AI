@@ -22,7 +22,8 @@ BUDGETS: dict[Difficulty, tuple[int, int]] = {
     "normal": (2, 1),
     "brutal": (3, 2),
 }
-COOLDOWN_MS: dict[InterruptionFrequency, int] = {"rare": 60_000, "normal": 40_000, "often": 25_000}
+# Within the 30–45 s band CLAUDE.md §8 states; frequency moves the cooldown inside that band.
+COOLDOWN_MS: dict[InterruptionFrequency, int] = {"rare": 45_000, "normal": 40_000, "often": 30_000}
 FIRST_QUESTION_MS = 30_000
 FIRST_CURVEBALL_MS = 45_000
 PAUSE_SILENCE_MS = 1_500  # no presenter speech for this long counts as a natural pause
@@ -82,7 +83,8 @@ class Scheduler:
         if not curveballs_enabled or curveball_mode.mode == "off":
             self.allowed_kinds: list[CurveballKind] = []
         elif curveball_mode.mode == "choose":
-            self.allowed_kinds = [k for k in curveball_mode.kinds if k in allowed_kinds]
+            self.allowed_kinds = list(dict.fromkeys(k for k in curveball_mode.kinds
+                                                    if k in allowed_kinds))
         else:
             self.allowed_kinds = list(allowed_kinds)
 

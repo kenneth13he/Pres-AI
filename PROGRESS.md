@@ -21,3 +21,8 @@ Files outside my paths: none
 Proposed decision changes (not implemented): none
 Next: P0-9 (curveball engine trigger/resolve/measure_recovery), because P0-8 now passes; then P0-5 via engine.tick/_maybe_interrupt
 Open question for the team: none
+
+## P0-8 · 2026-10-23 · fix 1
+Fixed: cooldown values moved inside the 30–45 s band the rules state (rare 45 s, normal 40 s, often 30 s); choose-mode kinds deduplicated. Review notes carried to P0-9/P0-5: slides_down should also be able to fire on a slide change (needs_pause blocks it today); heckler's "value proposition detected" trigger belongs to the orchestrator; at_pause needs a speech_started/stopped signal once Higgs is wired (final-only transcripts).
+Evidence: test_scheduler.py 10/10, ruff, pyright
+Gate: green at the fix commit (pytest 17/9 as before)
